@@ -9,11 +9,9 @@ cmd
 log  
 models  
 proxy/plan  
-proxy/router(按照代码行数，自有占到70%，标识为外部版权的文件很多实现都是
-自己开发的与外部并不相同，开放时会加入gaea版权)  
+proxy/router(kingshard路由方式源自kingshard项目本身)
 proxy/sequence
-server(session.go有函数重名和几个函数实现拷贝，最早也是move文件修改的，
-目前已经非常不同，但是对应的文件也保留了对方版权，感觉应该可以去掉)  
+server
 
 ## 外部模块
 
