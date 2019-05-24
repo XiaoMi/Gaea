@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"runtime"
 	"sync"
 	"syscall"
 
@@ -33,7 +32,6 @@ import (
 var configFile = flag.String("config", "etc/gaea.ini", "gaea config file")
 
 func main() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
 	flag.Parse()
 	fmt.Printf("Git commit:%s\n", core.Version)
 	fmt.Printf("Build time:%s\n", core.Compile)
