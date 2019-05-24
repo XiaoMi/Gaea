@@ -67,6 +67,10 @@ Gaea是小米商城/系统组研发的基于mysql协议的数据库中间件，�
 - stats(google vitess，打点统计)  
 - util(混合)
 
-## 微信群
+## 社区
 
+### gitter
+[![Gitter](https://badges.gitter.im/xiaomi-b2c/Gaea.svg)](https://gitter.im/xiaomi-b2c/Gaea?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+
+### 微信群
 ![微信](docs/assets/gaea_weixin.png)
