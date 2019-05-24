@@ -1,0 +1,2383 @@
+// Copyright 2019 The Gaea Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package plan
+
+import (
+	"testing"
+
+	"github.com/XiaoMi/Gaea/proxy/router"
+)
+
+func TestSimpleSelectShardMycatMod(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id = 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id`=0"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select id from tbl_mycat where id = 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `id` FROM `tbl_mycat` WHERE `id`=0"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select tbl_mycat.id from tbl_mycat where id = 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `tbl_mycat`.`id` FROM `tbl_mycat` WHERE `id`=0"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where tbl_mycat.id = 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `tbl_mycat`.`id`=0"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from db_mycat.tbl_mycat where db_mycat.tbl_mycat.id = 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `db_mycat_0`.`tbl_mycat` WHERE `db_mycat_0`.`tbl_mycat`.`id`=0"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id = 2",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id`=2"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id = 3",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `id`=3"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id = 4",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id`=4"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id in (0,1,2,3,4,6)",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id` IN (0,4)"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id` IN (1)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id` IN (2,6)"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `id` IN (3)"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where k = 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `k`=0"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `k`=0"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `k`=0"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `k`=0"},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSimpleSelectShardMycatMurmur(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_murmur where id = 0",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat_murmur` WHERE `id`=0"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_murmur where id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat_murmur` WHERE `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_murmur where id = 2",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat_murmur` WHERE `id`=2"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_murmur where id = 3",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat_murmur` WHERE `id`=3"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_murmur where id = 4",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat_murmur` WHERE `id`=4"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_murmur where id in (0,1,2,3,4,6)",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat_murmur` WHERE `id` IN (6)"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat_murmur` WHERE `id` IN (1,2,3)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat_murmur` WHERE `id` IN (0,4)"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_murmur where k = 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat_murmur` WHERE `k`=0"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat_murmur` WHERE `k`=0"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat_murmur` WHERE `k`=0"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat_murmur` WHERE `k`=0"},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSimpleSelectShardMycatString(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_string where id = 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat_string` WHERE `id`=0"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_string where k = 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat_string` WHERE `k`=0"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat_string` WHERE `k`=0"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat_string` WHERE `k`=0"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat_string` WHERE `k`=0"},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSimpleSelectShardMycatLong(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_long where id = 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat_long` WHERE `id`=0"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_long where id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat_long` WHERE `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_long where id = 2",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat_long` WHERE `id`=2"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_long where id = 3",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat_long` WHERE `id`=3"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_long where id = 256",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat_long` WHERE `id`=256"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_long where id = 512",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat_long` WHERE `id`=512"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_long where id = 768",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat_long` WHERE `id`=768"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_long where id = 769",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat_long` WHERE `id`=769"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_long where id = 1024",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat_long` WHERE `id`=1024"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_long where id = 1025",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat_long` WHERE `id`=1025"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_long where id in (0,1,256,257,512,513,768,769,1024,1025)",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat_long` WHERE `id` IN (0,1,1024,1025)"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat_long` WHERE `id` IN (256,257)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat_long` WHERE `id` IN (512,513)"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat_long` WHERE `id` IN (768,769)"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_long where k = 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat_long` WHERE `k`=0"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat_long` WHERE `k`=0"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat_long` WHERE `k`=0"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat_long` WHERE `k`=0"},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectMultiTablesEQ(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child`"},
+					"db_mycat_1": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child`"},
+					"db_mycat_3": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child`"},
+				},
+			},
+		},
+
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where tbl_mycat.id = COUNT(1)", // 一边是列名, 另一边不支持, 则只替换列名
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat`.`id`=COUNT(1)"},
+					"db_mycat_1": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat`.`id`=COUNT(1)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat`.`id`=COUNT(1)"},
+					"db_mycat_3": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat`.`id`=COUNT(1)"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where tbl_mycat.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat`.`id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where tbl_mycat.id is null",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat`.`id` IS NULL"},
+					"db_mycat_1": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat`.`id` IS NULL"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat`.`id` IS NULL"},
+					"db_mycat_3": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat`.`id` IS NULL"},
+				},
+			},
+		},
+		// TODO: 分表列是否需要支持等值比较NULL
+		//{
+		//	db:     "db_mycat",
+		//	sql:    "select * from tbl_mycat, tbl_mycat_child where tbl_mycat.id = null",
+		//	hasErr: true,
+		//},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where 1 = 1 and tbl_mycat.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE 1=1 AND `tbl_mycat`.`id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat join tbl_mycat_child on tbl_mycat.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` JOIN `tbl_mycat_child` ON `tbl_mycat`.`id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where tbl_mycat_child.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat_child`.`id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat join tbl_mycat_child on tbl_mycat_child.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` JOIN `tbl_mycat_child` ON `tbl_mycat_child`.`id`=1"},
+				},
+			},
+		},
+		{
+			db:     "db_mycat",
+			sql:    "select * from tbl_mycat, tbl_mycat_child where id = 1", // id is ambiguous that both sharding key in tbl_mycat and tbl_mycat_child
+			hasErr: true,
+		},
+		{
+			db:     "db_mycat",
+			sql:    "select * from tbl_mycat join tbl_mycat_child on id = 1", // id is ambiguous that both sharding key in tbl_mycat and tbl_mycat_child
+			hasErr: true,
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_user_child where id = 1", // id is not ambiguous
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_user_child` WHERE `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat join tbl_mycat_user_child on id = 1", // id is not ambiguous
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` JOIN `tbl_mycat_user_child` ON `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat join tbl_mycat_child on tbl_mycat_child.id = 1 where tbl_mycat.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` JOIN `tbl_mycat_child` ON `tbl_mycat_child`.`id`=1 WHERE `tbl_mycat`.`id`=1"},
+				},
+			},
+		},
+		{
+			db:   "db_mycat",
+			sql:  "select * from tbl_mycat join tbl_mycat_child on tbl_mycat_child.id = 1 where tbl_mycat.id = 0",
+			sqls: map[string]map[string][]string{},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat join tbl_mycat_child on tbl_mycat_child.id = 1 or tbl_mycat.id = 2",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` JOIN `tbl_mycat_child` ON `tbl_mycat_child`.`id`=1 OR `tbl_mycat`.`id`=2"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` JOIN `tbl_mycat_child` ON `tbl_mycat_child`.`id`=1 OR `tbl_mycat`.`id`=2"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where tbl_mycat_child.id = 1 or tbl_mycat.id = 2",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat_child`.`id`=1 OR `tbl_mycat`.`id`=2"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat_child`.`id`=1 OR `tbl_mycat`.`id`=2"},
+				},
+			},
+		},
+		{
+			db:     "db_mycat",
+			sql:    "select * from tbl_mycat join tbl_mycat_murmur on tbl_mycat.id = 1", // tables have different route
+			hasErr: true,
+		},
+
+		// expr.R
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where COUNT(1) = tbl_mycat.id", // 一边是列名, 另一边不支持, 则只替换列名
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE COUNT(1)=`tbl_mycat`.`id`"},
+					"db_mycat_1": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE COUNT(1)=`tbl_mycat`.`id`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE COUNT(1)=`tbl_mycat`.`id`"},
+					"db_mycat_3": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE COUNT(1)=`tbl_mycat`.`id`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where 1 = tbl_mycat.id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE 1=`tbl_mycat`.`id`"},
+				},
+			},
+		},
+		{
+			db:     "db_mycat",
+			sql:    "select * from tbl_mycat, tbl_mycat_child where 1 = a.id",
+			hasErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectJoinUsing(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat join tbl_mycat_child using(id)",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` JOIN `tbl_mycat_child` USING (`id`)"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` JOIN `tbl_mycat_child` USING (`id`)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` JOIN `tbl_mycat_child` USING (`id`)"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` JOIN `tbl_mycat_child` USING (`id`)"},
+				},
+			},
+		},
+		{
+			db:     "db_mycat",
+			sql:    "select * from tbl_mycat join tbl_mycat_child using(tbl_mycat.id)",
+			hasErr: true,
+		},
+		{
+			db:     "db_mycat",
+			sql:    "select * from tbl_mycat join tbl_mycat_child using(db_mycat.tbl_mycat.id)",
+			hasErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectMultiTablesAlias(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat as a, tbl_mycat_child where a.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM (`tbl_mycat` AS `a`) JOIN `tbl_mycat_child` WHERE `a`.`id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat join tbl_mycat_child as b on b.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` JOIN `tbl_mycat_child` AS `b` ON `b`.`id`=1"},
+				},
+			},
+		},
+		{
+			db:     "db_mycat",
+			sql:    "select * from tbl_mycat as a join tbl_mycat_child as a on a.id = 1",
+			hasErr: true,
+		},
+		{
+			db:     "db_mycat",
+			sql:    "select * from tbl_mycat as a join tbl_mycat_child on b.id = 1",
+			hasErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+// TODO: range shard
+func TestMycatSelectBinaryOperatorComparison(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where 1 = id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE 1=`id`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id > 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id`>1"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id`>1"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id`>1"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `id`>1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where 1 < id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE 1<`id`"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE 1<`id`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE 1<`id`"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE 1<`id`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id >= 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id`>=1"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id`>=1"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id`>=1"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `id`>=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where 1 <= id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE 1<=`id`"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE 1<=`id`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE 1<=`id`"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE 1<=`id`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id < 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id`<1"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id`<1"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id`<1"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `id`<1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where 1 > id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE 1>`id`"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE 1>`id`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE 1>`id`"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE 1>`id`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id <= 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id`<=1"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id`<=1"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id`<=1"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `id`<=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where 1 >= id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE 1>=`id`"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE 1>=`id`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE 1>=`id`"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE 1>=`id`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id <> 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id`!=1"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id`!=1"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id`!=1"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `id`!=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id != 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id`!=1"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id`!=1"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id`!=1"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `id`!=1"},
+				},
+			},
+		},
+
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where tbl_mycat.id = tbl_mycat_child.id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat`.`id`=`tbl_mycat_child`.`id`"},
+					"db_mycat_1": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat`.`id`=`tbl_mycat_child`.`id`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat`.`id`=`tbl_mycat_child`.`id`"},
+					"db_mycat_3": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `tbl_mycat`.`id`=`tbl_mycat_child`.`id`"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectPatternIn(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id in (0,1,2,3,4,5,6,7)",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id` IN (0,4)"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id` IN (1,5)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id` IN (2,6)"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `id` IN (3,7)"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id in (0,0,0,1)",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id` IN (0,0,0)"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id` IN (1)"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id not in (1)",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id` NOT IN (1)"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id` NOT IN (1)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id` NOT IN (1)"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `id` NOT IN (1)"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where 1 in (1,2,3) and id=1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE 1 IN (1,2,3) AND `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where 1 in (1,2,3) or id=1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE 1 IN (1,2,3) OR `id`=1"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE 1 IN (1,2,3) OR `id`=1"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE 1 IN (1,2,3) OR `id`=1"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE 1 IN (1,2,3) OR `id`=1"},
+				},
+			},
+		},
+		{
+			db:     "db_mycat",
+			sql:    "select * from tbl_mycat where id in (1 = 1)",
+			hasErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectPatternInWithFuncDatabase(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where database() in ('db_mycat_0', 'db_mycat_1') and id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() IN ('db_mycat_0','db_mycat_1') AND `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where database() not in ('db_mycat_0', 'db_mycat_1') and id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() NOT IN ('db_mycat_0','db_mycat_1') AND `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where database() not in ('db_mycat_0', 'db_mycat_1') or id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() NOT IN ('db_mycat_0','db_mycat_1') OR `id`=1"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() NOT IN ('db_mycat_0','db_mycat_1') OR `id`=1"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() NOT IN ('db_mycat_0','db_mycat_1') OR `id`=1"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() NOT IN ('db_mycat_0','db_mycat_1') OR `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where database() in ('db_mycat_0', 'db_mycat_1')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() IN ('db_mycat_0','db_mycat_1')"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() IN ('db_mycat_0','db_mycat_1')"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() IN ('db_mycat_0','db_mycat_1')"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() IN ('db_mycat_0','db_mycat_1')"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where database() not in ('db_mycat_0', 'db_mycat_1')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() NOT IN ('db_mycat_0','db_mycat_1')"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() NOT IN ('db_mycat_0','db_mycat_1')"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() NOT IN ('db_mycat_0','db_mycat_1')"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() NOT IN ('db_mycat_0','db_mycat_1')"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where database() in ('db_mycat_0', 'db_mycat_1') and id in (0,1,2,3,4,5,6,7)",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() IN ('db_mycat_0','db_mycat_1') AND `id` IN (0,4)"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() IN ('db_mycat_0','db_mycat_1') AND `id` IN (1,5)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() IN ('db_mycat_0','db_mycat_1') AND `id` IN (2,6)"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() IN ('db_mycat_0','db_mycat_1') AND `id` IN (3,7)"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+// TODO: range shard
+func TestMycatSelectPatternBetween(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id between 1 and 5",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id` BETWEEN 1 AND 5"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id` BETWEEN 1 AND 5"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id` BETWEEN 1 AND 5"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `id` BETWEEN 1 AND 5"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id between 5 and 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id` BETWEEN 5 AND 1"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id` BETWEEN 5 AND 1"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id` BETWEEN 5 AND 1"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `id` BETWEEN 5 AND 1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where user between 'curry' and 'durant'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `user` BETWEEN 'curry' AND 'durant'"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `user` BETWEEN 'curry' AND 'durant'"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `user` BETWEEN 'curry' AND 'durant'"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `user` BETWEEN 'curry' AND 'durant'"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where 1 between 2 and 3",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE 1 BETWEEN 2 AND 3"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE 1 BETWEEN 2 AND 3"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE 1 BETWEEN 2 AND 3"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE 1 BETWEEN 2 AND 3"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where 1 not between 2 and 3",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE 1 NOT BETWEEN 2 AND 3"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE 1 NOT BETWEEN 2 AND 3"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE 1 NOT BETWEEN 2 AND 3"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE 1 NOT BETWEEN 2 AND 3"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectPatternBetweenWithFuncDatabase(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where database() between 'db_mycat_0' and 'db_mycat_2'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() BETWEEN 'db_mycat_0' AND 'db_mycat_2'"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() BETWEEN 'db_mycat_0' AND 'db_mycat_2'"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() BETWEEN 'db_mycat_0' AND 'db_mycat_2'"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE DATABASE() BETWEEN 'db_mycat_0' AND 'db_mycat_2'"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectPatternLike(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id like '1%'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id` LIKE '1%'"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id` LIKE '1%'"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id` LIKE '1%'"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `id` LIKE '1%'"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectPatternLogicOperator(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id = 0 or id in (1,2)",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id`=0 OR `id` IN ()"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id`=0 OR `id` IN (1)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id`=0 OR `id` IN (2)"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id = 0 and user = 'curry'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id`=0 AND `user`='curry'"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where id = 0 or user = 'curry'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id`=0 OR `user`='curry'"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id`=0 OR `user`='curry'"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `id`=0 OR `user`='curry'"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `id`=0 OR `user`='curry'"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+// TODO: need more testcases
+func TestMycatSelectSubqueryInTableRefs(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select id from (select user from tbl_mycat) as a", // table in subquery must be a sharding table
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `id` FROM (SELECT `user` FROM (`tbl_mycat`)) AS `a`"},
+					"db_mycat_1": {"SELECT `id` FROM (SELECT `user` FROM (`tbl_mycat`)) AS `a`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT `id` FROM (SELECT `user` FROM (`tbl_mycat`)) AS `a`"},
+					"db_mycat_3": {"SELECT `id` FROM (SELECT `user` FROM (`tbl_mycat`)) AS `a`"},
+				},
+			},
+		},
+		{
+			db:     "db_mycat",
+			sql:    "select id from (select user from tbl_mycat_unknown) as a", // find unshard plan in shard testing
+			hasErr: true,
+		},
+		{
+			db:     "db_mycat",
+			sql:    "select id from tbl_mycat as a, (select user from tbl_mycat) as a", // table alias is ambiguous
+			hasErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectAggregationFunctionCount(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select count(*) from tbl_mycat",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT COUNT(1) FROM `tbl_mycat`"},
+					"db_mycat_1": {"SELECT COUNT(1) FROM `tbl_mycat`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT COUNT(1) FROM `tbl_mycat`"},
+					"db_mycat_3": {"SELECT COUNT(1) FROM `tbl_mycat`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select count(id) from tbl_mycat",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT COUNT(`id`) FROM `tbl_mycat`"},
+					"db_mycat_1": {"SELECT COUNT(`id`) FROM `tbl_mycat`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT COUNT(`id`) FROM `tbl_mycat`"},
+					"db_mycat_3": {"SELECT COUNT(`id`) FROM `tbl_mycat`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select count(user) from tbl_mycat where id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT COUNT(`user`) FROM `tbl_mycat` WHERE `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select count(user) from tbl_mycat where user = 'curry'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT COUNT(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+					"db_mycat_1": {"SELECT COUNT(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT COUNT(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+					"db_mycat_3": {"SELECT COUNT(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectAggregationFunctionMax(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:     "db_mycat",
+			sql:    "select max(*) from tbl_mycat",
+			hasErr: true, // max(*) is invalid syntax
+		},
+		{
+			db:  "db_mycat",
+			sql: "select max(id) from tbl_mycat",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT MAX(`id`) FROM `tbl_mycat`"},
+					"db_mycat_1": {"SELECT MAX(`id`) FROM `tbl_mycat`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT MAX(`id`) FROM `tbl_mycat`"},
+					"db_mycat_3": {"SELECT MAX(`id`) FROM `tbl_mycat`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select max(user) from tbl_mycat where id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT MAX(`user`) FROM `tbl_mycat` WHERE `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select max(user) from tbl_mycat where user = 'curry'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT MAX(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+					"db_mycat_1": {"SELECT MAX(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT MAX(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+					"db_mycat_3": {"SELECT MAX(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectAggregationFunctionMin(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:     "db_mycat",
+			sql:    "select min(*) from tbl_mycat",
+			hasErr: true, // min(*) is invalid syntax
+		},
+		{
+			db:  "db_mycat",
+			sql: "select min(id) from tbl_mycat",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT MIN(`id`) FROM `tbl_mycat`"},
+					"db_mycat_1": {"SELECT MIN(`id`) FROM `tbl_mycat`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT MIN(`id`) FROM `tbl_mycat`"},
+					"db_mycat_3": {"SELECT MIN(`id`) FROM `tbl_mycat`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select min(user) from tbl_mycat where id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT MIN(`user`) FROM `tbl_mycat` WHERE `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select min(user) from tbl_mycat where user = 'curry'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT MIN(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+					"db_mycat_1": {"SELECT MIN(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT MIN(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+					"db_mycat_3": {"SELECT MIN(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectAggregationFunctionSum(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:     "db_mycat",
+			sql:    "select sum(*) from tbl_mycat",
+			hasErr: true, // sum(*) is invalid syntax
+		},
+		{
+			db:  "db_mycat",
+			sql: "select sum(id) from tbl_mycat",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT SUM(`id`) FROM `tbl_mycat`"},
+					"db_mycat_1": {"SELECT SUM(`id`) FROM `tbl_mycat`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT SUM(`id`) FROM `tbl_mycat`"},
+					"db_mycat_3": {"SELECT SUM(`id`) FROM `tbl_mycat`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select sum(user) from tbl_mycat where id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT SUM(`user`) FROM `tbl_mycat` WHERE `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select sum(user) from tbl_mycat where user = 'curry'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT SUM(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+					"db_mycat_1": {"SELECT SUM(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT SUM(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+					"db_mycat_3": {"SELECT SUM(`user`) FROM `tbl_mycat` WHERE `user`='curry'"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectGroupBy(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select id, user from tbl_mycat group by id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` GROUP BY `id`"},
+					"db_mycat_1": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` GROUP BY `id`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` GROUP BY `id`"},
+					"db_mycat_3": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` GROUP BY `id`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select id, count(user) from tbl_mycat group by id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `id`,COUNT(`user`),`id` FROM `tbl_mycat` GROUP BY `id`"},
+					"db_mycat_1": {"SELECT `id`,COUNT(`user`),`id` FROM `tbl_mycat` GROUP BY `id`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT `id`,COUNT(`user`),`id` FROM `tbl_mycat` GROUP BY `id`"},
+					"db_mycat_3": {"SELECT `id`,COUNT(`user`),`id` FROM `tbl_mycat` GROUP BY `id`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select id, count(user) from tbl_mycat where id = 1 group by id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT `id`,COUNT(`user`),`id` FROM `tbl_mycat` WHERE `id`=1 GROUP BY `id`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select user, count(id) from tbl_mycat where user = 'curry' group by user",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `user`,COUNT(`id`),`user` FROM `tbl_mycat` WHERE `user`='curry' GROUP BY `user`"},
+					"db_mycat_1": {"SELECT `user`,COUNT(`id`),`user` FROM `tbl_mycat` WHERE `user`='curry' GROUP BY `user`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT `user`,COUNT(`id`),`user` FROM `tbl_mycat` WHERE `user`='curry' GROUP BY `user`"},
+					"db_mycat_3": {"SELECT `user`,COUNT(`id`),`user` FROM `tbl_mycat` WHERE `user`='curry' GROUP BY `user`"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectHaving(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select id, user from tbl_mycat having id = 1", // note: does not calculate route in having clause
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `id`,`user` FROM `tbl_mycat` HAVING `id`=1"},
+					"db_mycat_1": {"SELECT `id`,`user` FROM `tbl_mycat` HAVING `id`=1"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT `id`,`user` FROM `tbl_mycat` HAVING `id`=1"},
+					"db_mycat_3": {"SELECT `id`,`user` FROM `tbl_mycat` HAVING `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select id, count(user) from tbl_mycat where id=1 group by id having count(user) > 5",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT `id`,COUNT(`user`),`id` FROM `tbl_mycat` WHERE `id`=1 GROUP BY `id` HAVING COUNT(`user`)>5"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectOrderBy(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select id, user from tbl_mycat order by id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id`"},
+					"db_mycat_1": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id`"},
+					"db_mycat_3": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select id, user from tbl_mycat where id = 1 order by id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` WHERE `id`=1 ORDER BY `id`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select id, user from tbl_mycat where id in (0,1,2,3,4,5,6,7) order by id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` WHERE `id` IN (0,4) ORDER BY `id`"},
+					"db_mycat_1": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` WHERE `id` IN (1,5) ORDER BY `id`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` WHERE `id` IN (2,6) ORDER BY `id`"},
+					"db_mycat_3": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` WHERE `id` IN (3,7) ORDER BY `id`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select id, user from tbl_mycat order by id desc",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id` DESC"},
+					"db_mycat_1": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id` DESC"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id` DESC"},
+					"db_mycat_3": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id` DESC"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestMycatSelectLimit(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select id, user from tbl_mycat limit 10",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `id`,`user` FROM `tbl_mycat` LIMIT 10"},
+					"db_mycat_1": {"SELECT `id`,`user` FROM `tbl_mycat` LIMIT 10"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT `id`,`user` FROM `tbl_mycat` LIMIT 10"},
+					"db_mycat_3": {"SELECT `id`,`user` FROM `tbl_mycat` LIMIT 10"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select id, user from tbl_mycat limit 0, 10",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `id`,`user` FROM `tbl_mycat` LIMIT 0,10"},
+					"db_mycat_1": {"SELECT `id`,`user` FROM `tbl_mycat` LIMIT 0,10"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT `id`,`user` FROM `tbl_mycat` LIMIT 0,10"},
+					"db_mycat_3": {"SELECT `id`,`user` FROM `tbl_mycat` LIMIT 0,10"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select id, user from tbl_mycat limit 10, 10",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `id`,`user` FROM `tbl_mycat` LIMIT 20"},
+					"db_mycat_1": {"SELECT `id`,`user` FROM `tbl_mycat` LIMIT 20"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT `id`,`user` FROM `tbl_mycat` LIMIT 20"},
+					"db_mycat_3": {"SELECT `id`,`user` FROM `tbl_mycat` LIMIT 20"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectMycatMultiTablesDatabaseHint(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		// database function is left
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where DATABASE() = `db_mycat_0` and tbl_mycat.id = 1", // hint is column name
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE DATABASE()=`db_mycat_0` AND `tbl_mycat`.`id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where DATABASE() = 'db_mycat_0' and tbl_mycat.id = 1", // hint is value
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE DATABASE()='db_mycat_0' AND `tbl_mycat`.`id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where DB() = `db_mycat_0` and tbl_mycat.id = 1", // not DATABASE hint, use origin route
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE DB()=`db_mycat_0` AND `tbl_mycat`.`id`=1"},
+				},
+			},
+		},
+
+		{
+			db:     "db_mycat",
+			sql:    "select * from tbl_mycat, tbl_mycat_child where DATABASE() = count(1) and tbl_mycat.id = 1", // hint must be a value or column name
+			hasErr: true,
+		},
+		{
+			db:     "db_mycat",
+			sql:    "select * from tbl_mycat, tbl_mycat_child where DATABASE() = 'db_mycat_10000' and tbl_mycat.id = 1", // phy db not found
+			hasErr: true,
+		},
+		{
+			db:     "db_ks",
+			sql:    "select * from tbl_ks where DATABASE() = 'db_ks' and id = 1", // only mycat route support database hint
+			hasErr: true,
+		},
+		// database function is right
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where `db_mycat_0` = DATABASE() and tbl_mycat.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `db_mycat_0`=DATABASE() AND `tbl_mycat`.`id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where `db_mycat_0` = DB() and tbl_mycat.id = 1", // not DATABASE hint, use origin route
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE `db_mycat_0`=DB() AND `tbl_mycat`.`id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_child where DATABASE() = 'db_mycat_0' and tbl_mycat.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_child` WHERE DATABASE()='db_mycat_0' AND `tbl_mycat`.`id`=1"},
+				},
+			},
+		},
+		{
+			db:     "db_mycat",
+			sql:    "select * from tbl_mycat, tbl_mycat_child where count(1) = DATABASE() and tbl_mycat.id = 1", // hint must be a value or column name
+			hasErr: true,
+		},
+		{
+			db:     "db_mycat",
+			sql:    "select * from tbl_mycat, tbl_mycat_child where 'db_mycat_10000' = DATABASE() and tbl_mycat.id = 1", // phy db not found
+			hasErr: true,
+		},
+		{
+			db:     "db_ks",
+			sql:    "select * from tbl_ks where 'db_ks' = DATABASE() and id = 1", // only mycat route support database hint
+			hasErr: true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectMultiTablesKingshard(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db: "db_ks",
+			//"select * from tbl_ks, test_hash_1 where tbl_ks.id = test_hash_1.id",
+			sql: "select * from tbl_ks, tbl_ks_child",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM (`tbl_ks_0000`) JOIN `tbl_ks_child_0000`",
+						"SELECT * FROM (`tbl_ks_0001`) JOIN `tbl_ks_child_0001`",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM (`tbl_ks_0002`) JOIN `tbl_ks_child_0002`",
+						"SELECT * FROM (`tbl_ks_0003`) JOIN `tbl_ks_child_0003`",
+					},
+				},
+			},
+		},
+		{
+			db: "db_ks",
+			//"select * from tbl_ks, test_hash_1 where tbl_ks.id = test_hash_1.id",
+			sql: "select * from tbl_ks join tbl_ks_child",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_0000` JOIN `tbl_ks_child_0000`",
+						"SELECT * FROM `tbl_ks_0001` JOIN `tbl_ks_child_0001`",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_0002` JOIN `tbl_ks_child_0002`",
+						"SELECT * FROM `tbl_ks_0003` JOIN `tbl_ks_child_0003`",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectMultiTablesOnConditionKingshard(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks join tbl_ks_child on tbl_ks.id in (1,2,3) AND tbl_ks.id = tbl_ks_child.id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_0001` JOIN `tbl_ks_child_0001` ON `tbl_ks_0001`.`id` IN (1) AND `tbl_ks_0001`.`id`=`tbl_ks_child_0001`.`id`",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_0002` JOIN `tbl_ks_child_0002` ON `tbl_ks_0002`.`id` IN (2) AND `tbl_ks_0002`.`id`=`tbl_ks_child_0002`.`id`",
+						"SELECT * FROM `tbl_ks_0003` JOIN `tbl_ks_child_0003` ON `tbl_ks_0003`.`id` IN (3) AND `tbl_ks_0003`.`id`=`tbl_ks_child_0003`.`id`",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectMultiTablesComparisonKingshard(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks where (tbl_ks.id = 3 OR 1 = 1) AND 1 = 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_0000` WHERE (`tbl_ks_0000`.`id`=3 OR 1=1) AND 1=0",
+						"SELECT * FROM `tbl_ks_0001` WHERE (`tbl_ks_0001`.`id`=3 OR 1=1) AND 1=0",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_0002` WHERE (`tbl_ks_0002`.`id`=3 OR 1=1) AND 1=0",
+						"SELECT * FROM `tbl_ks_0003` WHERE (`tbl_ks_0003`.`id`=3 OR 1=1) AND 1=0",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectShardTableWithGlobalTableKingshard(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks, tbl_ks_global_one where tbl_ks.id = 3 and tbl_ks_global_one.name='haha'",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM (`tbl_ks_0003`) JOIN `tbl_ks_global_one` WHERE `tbl_ks_0003`.`id`=3 AND `tbl_ks_global_one`.`name`='haha'",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks, tbl_ks_global_one where tbl_ks.unshard_col = 3 and tbl_ks_global_one.name='haha'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM (`tbl_ks_0000`) JOIN `tbl_ks_global_one` WHERE `tbl_ks_0000`.`unshard_col`=3 AND `tbl_ks_global_one`.`name`='haha'",
+						"SELECT * FROM (`tbl_ks_0001`) JOIN `tbl_ks_global_one` WHERE `tbl_ks_0001`.`unshard_col`=3 AND `tbl_ks_global_one`.`name`='haha'",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM (`tbl_ks_0002`) JOIN `tbl_ks_global_one` WHERE `tbl_ks_0002`.`unshard_col`=3 AND `tbl_ks_global_one`.`name`='haha'",
+						"SELECT * FROM (`tbl_ks_0003`) JOIN `tbl_ks_global_one` WHERE `tbl_ks_0003`.`unshard_col`=3 AND `tbl_ks_global_one`.`name`='haha'",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks, tbl_ks_global_one, tbl_ks_global_two where tbl_ks.unshard_col = 3 and tbl_ks_global_one.name='haha' and tbl_ks_global_two.gender='female'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM ((`tbl_ks_0000`) JOIN `tbl_ks_global_one`) JOIN `tbl_ks_global_two` WHERE `tbl_ks_0000`.`unshard_col`=3 AND `tbl_ks_global_one`.`name`='haha' AND `tbl_ks_global_two`.`gender`='female'",
+						"SELECT * FROM ((`tbl_ks_0001`) JOIN `tbl_ks_global_one`) JOIN `tbl_ks_global_two` WHERE `tbl_ks_0001`.`unshard_col`=3 AND `tbl_ks_global_one`.`name`='haha' AND `tbl_ks_global_two`.`gender`='female'",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM ((`tbl_ks_0002`) JOIN `tbl_ks_global_one`) JOIN `tbl_ks_global_two` WHERE `tbl_ks_0002`.`unshard_col`=3 AND `tbl_ks_global_one`.`name`='haha' AND `tbl_ks_global_two`.`gender`='female'",
+						"SELECT * FROM ((`tbl_ks_0003`) JOIN `tbl_ks_global_one`) JOIN `tbl_ks_global_two` WHERE `tbl_ks_0003`.`unshard_col`=3 AND `tbl_ks_global_one`.`name`='haha' AND `tbl_ks_global_two`.`gender`='female'",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectGlobalTableKingshard(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_global_one where name='haha'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_global_one` WHERE `name`='haha'",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from db_ks.tbl_ks_global_one, tbl_ks_global_two where tbl_ks_global_one.name='haha' and tbl_ks_global_two.name='hehe'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM (`db_ks`.`tbl_ks_global_one`) JOIN `tbl_ks_global_two` WHERE `tbl_ks_global_one`.`name`='haha' AND `tbl_ks_global_two`.`name`='hehe'",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectShardTableWithGlobalTableMycat(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_global_one where tbl_mycat.id = 3 and tbl_mycat_global_one.name='haha'",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_mycat_3": {
+						"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_global_one` WHERE `tbl_mycat`.`id`=3 AND `tbl_mycat_global_one`.`name`='haha'",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from db_mycat.tbl_mycat, db_mycat.tbl_mycat_global_one where db_mycat.tbl_mycat.id = 3 and db_mycat.tbl_mycat_global_one.name='haha'",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_mycat_3": {
+						"SELECT * FROM (`db_mycat_3`.`tbl_mycat`) JOIN `db_mycat_3`.`tbl_mycat_global_one` WHERE `db_mycat_3`.`tbl_mycat`.`id`=3 AND `db_mycat_3`.`tbl_mycat_global_one`.`name`='haha'",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_global_one where tbl_mycat.unshard_col = 3 and tbl_mycat_global_one.name='haha'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {
+						"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_global_one` WHERE `tbl_mycat`.`unshard_col`=3 AND `tbl_mycat_global_one`.`name`='haha'",
+					},
+					"db_mycat_1": {
+						"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_global_one` WHERE `tbl_mycat`.`unshard_col`=3 AND `tbl_mycat_global_one`.`name`='haha'",
+					},
+				},
+				"slice-1": {
+					"db_mycat_2": {
+						"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_global_one` WHERE `tbl_mycat`.`unshard_col`=3 AND `tbl_mycat_global_one`.`name`='haha'",
+					},
+					"db_mycat_3": {
+						"SELECT * FROM (`tbl_mycat`) JOIN `tbl_mycat_global_one` WHERE `tbl_mycat`.`unshard_col`=3 AND `tbl_mycat_global_one`.`name`='haha'",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat, tbl_mycat_global_one, tbl_mycat_global_two where tbl_mycat.unshard_col = 3 and tbl_mycat_global_one.name='haha' and tbl_mycat_global_two.gender='female'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {
+						"SELECT * FROM ((`tbl_mycat`) JOIN `tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat`.`unshard_col`=3 AND `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`gender`='female'",
+					},
+					"db_mycat_1": {
+						"SELECT * FROM ((`tbl_mycat`) JOIN `tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat`.`unshard_col`=3 AND `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`gender`='female'",
+					},
+				},
+				"slice-1": {
+					"db_mycat_2": {
+						"SELECT * FROM ((`tbl_mycat`) JOIN `tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat`.`unshard_col`=3 AND `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`gender`='female'",
+					},
+					"db_mycat_3": {
+						"SELECT * FROM ((`tbl_mycat`) JOIN `tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat`.`unshard_col`=3 AND `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`gender`='female'",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectGlobalTableMycat(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_global_one where name='haha'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {
+						"SELECT * FROM `tbl_mycat_global_one` WHERE `name`='haha'",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from db_mycat.tbl_mycat_global_one where name='haha'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {
+						"SELECT * FROM `db_mycat_0`.`tbl_mycat_global_one` WHERE `name`='haha'",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from db_mycat.tbl_mycat_global_one where db_mycat.tbl_mycat_global_one.name='haha'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {
+						"SELECT * FROM `db_mycat_0`.`tbl_mycat_global_one` WHERE `db_mycat_0`.`tbl_mycat_global_one`.`name`='haha'",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from db_mycat.tbl_mycat_global_one, tbl_mycat_global_two where tbl_mycat_global_one.name='haha' and tbl_mycat_global_two.name='hehe'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {
+						"SELECT * FROM (`db_mycat_0`.`tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`name`='hehe'",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from db_mycat.tbl_mycat_global_one, db_mycat.tbl_mycat_global_two where db_mycat.tbl_mycat_global_one.name='haha' and db_mycat.tbl_mycat_global_two.name='hehe'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {
+						"SELECT * FROM (`db_mycat_0`.`tbl_mycat_global_one`) JOIN `db_mycat_0`.`tbl_mycat_global_two` WHERE `db_mycat_0`.`tbl_mycat_global_one`.`name`='haha' AND `db_mycat_0`.`tbl_mycat_global_two`.`name`='hehe'",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectMycatGroupByDatabase(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select database(), count(id) from tbl_mycat group by database()",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {
+						"SELECT DATABASE(),COUNT(`id`),DATABASE() FROM `tbl_mycat` GROUP BY DATABASE()",
+					},
+					"db_mycat_1": {
+						"SELECT DATABASE(),COUNT(`id`),DATABASE() FROM `tbl_mycat` GROUP BY DATABASE()",
+					},
+				},
+				"slice-1": {
+					"db_mycat_2": {
+						"SELECT DATABASE(),COUNT(`id`),DATABASE() FROM `tbl_mycat` GROUP BY DATABASE()",
+					},
+					"db_mycat_3": {
+						"SELECT DATABASE(),COUNT(`id`),DATABASE() FROM `tbl_mycat` GROUP BY DATABASE()",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select database(), count(id) from tbl_mycat where database()='db_mycat_1' group by database()",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {
+						"SELECT DATABASE(),COUNT(`id`),DATABASE() FROM `tbl_mycat` WHERE DATABASE()='db_mycat_1' GROUP BY DATABASE()",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectMycatOrderByDatabase(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select database(), count(id) from tbl_mycat group by database() order by database()",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {
+						"SELECT DATABASE(),COUNT(`id`),DATABASE(),DATABASE() FROM `tbl_mycat` GROUP BY DATABASE() ORDER BY DATABASE()",
+					},
+					"db_mycat_1": {
+						"SELECT DATABASE(),COUNT(`id`),DATABASE(),DATABASE() FROM `tbl_mycat` GROUP BY DATABASE() ORDER BY DATABASE()",
+					},
+				},
+				"slice-1": {
+					"db_mycat_2": {
+						"SELECT DATABASE(),COUNT(`id`),DATABASE(),DATABASE() FROM `tbl_mycat` GROUP BY DATABASE() ORDER BY DATABASE()",
+					},
+					"db_mycat_3": {
+						"SELECT DATABASE(),COUNT(`id`),DATABASE(),DATABASE() FROM `tbl_mycat` GROUP BY DATABASE() ORDER BY DATABASE()",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select database(), count(id) from tbl_mycat where database() in ('db_mycat_1','db_mycat_2') group by database() order by database()",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {
+						"SELECT DATABASE(),COUNT(`id`),DATABASE(),DATABASE() FROM `tbl_mycat` WHERE DATABASE() IN ('db_mycat_1','db_mycat_2') GROUP BY DATABASE() ORDER BY DATABASE()",
+					},
+					"db_mycat_1": {
+						"SELECT DATABASE(),COUNT(`id`),DATABASE(),DATABASE() FROM `tbl_mycat` WHERE DATABASE() IN ('db_mycat_1','db_mycat_2') GROUP BY DATABASE() ORDER BY DATABASE()",
+					},
+				},
+				"slice-1": {
+					"db_mycat_2": {
+						"SELECT DATABASE(),COUNT(`id`),DATABASE(),DATABASE() FROM `tbl_mycat` WHERE DATABASE() IN ('db_mycat_1','db_mycat_2') GROUP BY DATABASE() ORDER BY DATABASE()",
+					},
+					"db_mycat_3": {
+						"SELECT DATABASE(),COUNT(`id`),DATABASE(),DATABASE() FROM `tbl_mycat` WHERE DATABASE() IN ('db_mycat_1','db_mycat_2') GROUP BY DATABASE() ORDER BY DATABASE()",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func prepareShardKingshardRouter() (*router.Router, error) {
+	nsStr := `
+{
+    "name": "gaea_namespace_1",
+    "online": true,
+    "read_only": true,
+    "allowed_dbs": {
+        "test": true
+    },
+    "default_phy_dbs": {
+        "test": "db_mycat_0"
+    },
+    "slices": [
+        {
+            "name": "slice-0",
+            "user_name": "root",
+            "password": "root",
+            "master": "127.0.0.1:3306",
+            "capacity": 64,
+            "max_capacity": 128,
+            "idle_timeout": 3600
+        },
+        {
+            "name": "slice-1",
+            "user_name": "root",
+            "password": "root",
+            "master": "127.0.0.1:3307",
+            "capacity": 64,
+            "max_capacity": 128,
+            "idle_timeout": 3600
+        }
+    ],
+    "shard_rules": [
+        {
+            "db": "test",
+            "table": "tbl_ks",
+            "type": "hash",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ]
+        },
+        {
+            "db": "test",
+            "table": "test_hash_1",
+            "type": "hash",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ]
+        },
+		{
+			"db": "test",
+            "table": "tbl_ks_child",
+            "type": "linked",
+			"parent_table": "tbl_ks",
+			"key": "id"
+		}
+    ],
+    "users": [
+        {
+            "user_name": "test_shard_hash",
+            "password": "test_shard_hash",
+            "namespace": "gaea_namespace_1",
+            "rw_flag": 2,
+            "rw_split": 1
+        }
+    ],
+    "default_slice": "slice-0"
+}
+`
+
+	nsModel, err := createNamespace(nsStr)
+	if err != nil {
+		return nil, err
+	}
+
+	return createRouter(nsModel)
+}

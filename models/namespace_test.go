@@ -1,0 +1,40 @@
+// Copyright 2019 The Gaea Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+package models
+
+import (
+	"testing"
+)
+
+func TestNamespaceEncode(t *testing.T) {
+	var namespace = &Namespace{Name: "gaea_namespace_1", Online: true, ReadOnly: true, AllowedDBS: make(map[string]bool), Slices: make([]*Slice, 0), ShardRules: make([]*Shard, 0), Users: make([]*User, 0), DefaultSlice: "slice-0"}
+
+	slice0 := &Slice{Name: "slice-0", UserName: "root", Password: "root", Master: "127.0.0.1:3306", Slaves: []string{"127.0.0.1:3306", "127.0.0.1:3306"}, Capacity: 128, MaxCapacity: 128, IdleTimeout: 120}
+	slice1 := &Slice{Name: "slice-1", UserName: "root", Password: "root", Master: "127.0.0.1:3306", Slaves: []string{"127.0.0.1:3306", "127.0.0.1:3306"}, Capacity: 128, MaxCapacity: 128, IdleTimeout: 120}
+	namespace.Slices = append(namespace.Slices, slice0)
+	namespace.Slices = append(namespace.Slices, slice1)
+
+	namespace.AllowedDBS["db1"] = true
+	namespace.AllowedDBS["db2"] = true
+
+	shard1 := &Shard{DB: "gaea", Table: "test_shard_hash", Type: "hash", Key: "id", Locations: []int{1, 1}, Slices: []string{"slice-0", "slice-1"}}
+	shard2 := &Shard{DB: "gaea", Table: "test_shard_range", Type: "range", Key: "id", Locations: []int{1, 1}, Slices: []string{"slice-0", "slice-1"}, TableRowLimit: 10000}
+	namespace.ShardRules = append(namespace.ShardRules, shard1)
+	namespace.ShardRules = append(namespace.ShardRules, shard2)
+
+	user1 := &User{UserName: "test1", Password: "test1", Namespace: "gaea_namespace_1", RWFlag: 2, RWSplit: 1}
+	namespace.Users = append(namespace.Users, user1)
+
+	t.Logf(string(namespace.Encode()))
+}

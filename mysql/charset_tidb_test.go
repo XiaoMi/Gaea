@@ -1,0 +1,101 @@
+// Copyright 2015 PingCAP, Inc.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package mysql
+
+import (
+	"testing"
+
+	"github.com/pingcap/check"
+
+	"github.com/XiaoMi/Gaea/util/testleak"
+)
+
+func TestT(t *testing.T) {
+	check.CustomVerboseFlag = true
+	check.TestingT(t)
+}
+
+var _ = check.Suite(&testCharsetSuite{})
+
+type testCharsetSuite struct {
+}
+
+func testValidCharset(c *check.C, charset string, collation string, expect bool) {
+	b := ValidCharsetAndCollation(charset, collation)
+	c.Assert(b, check.Equals, expect)
+}
+
+func (s *testCharsetSuite) TestValidCharset(c *check.C) {
+	defer testleak.AfterTest(c)()
+	tests := []struct {
+		cs   string
+		co   string
+		succ bool
+	}{
+		{"utf8", "utf8_general_ci", true},
+		{"", "utf8_general_ci", true},
+		{"utf8mb4", "utf8mb4_bin", true},
+		{"latin1", "latin1_bin", true},
+		{"utf8", "utf8_invalid_ci", false},
+		{"utf16", "utf16_bin", false},
+		{"gb2312", "gb2312_chinese_ci", false},
+		{"UTF8", "UTF8_BIN", true},
+		{"UTF8", "utf8_bin", true},
+		{"UTF8MB4", "utf8mb4_bin", true},
+		{"UTF8MB4", "UTF8MB4_bin", true},
+		{"UTF8MB4", "UTF8MB4_general_ci", true},
+		{"Utf8", "uTf8_bIN", true},
+	}
+	for _, tt := range tests {
+		testValidCharset(c, tt.cs, tt.co, tt.succ)
+	}
+}
+
+func (s *testCharsetSuite) TestGetAllCharsets(c *check.C) {
+	defer testleak.AfterTest(c)()
+	charset := &Charset{"test", "test_bin", nil, "Test", 5}
+	charsetInfos = append(charsetInfos, charset)
+	descs := GetAllCharsets()
+	c.Assert(len(descs), check.Equals, len(charsetInfos)-1)
+}
+
+func testGetDefaultCollation(c *check.C, charset string, expectCollation string, succ bool) {
+	b, err := GetDefaultCollation(charset)
+	if !succ {
+		c.Assert(err, check.NotNil)
+		return
+	}
+	c.Assert(b, check.Equals, expectCollation)
+}
+
+func (s *testCharsetSuite) TestGetDefaultCollation(c *check.C) {
+	defer testleak.AfterTest(c)()
+	tests := []struct {
+		cs   string
+		co   string
+		succ bool
+	}{
+		{"utf8", "utf8_bin", true},
+		{"UTF8", "utf8_bin", true},
+		{"utf8mb4", "utf8mb4_bin", true},
+		{"ascii", "ascii_bin", true},
+		{"binary", "binary", true},
+		{"latin1", "latin1_bin", true},
+		{"invalid_cs", "", false},
+		{"", "utf8_bin", false},
+	}
+	for _, tt := range tests {
+		testGetDefaultCollation(c, tt.cs, tt.co, tt.succ)
+	}
+}

@@ -1,0 +1,39 @@
+{
+    "name": "test_namespace_2",
+    "online": true,
+    "read_only": false,
+    "allowed_dbs": {
+        "xm_pms": true
+    },
+    "slow_sql_time": "1000",
+    "black_sql": [
+        ""
+    ],
+    "allowed_ip": null,
+    "slices": [
+        {
+            "name": "slice-0",
+            "user_name": "test2",
+            "password": "test2",
+            "master": "127.0.0.1:3309",
+            "slaves": null,
+            "statistic_slaves": null,
+            "capacity": 12,
+            "max_capacity": 24,
+            "idle_timeout": 60
+        }
+    ],
+    "shard_rules": null,
+    "users": [
+        {
+            "user_name": "backend_user1",
+            "password": "backend_password1",
+            "namespace": "test_namespace_2",
+            "rw_flag": 2,
+            "rw_split": 1,
+            "other_property": 0
+        }
+    ],
+    "default_slice": "slice-0",
+    "global_sequences": null
+}
