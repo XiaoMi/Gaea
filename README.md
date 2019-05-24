@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/XiaoMi/Gaea.svg?branch=master)](https://travis-ci.org/XiaoMi/Gaea)
 [![Go Report Card](https://goreportcard.com/badge/github.com/XiaoMi/Gaea)](https://goreportcard.com/report/github.com/XiaoMi/Gaea)
 
 ## 简介
