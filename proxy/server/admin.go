@@ -262,7 +262,7 @@ func (s *AdminServer) prepareConfig(c *gin.Context) {
 		c.JSON(selfDefinedInternalError, "missing namespace name")
 		return
 	}
-	client := models.NewClient(models.ConfigEtcd, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword, s.coordinatorAddr)
+	client := models.NewClient(models.ConfigEtcd, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword, s.coordinatorRoot)
 	defer client.Close()
 	err := s.proxy.ReloadNamespacePrepare(name, client)
 	if err != nil {
