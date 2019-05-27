@@ -6,5 +6,6 @@ go:
   - 1.12.x
 
 script:
+  - export GO111MODULE=on
   - go mod tidy -v
   - make
