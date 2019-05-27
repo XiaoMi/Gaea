@@ -15,7 +15,6 @@ package terror
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	. "github.com/pingcap/check"
@@ -104,22 +103,6 @@ func example() error {
 
 func call() error {
 	return predefinedErr.GenWithStack("error message:%s", "abc")
-}
-
-func (s *testTErrorSuite) TestTraceAndLocation(c *C) {
-	defer testleak.AfterTest(c)()
-	err := example()
-	stack := errors.ErrorStack(err)
-	lines := strings.Split(stack, "\n")
-	c.Assert(len(lines), Equals, 23)
-	var containTerr bool
-	for _, v := range lines {
-		if strings.Contains(v, "terror_test.go") {
-			containTerr = true
-			break
-		}
-	}
-	c.Assert(containTerr, IsTrue)
 }
 
 func (s *testTErrorSuite) TestErrorEqual(c *C) {
