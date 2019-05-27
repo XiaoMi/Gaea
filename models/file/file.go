@@ -24,6 +24,10 @@ import (
 	"github.com/XiaoMi/Gaea/log"
 )
 
+const (
+	defaultFilePath = "./etc/file"
+)
+
 // Client used to test with config from file
 type Client struct {
 	Prefix string
@@ -31,6 +35,9 @@ type Client struct {
 
 // New constructor of EtcdClient
 func New(path string) (*Client, error) {
+	if strings.TrimSpace(path) == "" {
+		path = defaultFilePath
+	}
 	if err := checkDir(path); err != nil {
 		log.Warn("check file config directory failed, %v", err)
 		return nil, err
