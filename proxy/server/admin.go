@@ -24,11 +24,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-contrib/gzip"
-	"github.com/gin-gonic/gin"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/util"
+	"github.com/gin-contrib/gzip"
+	"github.com/gin-gonic/gin"
 )
 
 const (
@@ -58,6 +58,7 @@ type AdminServer struct {
 	coordinatorAddr     string
 	coordinatorUsername string
 	coordinatorPassword string
+	coordinatorRoot     string
 }
 
 // NewAdminServer create new admin server
@@ -84,6 +85,7 @@ func NewAdminServer(proxy *Server, cfg *models.Proxy) (*AdminServer, error) {
 	s.coordinatorAddr = cfg.CoordinatorAddr
 	s.coordinatorUsername = cfg.UserName
 	s.coordinatorPassword = cfg.Password
+	s.coordinatorRoot = cfg.CoordinatorRoot
 
 	s.engine = gin.New()
 	l, err := net.Listen(cfg.ProtoType, cfg.AdminAddr)
@@ -228,7 +230,7 @@ func (s *AdminServer) registerProxy() error {
 	if s.configType == models.ConfigFile {
 		return nil
 	}
-	client := models.NewClient(models.ConfigEtcd, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword)
+	client := models.NewClient(models.ConfigEtcd, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword, s.coordinatorRoot)
 	store := models.NewStore(client)
 	defer store.Close()
 	if err := store.CreateProxy(s.model); err != nil {
@@ -241,7 +243,7 @@ func (s *AdminServer) unregisterProxy() error {
 	if s.configType == models.ConfigFile {
 		return nil
 	}
-	client := models.NewClient(models.ConfigEtcd, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword)
+	client := models.NewClient(models.ConfigEtcd, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword, s.coordinatorRoot)
 	store := models.NewStore(client)
 	defer store.Close()
 	if err := store.DeleteProxy(s.model.Token); err != nil {
@@ -260,7 +262,7 @@ func (s *AdminServer) prepareConfig(c *gin.Context) {
 		c.JSON(selfDefinedInternalError, "missing namespace name")
 		return
 	}
-	client := models.NewClient(models.ConfigEtcd, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword)
+	client := models.NewClient(models.ConfigEtcd, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword, s.coordinatorAddr)
 	defer client.Close()
 	err := s.proxy.ReloadNamespacePrepare(name, client)
 	if err != nil {

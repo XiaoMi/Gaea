@@ -12,71 +12,55 @@ config_type=etcd
 file_config_path=./etc/file
 
 ;配置中心地址，目前只支持etcd
-
 coordinator_addr=http://127.0.0.1:2379
 
+;远程配置(当前为etcd)根目录
+coordinator_root=/gaea
+
 ;配置中心用户名和密码
-
 username=test
-
 password=test
 
 ;环境划分、test、online
-
 environ=test
 
 ;组和服务名称，为服务化做准备
-
 group_name=systech
 
 ;service name
-
 service_name=gaea_proxy
 
 ;日志配置
-
 log_path=./logs
-
 log_level=Notice
-
 log_filename=gaea
-
 log_output=file
 
 ;管理地址
-
 admin_addr=0.0.0.0:13307
-
+;basic auth
 admin_user=admin
-
 admin_password=admin
 
 ;代理服务监听地址
-
 proto_type=tcp4
-
 proxy_addr=0.0.0.0:13306
 
 ; 默认编码
 proxy_charset=utf8
 
 ;慢sql阈值，单位: 毫秒
-
 slow_sql_time=100
 
 ;空闲会话超时时间,单位: 秒
-
 session_timeout=3600
 
 ;打点统计配置
-
 stats_enabled=true
-
 stats_backend_type=prometheus
 ```
 
 ## namespace配置说明
-
 
 namespace的配置格式为json，包含分表、非分表、实例等配置信息，都可在运行时改变。namespace的配置可以直接通过web平台进行操作，使用方不需要关心json里的内容，如果有兴趣参与到gaea的开发中，可以关注下字段含义，具体解释如下,格式为字段名称、类型、内容含义。
 

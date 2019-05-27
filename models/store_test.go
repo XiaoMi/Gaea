@@ -19,12 +19,12 @@ import (
 )
 
 func newTestStore() *Store {
-	c := NewClient(ConfigEtcd, "127.0.0.1:2381", "test", "test")
+	c := NewClient(ConfigEtcd, "127.0.0.1:2381", "test", "test", "")
 	return NewStore(c)
 }
 
 func TestNewStore(t *testing.T) {
-	c := NewClient(ConfigEtcd, "127.0.0.1:2381", "test", "test")
+	c := NewClient(ConfigEtcd, "127.0.0.1:2381", "test", "test", "")
 	store := NewStore(c)
 	defer store.Close()
 	if store == nil {

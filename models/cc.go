@@ -27,6 +27,7 @@ type CCConfig struct {
 	ProxyPassword string `ini:"proxy_password"`
 	// etcd 相关配置
 	CoordinatorAddr string `ini:"coordinator_addr"`
+	CoordinatorRoot string `ini:"coordinator_root"`
 	UserName        string `ini:"username"`
 	Password        string `ini:"password"`
 

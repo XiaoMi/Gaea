@@ -25,7 +25,7 @@ import (
 
 // QueryNamespace return information of namespace specified by names
 func QueryNamespace(names []string, cfg *models.CCConfig) (data []*models.Namespace, err error) {
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password)
+	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, cfg.CoordinatorRoot)
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	for _, v := range names {
@@ -51,7 +51,7 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig) (err err
 	}
 
 	// sink namespace
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password)
+	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, cfg.CoordinatorRoot)
 	storeConn := models.NewStore(client)
 	defer storeConn.Close()
 
@@ -88,7 +88,7 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig) (err err
 
 // DelNamespace delete namespace
 func DelNamespace(name string, cfg *models.CCConfig) error {
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password)
+	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, cfg.CoordinatorRoot)
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 
@@ -119,7 +119,7 @@ func SQLFingerprint(name string, cfg *models.CCConfig) (slowSQLs, errSQLs map[st
 	slowSQLs = make(map[string]string, 16)
 	errSQLs = make(map[string]string, 16)
 	// list proxy
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password)
+	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, cfg.CoordinatorRoot)
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	proxies, err := mConn.ListProxyMonitorMetrics()
@@ -163,7 +163,7 @@ func SQLFingerprint(name string, cfg *models.CCConfig) (slowSQLs, errSQLs map[st
 // ProxyConfigFingerprint return fingerprints of all proxy
 func ProxyConfigFingerprint(cfg *models.CCConfig) (r map[string]string, err error) {
 	// list proxy
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password)
+	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, cfg.CoordinatorRoot)
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	proxies, err := mConn.ListProxyMonitorMetrics()
