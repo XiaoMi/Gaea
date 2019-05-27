@@ -83,11 +83,11 @@ type QueryNamespaceResp struct {
 
 func (s *server) queryNamespace(c *gin.Context) {
 	var err error
-	var req *QueryReq
+	var req QueryReq
 	h := &RetHeader{RetCode: -1, RetMessage: ""}
 	r := &QueryNamespaceResp{RetHeader: h}
 
-	err = c.BindJSON(req)
+	err = c.BindJSON(&req)
 	if err != nil {
 		log.Warn("queryNamespace got invalid data, err: %v", err)
 		h.RetMessage = err.Error()
@@ -110,17 +110,17 @@ func (s *server) queryNamespace(c *gin.Context) {
 
 func (s *server) modifyNamespace(c *gin.Context) {
 	var err error
-	var namespace *models.Namespace
+	var namespace models.Namespace
 	h := &RetHeader{RetCode: -1, RetMessage: ""}
 
-	err = c.BindJSON(namespace)
+	err = c.BindJSON(&namespace)
 	if err != nil {
 		log.Warn("modifyNamespace failed, err: %v", err)
 		c.JSON(http.StatusOK, h)
 		return
 	}
 
-	err = service.ModifyNamespace(namespace, s.cfg)
+	err = service.ModifyNamespace(&namespace, s.cfg)
 	if err != nil {
 		log.Warn("modifyNamespace failed, err: %v", err)
 		c.JSON(http.StatusOK, h)
