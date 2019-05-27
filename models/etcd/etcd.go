@@ -33,7 +33,7 @@ import (
 var ErrClosedEtcdClient = errors.New("use of closed etcd client")
 
 const (
-	etcdPrefix = "/gaea"
+	defaultEtcdPrefix = "/gaea"
 )
 
 // EtcdClient etcd client
@@ -47,7 +47,7 @@ type EtcdClient struct {
 }
 
 // New constructor of EtcdClient
-func New(addr string, timeout time.Duration, username, passwd string) (*EtcdClient, error) {
+func New(addr string, timeout time.Duration, username, passwd, root string) (*EtcdClient, error) {
 	endpoints := strings.Split(addr, ",")
 	for i, s := range endpoints {
 		if s != "" && !strings.HasPrefix(s, "http://") {
@@ -65,10 +65,13 @@ func New(addr string, timeout time.Duration, username, passwd string) (*EtcdClie
 	if err != nil {
 		return nil, err
 	}
+	if strings.TrimSpace(root) == "" {
+		root = defaultEtcdPrefix
+	}
 	return &EtcdClient{
 		kapi:    client.NewKeysAPI(c),
 		timeout: timeout,
-		Prefix:  etcdPrefix,
+		Prefix:  root,
 	}, nil
 }
 
