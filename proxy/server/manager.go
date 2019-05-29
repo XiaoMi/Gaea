@@ -130,7 +130,6 @@ type Manager struct {
 	namespaces  [2]*NamespaceManager
 	users       [2]*UserManager
 	statistics  *StatisticManager
-	EncryptKey  string
 }
 
 // NewManager return empty Manager
@@ -161,9 +160,6 @@ func CreateManager(cfg *models.Proxy, namespaceConfigs map[string]*models.Namesp
 		return nil, err
 	}
 	m.users[current] = user
-
-	// init key
-	m.EncryptKey = cfg.EncryptKey
 
 	return m, nil
 }
