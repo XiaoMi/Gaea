@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package cc
 
 import (
 	"fmt"
@@ -28,7 +28,7 @@ import (
 	"github.com/XiaoMi/Gaea/models"
 )
 
-type server struct {
+type Server struct {
 	cfg *models.CCConfig
 
 	engine   *gin.Engine
@@ -43,8 +43,8 @@ type RetHeader struct {
 	RetMessage string `json:"ret_message"`
 }
 
-func newServer(addr string, cfg *models.CCConfig) (*server, error) {
-	srv := &server{cfg: cfg, exitC: make(chan struct{})}
+func NewServer(addr string, cfg *models.CCConfig) (*Server, error) {
+	srv := &Server{cfg: cfg, exitC: make(chan struct{})}
 	srv.engine = gin.New()
 
 	l, err := net.Listen("tcp", addr)
@@ -56,7 +56,7 @@ func newServer(addr string, cfg *models.CCConfig) (*server, error) {
 	return srv, nil
 }
 
-func (s *server) registerURL() {
+func (s *Server) registerURL() {
 	api := s.engine.Group("/api/cc", gin.BasicAuth(gin.Accounts{s.cfg.AdminUserName: s.cfg.AdminPassword}))
 	api.Use(gin.Recovery())
 	api.Use(gzip.Gzip(gzip.DefaultCompression))
@@ -81,7 +81,7 @@ type QueryNamespaceResp struct {
 	Data      []*models.Namespace `json:"data"`
 }
 
-func (s *server) queryNamespace(c *gin.Context) {
+func (s *Server) queryNamespace(c *gin.Context) {
 	var err error
 	var req QueryReq
 	h := &RetHeader{RetCode: -1, RetMessage: ""}
@@ -108,7 +108,7 @@ func (s *server) queryNamespace(c *gin.Context) {
 	return
 }
 
-func (s *server) modifyNamespace(c *gin.Context) {
+func (s *Server) modifyNamespace(c *gin.Context) {
 	var err error
 	var namespace models.Namespace
 	h := &RetHeader{RetCode: -1, RetMessage: ""}
@@ -133,7 +133,7 @@ func (s *server) modifyNamespace(c *gin.Context) {
 	return
 }
 
-func (s *server) delNamespace(c *gin.Context) {
+func (s *Server) delNamespace(c *gin.Context) {
 	var err error
 	h := &RetHeader{RetCode: -1, RetMessage: ""}
 	name := strings.TrimSpace(c.Param("name"))
@@ -162,7 +162,7 @@ type sqlFingerprintResp struct {
 	SlowSQLs  map[string]string `json:"slow_sqls"`
 }
 
-func (s *server) sqlFingerprint(c *gin.Context) {
+func (s *Server) sqlFingerprint(c *gin.Context) {
 	var err error
 	r := &sqlFingerprintResp{RetHeader: &RetHeader{RetCode: -1, RetMessage: ""}}
 	name := strings.TrimSpace(c.Param("name"))
@@ -188,7 +188,7 @@ type proxyConfigFingerprintResp struct {
 	Data      map[string]string `json:"data"` // key: ip:port value: md5 of config
 }
 
-func (s *server) proxyConfigFingerprint(c *gin.Context) {
+func (s *Server) proxyConfigFingerprint(c *gin.Context) {
 	var err error
 	r := &proxyConfigFingerprintResp{RetHeader: &RetHeader{RetCode: -1, RetMessage: ""}}
 	r.Data, err = service.ProxyConfigFingerprint(s.cfg)
@@ -203,7 +203,7 @@ func (s *server) proxyConfigFingerprint(c *gin.Context) {
 	return
 }
 
-func (s *server) run() {
+func (s *Server) Run() {
 	defer s.listener.Close()
 
 	errC := make(chan error)
@@ -226,7 +226,7 @@ func (s *server) run() {
 
 }
 
-func (s *server) close() {
+func (s *Server) Close() {
 	s.exitC <- struct{}{}
 	return
 }
