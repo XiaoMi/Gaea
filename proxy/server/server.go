@@ -42,12 +42,17 @@ type Server struct {
 	tw             *util.TimeWheel
 	adminServer    *AdminServer
 	manager        *Manager
+	EncryptKey     string
 }
 
 // NewServer create new server
 func NewServer(cfg *models.Proxy, manager *Manager) (*Server, error) {
 	var err error
 	s := new(Server)
+
+	// init key
+	s.EncryptKey = cfg.EncryptKey
+
 	s.manager = manager
 
 	// if error occurs, recycle the resources during creation.
@@ -177,7 +182,7 @@ func (s *Server) ReloadNamespacePrepare(name string, client models.Client) error
 	// get namespace conf from etcd
 	log.Notice("prepare config of namespace: %s begin", name)
 	store := models.NewStore(client)
-	namespaceConfig, err := store.LoadNamespace(name)
+	namespaceConfig, err := store.LoadNamespace(s.EncryptKey, name)
 	if err != nil {
 		return err
 	}

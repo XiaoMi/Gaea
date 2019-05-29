@@ -3,7 +3,7 @@
     "online": true,
     "read_only": false,
     "allowed_dbs": {
-        "xm_pms": true
+        "sbtest1": true
     },
     "slow_sql_time": "1000",
     "black_sql": [
@@ -26,8 +26,8 @@
     "shard_rules": null,
     "users": [
         {
-            "user_name": "backend_user1",
-            "password": "backend_password1",
+            "user_name": "front_user1",
+            "password": "front_password1",
             "namespace": "test_namespace_1",
             "rw_flag": 2,
             "rw_split": 1,

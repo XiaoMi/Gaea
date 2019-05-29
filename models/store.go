@@ -51,10 +51,10 @@ type Store struct {
 }
 
 // NewClient constructor to create client by case etcd/file/zk etc.
-func NewClient(configType, addr, username, password string) Client {
+func NewClient(configType, addr, username, password, root string) Client {
 	switch configType {
 	case ConfigFile:
-		c, err := fileclient.New(addr)
+		c, err := fileclient.New(root)
 		if err != nil {
 			log.Warn("create fileclient failed, %s", addr)
 			return nil
@@ -62,7 +62,7 @@ func NewClient(configType, addr, username, password string) Client {
 		return c
 	case ConfigEtcd:
 		// etcd
-		c, err := etcdclient.New(addr, time.Minute, username, password)
+		c, err := etcdclient.New(addr, time.Minute, username, password, root)
 		if err != nil {
 			log.Fatal("create etcdclient to %s failed, %v", addr, err)
 			return nil
@@ -130,9 +130,7 @@ func (s *Store) ListNamespace() ([]string, error) {
 }
 
 // LoadNamespace load namespace value
-func (s *Store) LoadNamespace(name string) (*Namespace, error) {
-	fmt.Println(s.prefix)
-	fmt.Println(s.NamespacePath(name))
+func (s *Store) LoadNamespace(key, name string) (*Namespace, error) {
 	b, err := s.client.Read(s.NamespacePath(name))
 	if err != nil {
 		return nil, err
@@ -148,6 +146,10 @@ func (s *Store) LoadNamespace(name string) (*Namespace, error) {
 	}
 
 	if err = p.Verify(); err != nil {
+		return nil, err
+	}
+
+	if err = p.Decrypt(key); err != nil {
 		return nil, err
 	}
 
