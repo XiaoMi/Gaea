@@ -36,11 +36,7 @@ import (
 
 // LoadAndCreateManager load namespace config, and create manager
 func LoadAndCreateManager(cfg *models.Proxy) (*Manager, error) {
-	root := cfg.CoordinatorRoot
-	if cfg.ConfigType == models.ConfigFile {
-		root = cfg.FileConfigPath
-	}
-	namespaceConfigs, err := loadAllNamespace(cfg.ConfigType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, root)
+	namespaceConfigs, err := loadAllNamespace(cfg)
 	if err != nil {
 		log.Warn("init namespace manager failed, %v", err)
 		return nil, err
@@ -56,9 +52,14 @@ func LoadAndCreateManager(cfg *models.Proxy) (*Manager, error) {
 	return mgr, nil
 }
 
-func loadAllNamespace(configType, addr, username, password, root string) (map[string]*models.Namespace, error) {
+func loadAllNamespace(cfg *models.Proxy) (map[string]*models.Namespace, error) {
 	// get names of all namespace
-	client := models.NewClient(configType, addr, username, password, root)
+	root := cfg.CoordinatorRoot
+	if cfg.ConfigType == models.ConfigFile {
+		root = cfg.FileConfigPath
+	}
+
+	client := models.NewClient(cfg.ConfigType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, root)
 	store := models.NewStore(client)
 	defer store.Close()
 	var err error
@@ -76,12 +77,12 @@ func loadAllNamespace(configType, addr, username, password, root string) (map[st
 	for i := 0; i < 10; i++ {
 		wg.Add(1)
 		go func() {
-			client := models.NewClient(configType, addr, username, password, root)
+			client := models.NewClient(cfg.ConfigType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, root)
 			store := models.NewStore(client)
 			defer store.Close()
 			defer wg.Done()
 			for name := range nameC {
-				namespace, e := store.LoadNamespace(name)
+				namespace, e := store.LoadNamespace(cfg.EncryptKey, name)
 				if e != nil {
 					log.Warn("load namespace %s failed, err: %v", name, err)
 					// assign extent err out of this scope

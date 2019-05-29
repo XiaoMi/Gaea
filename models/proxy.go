@@ -51,6 +51,8 @@ type Proxy struct {
 
 	// 监控配置
 	StatsEnabled string `ini:"stats_enabled"` // set true to enable stats
+
+	EncryptKey string `ini:"encrypt_key"`
 }
 
 // ParseProxyConfigFromFile parser proxy config from file

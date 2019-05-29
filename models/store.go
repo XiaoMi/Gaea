@@ -130,7 +130,7 @@ func (s *Store) ListNamespace() ([]string, error) {
 }
 
 // LoadNamespace load namespace value
-func (s *Store) LoadNamespace(name string) (*Namespace, error) {
+func (s *Store) LoadNamespace(key, name string) (*Namespace, error) {
 	b, err := s.client.Read(s.NamespacePath(name))
 	if err != nil {
 		return nil, err
@@ -146,6 +146,10 @@ func (s *Store) LoadNamespace(name string) (*Namespace, error) {
 	}
 
 	if err = p.Verify(); err != nil {
+		return nil, err
+	}
+
+	if err = p.Decrypt(key); err != nil {
 		return nil, err
 	}
 

@@ -35,6 +35,8 @@ type CCConfig struct {
 	LogLevel    string `ini:"log_level"`
 	LogFileName string `ini:"log_filename"`
 	LogOutput   string `ini:"log_output"`
+
+	EncryptKey string `ini:"encrypt_key"`
 }
 
 // ParseCCConfig parser gaea cc config from file
