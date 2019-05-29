@@ -22,6 +22,8 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/XiaoMi/Gaea/cc"
+
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/log/xlog"
 	"github.com/XiaoMi/Gaea/models"
@@ -62,7 +64,7 @@ func main() {
 	}
 
 	// 构造服务实例
-	s, err := newServer(ccConfig.Addr, ccConfig)
+	s, err := cc.NewServer(ccConfig.Addr, ccConfig)
 	if err != nil {
 		log.Fatal("create server failed, %v", err)
 		return
@@ -78,14 +80,14 @@ func main() {
 			sig := <-c
 			if sig == syscall.SIGINT || sig == syscall.SIGTERM || sig == syscall.SIGQUIT {
 				log.Notice("got signal %d, quit", sig)
-				s.close()
+				s.Close()
 				return
 			}
 			log.Notice("ignore signal %d", sig)
 		}
 	}()
 
-	s.run()
+	s.Run()
 	wg.Wait()
 	log.Close()
 }
