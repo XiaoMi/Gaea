@@ -2,13 +2,20 @@
 
 ## 编译安装
 
-gaea基于go开发，基于glide进行版本管理，并依赖goyacc、gofmt等工具。
+gaea基于go开发，基于go modules进行版本管理，并依赖goyacc、gofmt等工具。
 
-* 首先安装依赖包
-glide install
+* go >= 1.11
 
-* 编译二进制包
-make
+```bash
+# 如果你已配置GOPATH，同时GO11MODULE设置为auto，请克隆Gaea到GOPATH外的目录
+git clone git@github.com:XiaoMi/Gaea.git
+
+# 如果拉取依赖速度慢，可以配置GOPROXY
+# export GOPROXY=https://athens.azurefd.net
+
+# 编译二进制包
+cd Gaea && make
+```
 
 ## 执行
 
