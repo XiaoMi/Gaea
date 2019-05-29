@@ -40,7 +40,7 @@ func LoadAndCreateManager(cfg *models.Proxy) (*Manager, error) {
 	if cfg.ConfigType == models.ConfigFile {
 		root = cfg.FileConfigPath
 	}
-	namespaceConfigs, err := loadAllNamespace(cfg.ConfigType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, root)
+	namespaceConfigs, err := loadAllNamespace(cfg.ConfigType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, root, cfg.EncryptKey)
 	if err != nil {
 		log.Warn("init namespace manager failed, %v", err)
 		return nil, err
@@ -56,7 +56,7 @@ func LoadAndCreateManager(cfg *models.Proxy) (*Manager, error) {
 	return mgr, nil
 }
 
-func loadAllNamespace(configType, addr, username, password, root string) (map[string]*models.Namespace, error) {
+func loadAllNamespace(configType, addr, username, password, root, key string) (map[string]*models.Namespace, error) {
 	// get names of all namespace
 	client := models.NewClient(configType, addr, username, password, root)
 	store := models.NewStore(client)
@@ -81,7 +81,7 @@ func loadAllNamespace(configType, addr, username, password, root string) (map[st
 			defer store.Close()
 			defer wg.Done()
 			for name := range nameC {
-				namespace, e := store.LoadNamespace(name)
+				namespace, e := store.LoadNamespace(key, name)
 				if e != nil {
 					log.Warn("load namespace %s failed, err: %v", name, err)
 					// assign extent err out of this scope
@@ -129,6 +129,7 @@ type Manager struct {
 	namespaces  [2]*NamespaceManager
 	users       [2]*UserManager
 	statistics  *StatisticManager
+	EncryptKey  string
 }
 
 // NewManager return empty Manager
@@ -159,6 +160,9 @@ func CreateManager(cfg *models.Proxy, namespaceConfigs map[string]*models.Namesp
 		return nil, err
 	}
 	m.users[current] = user
+
+	// init key
+	m.EncryptKey = cfg.EncryptKey
 
 	return m, nil
 }

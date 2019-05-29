@@ -177,7 +177,7 @@ func (s *Server) ReloadNamespacePrepare(name string, client models.Client) error
 	// get namespace conf from etcd
 	log.Notice("prepare config of namespace: %s begin", name)
 	store := models.NewStore(client)
-	namespaceConfig, err := store.LoadNamespace(name)
+	namespaceConfig, err := store.LoadNamespace(s.manager.EncryptKey, name)
 	if err != nil {
 		return err
 	}

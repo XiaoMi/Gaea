@@ -15,15 +15,18 @@
 package models
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strconv"
 
 	"github.com/XiaoMi/Gaea/mysql"
+	"github.com/XiaoMi/Gaea/util/crypto"
 )
 
 // Namespace means namespace model stored in etcd
 type Namespace struct {
+	IsEncrypt        bool              `json:"is_encrypt"` // true: 加密存储 false: 非加密存储，目前加密Slice、User中的用户名、密码
 	Name             string            `json:"name"`
 	Online           bool              `json:"online"`
 	ReadOnly         bool              `json:"read_only"`
@@ -126,6 +129,66 @@ func (p *Namespace) Verify() error {
 	return nil
 }
 
+// Decrypt decrypt user/password in namespace
+func (p *Namespace) Decrypt(key string) (err error) {
+	if !p.IsEncrypt {
+		return nil
+	}
+	// Users
+	for i := range p.Users {
+		p.Users[i].UserName, err = decrypt(key, p.Users[i].UserName)
+		if err != nil {
+			return
+		}
+		p.Users[i].Password, err = decrypt(key, p.Users[i].Password)
+		if err != nil {
+			return
+		}
+	}
+	// Slices
+	for i := range p.Slices {
+		p.Slices[i].UserName, err = decrypt(key, p.Slices[i].UserName)
+		if err != nil {
+			return
+		}
+		p.Slices[i].Password, err = decrypt(key, p.Slices[i].Password)
+		if err != nil {
+			return
+		}
+	}
+
+	return nil
+}
+
+// Encrypt encrypt user/password in namespace
+func (p *Namespace) Encrypt(key string) (err error) {
+	p.IsEncrypt = true
+	// Users
+	for i := range p.Users {
+		p.Users[i].UserName, err = encrypt(key, p.Users[i].UserName)
+		if err != nil {
+			return
+		}
+		p.Users[i].Password, err = encrypt(key, p.Users[i].Password)
+		if err != nil {
+			return
+		}
+	}
+	// Slices
+	for i := range p.Slices {
+		p.Slices[i].UserName, err = encrypt(key, p.Slices[i].UserName)
+		if err != nil {
+			return
+		}
+		p.Slices[i].Password, err = encrypt(key, p.Slices[i].Password)
+		if err != nil {
+			return
+		}
+	}
+
+	return nil
+}
+
 func verifySlowSQLTime(slowSQLTimeStr string) error {
 	if slowSQLTimeStr == "" {
 		return nil
@@ -137,4 +200,22 @@ func verifySlowSQLTime(slowSQLTimeStr string) error {
 	}
 
 	return nil
+}
+
+func decrypt(key, data string) (string, error) {
+	t, _ := base64.StdEncoding.DecodeString(data)
+	origin, err := crypto.DecryptECB(key, t)
+	if err != nil {
+		return "", err
+	}
+	return string(origin), nil
+}
+
+func encrypt(key, data string) (string, error) {
+	tmp, err := crypto.EncryptECB(key, []byte(data))
+	if err != nil {
+		return "", err
+	}
+	base64Str := base64.StdEncoding.EncodeToString(tmp)
+	return base64Str, nil
 }

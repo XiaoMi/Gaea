@@ -29,7 +29,7 @@ func QueryNamespace(names []string, cfg *models.CCConfig) (data []*models.Namesp
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	for _, v := range names {
-		namespace, err := mConn.LoadNamespace(v)
+		namespace, err := mConn.LoadNamespace(cfg.EncryptKey, v)
 		if err != nil {
 			log.Warn("load namespace %s failed, %v", v, err.Error())
 			return nil, err
@@ -48,6 +48,11 @@ func QueryNamespace(names []string, cfg *models.CCConfig) (data []*models.Namesp
 func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig) (err error) {
 	if err = namespace.Verify(); err != nil {
 		return fmt.Errorf("verify namespace error: %v", err)
+	}
+
+	// create/modify will save encrypted data default
+	if err = namespace.Encrypt(cfg.EncryptKey); err != nil {
+		return fmt.Errorf("encrypt namespace error: %v", err)
 	}
 
 	// sink namespace
