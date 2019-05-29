@@ -28,6 +28,7 @@ type Proxy struct {
 
 	// etcd 相关配置
 	CoordinatorAddr string `ini:"coordinator_addr"`
+	CoordinatorRoot string `ini:"coordinator_root"`
 	UserName        string `ini:"username"`
 	Password        string `ini:"password"`
 
@@ -50,6 +51,8 @@ type Proxy struct {
 
 	// 监控配置
 	StatsEnabled string `ini:"stats_enabled"` // set true to enable stats
+
+	EncryptKey string `ini:"encrypt_key"`
 }
 
 // ParseProxyConfigFromFile parser proxy config from file

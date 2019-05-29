@@ -27,6 +27,7 @@ type CCConfig struct {
 	ProxyPassword string `ini:"proxy_password"`
 	// etcd 相关配置
 	CoordinatorAddr string `ini:"coordinator_addr"`
+	CoordinatorRoot string `ini:"coordinator_root"`
 	UserName        string `ini:"username"`
 	Password        string `ini:"password"`
 
@@ -34,6 +35,8 @@ type CCConfig struct {
 	LogLevel    string `ini:"log_level"`
 	LogFileName string `ini:"log_filename"`
 	LogOutput   string `ini:"log_output"`
+
+	EncryptKey string `ini:"encrypt_key"`
 }
 
 // ParseCCConfig parser gaea cc config from file

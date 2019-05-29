@@ -213,7 +213,7 @@ func (n *Namespace) IsAllowWrite(user string) bool {
 
 // IsRWSplit chekc if read write split
 func (n *Namespace) IsRWSplit(user string) bool {
-	return n.userProperties[user].RWFlag == models.ReadWriteSplit
+	return n.userProperties[user].RWSplit == models.ReadWriteSplit
 }
 
 // IsStatisticUser check if user is used to statistic
