@@ -28,6 +28,7 @@ import (
 	"github.com/XiaoMi/Gaea/models"
 )
 
+// Server admin server
 type Server struct {
 	cfg *models.CCConfig
 
@@ -43,6 +44,7 @@ type RetHeader struct {
 	RetMessage string `json:"ret_message"`
 }
 
+// NewServer constructor of Server
 func NewServer(addr string, cfg *models.CCConfig) (*Server, error) {
 	srv := &Server{cfg: cfg, exitC: make(chan struct{})}
 	srv.engine = gin.New()
@@ -63,11 +65,35 @@ func (s *Server) registerURL() {
 	api.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	})
+	api.GET("/namespace/list", s.listNamespace)
 	api.GET("/namespace", s.queryNamespace)
 	api.PUT("/namespace/modify", s.modifyNamespace)
 	api.PUT("/namespace/delete/:name", s.delNamespace)
 	api.GET("/namespace/sqlfingerprint/:name", s.sqlFingerprint)
 	api.GET("/proxy/config/fingerprint", s.proxyConfigFingerprint)
+}
+
+// ListNamespaceResp list names of all namespace response
+type ListNamespaceResp struct {
+	RetHeader *RetHeader `json:"ret_header"`
+	Data      []string   `json:"data"`
+}
+
+// return names of all namespace
+func (s *Server) listNamespace(c *gin.Context) {
+	var err error
+	r := &ListNamespaceResp{RetHeader: &RetHeader{RetCode: -1, RetMessage: ""}}
+	r.Data, err = service.ListNamespace(s.cfg)
+	if err != nil {
+		log.Warn("list names of all namespace failed, %v", err)
+		r.RetHeader.RetMessage = err.Error()
+		c.JSON(http.StatusOK, r)
+		return
+	}
+	r.RetHeader.RetCode = 0
+	r.RetHeader.RetMessage = "SUCC"
+	c.JSON(http.StatusOK, r)
+	return
 }
 
 // QueryReq query namespace request

@@ -23,6 +23,14 @@ import (
 	"github.com/XiaoMi/Gaea/models"
 )
 
+// ListNamespace return names of all namespace
+func ListNamespace(cfg *models.CCConfig) ([]string, error) {
+	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, cfg.CoordinatorRoot)
+	mConn := models.NewStore(client)
+	defer mConn.Close()
+	return mConn.ListNamespace()
+}
+
 // QueryNamespace return information of namespace specified by names
 func QueryNamespace(names []string, cfg *models.CCConfig) (data []*models.Namespace, err error) {
 	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, cfg.CoordinatorRoot)
