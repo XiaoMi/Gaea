@@ -7,5 +7,4 @@ go:
 
 script:
   - export GO111MODULE=on
-  - go mod tidy -v
   - make
