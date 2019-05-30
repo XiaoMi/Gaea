@@ -3,3 +3,4 @@ y.output
 bin
 logs
 .coverage.*
+.vscode
