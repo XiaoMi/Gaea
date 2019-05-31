@@ -1,0 +1,239 @@
+{
+    "name": "test_namespace_shard",
+    "online": true,
+    "read_only": false,
+    "allowed_dbs": {
+        "db_unshard": true,
+        "db_kingshard": true,
+        "db_mycat": true
+    },
+    "default_phy_dbs": {
+        "db_unshard": "db_unshard",
+        "db_kingshard": "db_kingshard",
+        "db_mycat": "db_mycat_0"
+    },
+    "slow_sql_time": "1000",
+    "black_sql": [],
+    "allowed_ip": [],
+    "slices": [
+        {
+            "name": "slice-0",
+            "user_name": "test1",
+            "password": "test1",
+            "master": "127.0.0.1:3307",
+            "slaves": [],
+            "statistic_slaves": [],
+            "capacity": 12,
+            "max_capacity": 24,
+            "idle_timeout": 60
+        },
+        {
+            "name": "slice-1",
+            "user_name": "test1",
+            "password": "test1",
+            "master": "127.0.0.1:3308",
+            "slaves": [],
+            "statistic_slaves": [],
+            "capacity": 12,
+            "max_capacity": 24,
+            "idle_timeout": 60
+        }
+    ],
+    "shard_rules": [
+        {
+            "db": "db_kingshard",
+            "table": "tbl_kingshard",
+            "type": "mod",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ]
+        },
+        {
+            "db": "db_kingshard",
+            "table": "tbl_kingshard_child",
+            "type": "linked",
+            "key": "id",
+            "parent_table": "tbl_kingshard"
+        },
+        {
+            "db": "db_kingshard",
+            "table": "tbl_kingshard_user_child",
+            "type": "linked",
+            "key": "user_id",
+            "parent_table": "tbl_kingshard"
+        },
+        {
+            "db": "db_kingshard",
+            "table": "tbl_kingshard_global_one",
+            "type": "global",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ]
+        },
+        {
+            "db": "db_kingshard",
+            "table": "tbl_kingshard_global_two",
+            "type": "global",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ]
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat",
+            "type": "mycat_mod",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ]
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_child",
+            "type": "linked",
+            "parent_table": "tbl_mycat",
+            "key": "id"
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_user_child",
+            "type": "linked",
+            "parent_table": "tbl_mycat",
+            "key": "user_id"
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_murmur",
+            "type": "mycat_murmur",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_0","db_mycat_1","db_mycat_2","db_mycat_3"
+            ],
+            "seed": "0",
+            "virtual_bucket_times": "160"
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_long",
+            "type": "mycat_long",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ],
+            "partition_count": "4",
+            "partition_length": "256"
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_global_one",
+            "type": "global",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ]
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_global_two",
+            "type": "global",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ]
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_string",
+            "type": "mycat_string",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ],
+            "partition_count": "4",
+            "partition_length": "256",
+            "hash_slice": "20"
+        }
+    ],
+    "users": [
+        {
+            "user_name": "front_user1",
+            "password": "front_password1",
+            "namespace": "test_namespace_shard",
+            "rw_flag": 2,
+            "rw_split": 1,
+            "other_property": 0
+        },
+        {
+            "user_name": "front_user2",
+            "password": "front_password2",
+            "namespace": "test_namespace_shard",
+            "rw_flag": 2,
+            "rw_split": 0,
+            "other_property": 0
+        }
+    ],
+    "default_slice": "slice-0",
+    "global_sequences": []
+}
