@@ -23,6 +23,7 @@ import (
 	"syscall"
 
 	"github.com/XiaoMi/Gaea/cc"
+	"github.com/XiaoMi/Gaea/core"
 
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/log/xlog"
@@ -49,6 +50,7 @@ func initXLog(ccConfig *models.CCConfig) error {
 
 func main() {
 	flag.Parse()
+	fmt.Printf("Build Version Information:%s\n", core.Info.LongForm())
 
 	// 初始化配置
 	ccConfig, err := models.ParseCCConfig(*ccConfigFile)

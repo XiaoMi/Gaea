@@ -33,8 +33,7 @@ var configFile = flag.String("config", "etc/gaea.ini", "gaea config file")
 
 func main() {
 	flag.Parse()
-	fmt.Printf("Git commit:%s\n", core.Version)
-	fmt.Printf("Build time:%s\n", core.Compile)
+	fmt.Printf("Build Version Information:%s\n", core.Info.LongForm())
 
 	if len(*configFile) == 0 {
 		fmt.Println("must use a config file")
