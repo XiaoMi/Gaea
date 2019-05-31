@@ -1,4 +1,4 @@
-# 分片配置
+# 分片表配置
 
 Gaea支持kingshard分表规则和mycat分库规则, 用户可以在不迁移任何数据的情况下, 从kingshard和mycat切换到Gaea.
 
@@ -16,7 +16,7 @@ Gaea支持kingshard常用分表规则, 对应关系如下:
 
 ##### hash
 
-我们想将`db_kingshard`库的`tbl_kingshard`表配置为分片表, 共4个分片, 分布到两个slice上, 每个slice上有两张表, 即:
+我们想将`db_kingshard`库的`tbl_kingshard`表配置为分片表, 共4个分片表, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
 
 | slice | 后端数据库名 | 后端表名 |
 | ----- | ---------- | ------- |
@@ -25,7 +25,7 @@ Gaea支持kingshard常用分表规则, 对应关系如下:
 | slice-1 | db_kingshard | tbl_kingshard_0002 |
 | slice-1 | db_kingshard | tbl_kingshard_0003 |
 
-则namespace配置文件中的分片规则可参考以下示例配置:
+则namespace配置文件中的分片表规则可参考以下示例配置:
 
 ```
 // namespace配置文件
@@ -64,7 +64,7 @@ Gaea支持mycat的常用分库规则, 对应关系如下:
 
 ##### PartitionByMod
 
-我们想将`db_mycat`库的`tbl_mycat`表配置为分片表, 共4个分片, 分布到两个slice上, 每个slice上有两张表, 即:
+我们想将`db_mycat`库的`tbl_mycat`表配置为分片表, 共4个分片表, 分布到2个slice上面, 每个slice上有2个库, 每个库1张表, 即:
 
 | slice | 后端数据库名 | 后端表名 |
 | ----- | ---------- | ------- |
@@ -73,7 +73,7 @@ Gaea支持mycat的常用分库规则, 对应关系如下:
 | slice-1 | db_mycat_2 | tbl_mycat |
 | slice-1 | db_mycat_3 | tbl_mycat |
 
-则namespace配置文件中的分片规则可参考以下示例配置:
+则namespace配置文件中的分片表规则可参考以下示例配置:
 
 ```
 // namespace配置文件
@@ -102,7 +102,7 @@ Gaea支持mycat的常用分库规则, 对应关系如下:
 // ]
 ```
 
-注: databases配置项, 指定了每个分库的实际库名, 这里采用了简写的方式, 与以下配置等价:
+注: databases配置项, 指定了每个分片表的实际库名, 这里采用了简写的方式, 与以下配置等价:
 
 ```
 "databases": [
@@ -237,7 +237,7 @@ SELECT * FROM tbl_mycat, tbl_mycat_child WHERE tbl_mycat_child.id=5 AND tbl_myca
 
 ##### 全局表
 
-全局表是在各个分片上数据完全一致的表, 方便执行一些跨分片的关联查询, 配置如下:
+全局表是在各个slice上 (准确的说是各个slice的各个DB上) 数据完全一致的表, 方便执行一些跨分片查询, 配置如下:
 
 ```
 {
