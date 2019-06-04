@@ -30,15 +30,17 @@ import (
 )
 
 var configFile = flag.String("config", "etc/gaea.ini", "gaea config file")
+var info = flag.Bool("info", false, "show info of gaea")
 
 func main() {
 	flag.Parse()
-	fmt.Printf("Build Version Information:%s\n", core.Info.LongForm())
-
-	if len(*configFile) == 0 {
-		fmt.Println("must use a config file")
+	if *info {
+		fmt.Printf("Build Version Information:%s\n", core.Info.LongForm())
 		return
 	}
+
+	fmt.Printf("Build Version Information:%s\n", core.Info.LongForm())
+
 	// init config of gaea proxy
 	cfg, err := models.ParseProxyConfigFromFile(*configFile)
 	if err != nil {

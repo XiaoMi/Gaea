@@ -31,6 +31,7 @@ import (
 )
 
 var ccConfigFile = flag.String("c", "./etc/gaea_cc.ini", "gaea cc配置")
+var info = flag.Bool("info", false, "show info of gaea-cc")
 
 func initXLog(ccConfig *models.CCConfig) error {
 	cfg := make(map[string]string, 4)
@@ -50,6 +51,11 @@ func initXLog(ccConfig *models.CCConfig) error {
 
 func main() {
 	flag.Parse()
+	if *info {
+		fmt.Printf("Build Version Information:%s\n", core.Info.LongForm())
+		return
+	}
+
 	fmt.Printf("Build Version Information:%s\n", core.Info.LongForm())
 
 	// 初始化配置
