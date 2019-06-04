@@ -103,6 +103,7 @@ func (tw *TimeWheel) handleTick() {
 		}
 		go bucket[k].callback()
 		delete(bucket, k)
+		delete(tw.bucketIndexes, k)
 	}
 	if tw.currentIndex == tw.bucketsNum-1 {
 		tw.currentIndex = 0
