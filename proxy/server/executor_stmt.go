@@ -91,12 +91,21 @@ type Stmt struct {
 	args        []interface{}
 	columnCount int
 	paramCount  int
+	paramTypes  []byte
 	offsets     []int
 }
 
 // ResetParams reset args
 func (s *Stmt) ResetParams() {
 	s.args = make([]interface{}, s.paramCount)
+}
+
+func (s *Stmt) SetParamTypes(paramTypes []byte) {
+	s.paramTypes = paramTypes
+}
+
+func (s *Stmt) GetParamTypes() []byte {
+	return s.paramTypes
 }
 
 // GetRewriteSQL get rewrite sql
@@ -173,9 +182,12 @@ func (se *SessionExecutor) handleStmtExecute(data []byte) (*mysql.Result, error)
 			pos += (paramNum << 1)
 
 			paramValues = data[pos:]
+			s.SetParamTypes(paramTypes)
+		} else {
+			paramValues = data[pos+1:]
 		}
 
-		if err := se.bindStmtArgs(s, nullBitmaps, paramTypes, paramValues); err != nil {
+		if err := se.bindStmtArgs(s, nullBitmaps, s.GetParamTypes(), paramValues); err != nil {
 			return nil, err
 		}
 
@@ -220,6 +232,10 @@ func (se *SessionExecutor) bindStmtArgs(s *Stmt, nullBitmap, paramTypes, paramVa
 		if nullBitmap[i>>3]&(1<<(uint(i)%8)) > 0 {
 			args[i] = nil
 			continue
+		}
+
+		if (i<<1)+1 >= len(paramTypes) {
+			return mysql.ErrMalformPacket
 		}
 
 		tp := paramTypes[i<<1]

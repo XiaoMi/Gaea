@@ -292,7 +292,9 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		}
 		return CreatePrepareResponse(se.status, stmt)
 	case mysql.ComStmtExecute:
-		r, err := se.handleStmtExecute(data)
+		values := make([]byte, len(data))
+		copy(values, data)
+		r, err := se.handleStmtExecute(values)
 		if err != nil {
 			return CreateErrorResponse(se.status, err)
 		}
@@ -303,7 +305,9 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		}
 		return CreateNoopResponse()
 	case mysql.ComStmtSendLongData: // no response
-		if err := se.handleStmtSendLongData(data); err != nil {
+		values := make([]byte, len(data))
+		copy(values, data)
+		if err := se.handleStmtSendLongData(values); err != nil {
 			return CreateErrorResponse(se.status, err)
 		}
 		return CreateNoopResponse()
