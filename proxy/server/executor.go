@@ -255,11 +255,10 @@ func (se *SessionExecutor) GetDatabase() string {
 func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 	switch cmd {
 	case mysql.ComQuit:
-		err := se.handleRollback()
-		if err != nil {
-			return CreateErrorResponse(se.status, err)
-		}
-		return CreateOKResponse(se.status)
+		se.handleRollback()
+		// https://dev.mysql.com/doc/internals/en/com-quit.html
+		// either a connection close or a OK_Packet, OK_Packet will cause client RST sometimes, but doesn't affect sql execute
+		return CreateNoopResponse()
 	case mysql.ComQuery: // data type: string[EOF]
 		sql := string(data)
 		// handle phase
