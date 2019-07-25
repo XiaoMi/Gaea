@@ -162,7 +162,6 @@ type Shard interface {
 type RangeShard interface {
 	Shard
 	EqualStart(key interface{}, index int) bool
-	EqualStop(key interface{}, index int) bool
 }
 
 type HashShard struct {
@@ -202,16 +201,11 @@ func (s *NumRangeShard) EqualStart(key interface{}, index int) bool {
 	v := NumValue(key)
 	return s.Shards[index].Start == v
 }
-func (s *NumRangeShard) EqualStop(key interface{}, index int) bool {
-	v := NumValue(key)
-	return s.Shards[index].End == v
-}
 
 type DateYearShard struct {
 }
 
-//the format of date is: YYYY-MM-DD HH:MM:SS,YYYY-MM-DD or unix timestamp(int)
-func (s *DateYearShard) FindForKey(key interface{}) (int, error) {
+func (s *DateYearShard) getNumYear(key interface{}) (int, error) {
 	switch val := key.(type) {
 	case int:
 		tm := time.Unix(int64(val), 0)
@@ -232,11 +226,24 @@ func (s *DateYearShard) FindForKey(key interface{}) (int, error) {
 	return -1, NewKeyError("Unexpected key variable type %T", key)
 }
 
+//the format of date is: YYYY-MM-DD HH:MM:SS,YYYY-MM-DD or unix timestamp(int)
+func (s *DateYearShard) FindForKey(key interface{}) (int, error) {
+	return s.getNumYear(key)
+}
+
+func (s *DateYearShard) EqualStart(key interface{}, index int) bool {
+	numYear, err := s.getNumYear(key)
+	if err != nil {
+		return false
+	}
+
+	return numYear == index
+}
+
 type DateMonthShard struct {
 }
 
-//the format of date is: YYYY-MM-DD HH:MM:SS,YYYY-MM-DD or unix timestamp(int)
-func (s *DateMonthShard) FindForKey(key interface{}) (int, error) {
+func (s *DateMonthShard) getNumYearMonth(key interface{}) (int, error) {
 	timeFormat := "2006-01-02"
 	switch val := key.(type) {
 	case int:
@@ -280,11 +287,24 @@ func (s *DateMonthShard) FindForKey(key interface{}) (int, error) {
 	return -1, NewKeyError("Unexpected key variable type %T", key)
 }
 
+//the format of date is: YYYY-MM-DD HH:MM:SS,YYYY-MM-DD or unix timestamp(int)
+func (s *DateMonthShard) FindForKey(key interface{}) (int, error) {
+	return s.getNumYearMonth(key)
+}
+
+func (s *DateMonthShard) EqualStart(key interface{}, index int) bool {
+	numYear, err := s.getNumYearMonth(key)
+	if err != nil {
+		return false
+	}
+
+	return numYear == index
+}
+
 type DateDayShard struct {
 }
 
-//the format of date is: YYYY-MM-DD HH:MM:SS,YYYY-MM-DD or unix timestamp(int)
-func (s *DateDayShard) FindForKey(key interface{}) (int, error) {
+func (s *DateDayShard) getNumYearMonthDay(key interface{}) (int, error) {
 	timeFormat := "2006-01-02"
 	switch val := key.(type) {
 	case int:
@@ -326,6 +346,20 @@ func (s *DateDayShard) FindForKey(key interface{}) (int, error) {
 		}
 	}
 	return -1, NewKeyError("Unexpected key variable type %T", key)
+}
+
+//the format of date is: YYYY-MM-DD HH:MM:SS,YYYY-MM-DD or unix timestamp(int)
+func (s *DateDayShard) FindForKey(key interface{}) (int, error) {
+	return s.getNumYearMonthDay(key)
+}
+
+func (s *DateDayShard) EqualStart(key interface{}, index int) bool {
+	numYear, err := s.getNumYearMonthDay(key)
+	if err != nil {
+		return false
+	}
+
+	return numYear == index
 }
 
 type DefaultShard struct {
