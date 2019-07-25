@@ -249,6 +249,21 @@ func preparePlanInfo() (*PlanInfo, error) {
                 "slice-1"
             ]
         },
+		{
+			"db": "db_ks",
+            "table": "tbl_ks_range",
+            "type": "range",
+			"key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+			"table_row_limit": 100
+		},
         {
             "db": "db_mycat",
             "table": "tbl_mycat",

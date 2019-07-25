@@ -1834,8 +1834,7 @@ func TestSelectMultiTablesKingshard(t *testing.T) {
 
 	tests := []SQLTestcase{
 		{
-			db: "db_ks",
-			//"select * from tbl_ks, test_hash_1 where tbl_ks.id = test_hash_1.id",
+			db:  "db_ks",
 			sql: "select * from tbl_ks, tbl_ks_child",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
@@ -1853,8 +1852,7 @@ func TestSelectMultiTablesKingshard(t *testing.T) {
 			},
 		},
 		{
-			db: "db_ks",
-			//"select * from tbl_ks, test_hash_1 where tbl_ks.id = test_hash_1.id",
+			db:  "db_ks",
 			sql: "select * from tbl_ks join tbl_ks_child",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
@@ -1867,6 +1865,530 @@ func TestSelectMultiTablesKingshard(t *testing.T) {
 					"db_ks": {
 						"SELECT * FROM `tbl_ks_0002` JOIN `tbl_ks_child_0002`",
 						"SELECT * FROM `tbl_ks_0003` JOIN `tbl_ks_child_0003`",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectKingshardNumRange(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:   "db_ks",
+			sql:  "select * from tbl_ks_range where id < 0",
+			sqls: map[string]map[string][]string{},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id <= 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE `id`<=0",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id < 50",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE `id`<50",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id < 100",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE `id`<100",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id <= 100",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE `id`<=100",
+						"SELECT * FROM `tbl_ks_range_0001` WHERE `id`<=100",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id < 300",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE `id`<300",
+						"SELECT * FROM `tbl_ks_range_0001` WHERE `id`<300",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE `id`<300",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id <= 300",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE `id`<=300",
+						"SELECT * FROM `tbl_ks_range_0001` WHERE `id`<=300",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE `id`<=300",
+						"SELECT * FROM `tbl_ks_range_0003` WHERE `id`<=300",
+					},
+				},
+			},
+		},
+		{
+			db:     "db_ks",
+			sql:    "select * from tbl_ks_range where id < 400",
+			hasErr: true, // shard key not in key range
+		},
+		{
+			db:     "db_ks",
+			sql:    "select * from tbl_ks_range where id <= 400",
+			hasErr: true, // shard key not in key range
+		},
+
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id > 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE `id`>0",
+						"SELECT * FROM `tbl_ks_range_0001` WHERE `id`>0",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE `id`>0",
+						"SELECT * FROM `tbl_ks_range_0003` WHERE `id`>0",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id >= 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE `id`>=0",
+						"SELECT * FROM `tbl_ks_range_0001` WHERE `id`>=0",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE `id`>=0",
+						"SELECT * FROM `tbl_ks_range_0003` WHERE `id`>=0",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id > 50",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE `id`>50",
+						"SELECT * FROM `tbl_ks_range_0001` WHERE `id`>50",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE `id`>50",
+						"SELECT * FROM `tbl_ks_range_0003` WHERE `id`>50",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id > 100",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0001` WHERE `id`>100",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE `id`>100",
+						"SELECT * FROM `tbl_ks_range_0003` WHERE `id`>100",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id >= 100",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0001` WHERE `id`>=100",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE `id`>=100",
+						"SELECT * FROM `tbl_ks_range_0003` WHERE `id`>=100",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id > 300",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0003` WHERE `id`>300",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id >= 300",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0003` WHERE `id`>=300",
+					},
+				},
+			},
+		},
+		{
+			db:     "db_ks",
+			sql:    "select * from tbl_ks_range where id > 400",
+			hasErr: true, // shard key not in key range
+		},
+		{
+			db:     "db_ks",
+			sql:    "select * from tbl_ks_range where id >= 400",
+			hasErr: true, // shard key not in key range
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id <= 300 AND id > 300",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0003` WHERE `id`<=300 AND `id`>300", // we can't handle this testcase
+					},
+				},
+			},
+		},
+		{
+			db:   "db_ks",
+			sql:  "select * from tbl_ks_range where id < 300 AND id >= 300",
+			sqls: map[string]map[string][]string{},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where id > 100 AND id < 300",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0001` WHERE `id`>100 AND `id`<300",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE `id`>100 AND `id`<300",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectKingshardNumRangeReverse(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:   "db_ks",
+			sql:  "select * from tbl_ks_range where 0>id",
+			sqls: map[string]map[string][]string{},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 0>=id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE 0>=`id`",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 50>id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE 50>`id`",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 100 > id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE 100>`id`",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 100 >= id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE 100>=`id`",
+						"SELECT * FROM `tbl_ks_range_0001` WHERE 100>=`id`",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 300>id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE 300>`id`",
+						"SELECT * FROM `tbl_ks_range_0001` WHERE 300>`id`",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE 300>`id`",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 300 >= id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE 300>=`id`",
+						"SELECT * FROM `tbl_ks_range_0001` WHERE 300>=`id`",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE 300>=`id`",
+						"SELECT * FROM `tbl_ks_range_0003` WHERE 300>=`id`",
+					},
+				},
+			},
+		},
+		{
+			db:     "db_ks",
+			sql:    "select * from tbl_ks_range where 400 > id",
+			hasErr: true, // shard key not in key range
+		},
+		{
+			db:     "db_ks",
+			sql:    "select * from tbl_ks_range where 400 >= id",
+			hasErr: true, // shard key not in key range
+		},
+
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 0 < id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE 0<`id`",
+						"SELECT * FROM `tbl_ks_range_0001` WHERE 0<`id`",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE 0<`id`",
+						"SELECT * FROM `tbl_ks_range_0003` WHERE 0<`id`",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 0 <= id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE 0<=`id`",
+						"SELECT * FROM `tbl_ks_range_0001` WHERE 0<=`id`",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE 0<=`id`",
+						"SELECT * FROM `tbl_ks_range_0003` WHERE 0<=`id`",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 50 < id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0000` WHERE 50<`id`",
+						"SELECT * FROM `tbl_ks_range_0001` WHERE 50<`id`",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE 50<`id`",
+						"SELECT * FROM `tbl_ks_range_0003` WHERE 50<`id`",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 100 < id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0001` WHERE 100<`id`",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE 100<`id`",
+						"SELECT * FROM `tbl_ks_range_0003` WHERE 100<`id`",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 100<=id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0001` WHERE 100<=`id`",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE 100<=`id`",
+						"SELECT * FROM `tbl_ks_range_0003` WHERE 100<=`id`",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 300 < id",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0003` WHERE 300<`id`",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 300 <= id",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0003` WHERE 300<=`id`",
+					},
+				},
+			},
+		},
+		{
+			db:     "db_ks",
+			sql:    "select * from tbl_ks_range where 400 < id",
+			hasErr: true, // shard key not in key range
+		},
+		{
+			db:     "db_ks",
+			sql:    "select * from tbl_ks_range where 400 <= id",
+			hasErr: true, // shard key not in key range
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 300 >= id AND 300 < id",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0003` WHERE 300>=`id` AND 300<`id`", // we can't handle this testcase
+					},
+				},
+			},
+		},
+		{
+			db:   "db_ks",
+			sql:  "select * from tbl_ks_range where 300 > id AND 300 <= id",
+			sqls: map[string]map[string][]string{},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_range where 100 < id AND 300 > id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0001` WHERE 100<`id` AND 300>`id`",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_range_0002` WHERE 100<`id` AND 300>`id`",
 					},
 				},
 			},
