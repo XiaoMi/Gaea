@@ -51,6 +51,10 @@ func NewKeyError(format string, args ...interface{}) KeyError {
 	return KeyError(fmt.Sprintf(format, args...))
 }
 
+func NewInvalidDateFormatKeyError(key interface{}) KeyError {
+	return KeyError(fmt.Sprintf("invalid date format %v", key))
+}
+
 func (ke KeyError) Error() string {
 	return string(ke)
 }
@@ -220,12 +224,12 @@ func (s *DateYearShard) FindForKey(key interface{}) (int, error) {
 		return tm.Year(), nil
 	case string:
 		if v, err := strconv.Atoi(val[:4]); err != nil {
-			panic(NewKeyError("invalid num format %v", v))
+			return -1, NewInvalidDateFormatKeyError(key)
 		} else {
 			return v, nil
 		}
 	}
-	panic(NewKeyError("Unexpected key variable type %T", key))
+	return -1, NewKeyError("Unexpected key variable type %T", key)
 }
 
 type DateMonthShard struct {
@@ -241,7 +245,7 @@ func (s *DateMonthShard) FindForKey(key interface{}) (int, error) {
 		s := dateStr[:4] + dateStr[5:7]
 		yearMonth, err := strconv.Atoi(s)
 		if err != nil {
-			return 0, err
+			return -1, NewInvalidDateFormatKeyError(key)
 		}
 		return yearMonth, nil
 	case uint64:
@@ -250,7 +254,7 @@ func (s *DateMonthShard) FindForKey(key interface{}) (int, error) {
 		s := dateStr[:4] + dateStr[5:7]
 		yearMonth, err := strconv.Atoi(s)
 		if err != nil {
-			return 0, err
+			return -1, NewInvalidDateFormatKeyError(key)
 		}
 		return yearMonth, nil
 	case int64:
@@ -259,21 +263,21 @@ func (s *DateMonthShard) FindForKey(key interface{}) (int, error) {
 		s := dateStr[:4] + dateStr[5:7]
 		yearMonth, err := strconv.Atoi(s)
 		if err != nil {
-			return 0, err
+			return -1, NewInvalidDateFormatKeyError(key)
 		}
 		return yearMonth, nil
 	case string:
 		if len(val) < len(timeFormat) {
-			return 0, fmt.Errorf("invalid date format %s", val)
+			return -1, NewInvalidDateFormatKeyError(key)
 		}
 		s := val[:4] + val[5:7]
 		if v, err := strconv.Atoi(s); err != nil {
-			return 0, fmt.Errorf("invalid date format %s", val)
+			return -1, NewInvalidDateFormatKeyError(key)
 		} else {
 			return v, nil
 		}
 	}
-	panic(NewKeyError("Unexpected key variable type %T", key))
+	return -1, NewKeyError("Unexpected key variable type %T", key)
 }
 
 type DateDayShard struct {
@@ -289,7 +293,7 @@ func (s *DateDayShard) FindForKey(key interface{}) (int, error) {
 		s := dateStr[:4] + dateStr[5:7] + dateStr[8:10]
 		yearMonthDay, err := strconv.Atoi(s)
 		if err != nil {
-			return 0, err
+			return -1, NewInvalidDateFormatKeyError(key)
 		}
 		return yearMonthDay, nil
 	case uint64:
@@ -298,7 +302,7 @@ func (s *DateDayShard) FindForKey(key interface{}) (int, error) {
 		s := dateStr[:4] + dateStr[5:7] + dateStr[8:10]
 		yearMonthDay, err := strconv.Atoi(s)
 		if err != nil {
-			return 0, err
+			return -1, NewInvalidDateFormatKeyError(key)
 		}
 		return yearMonthDay, nil
 	case int64:
@@ -307,21 +311,21 @@ func (s *DateDayShard) FindForKey(key interface{}) (int, error) {
 		s := dateStr[:4] + dateStr[5:7] + dateStr[8:10]
 		yearMonthDay, err := strconv.Atoi(s)
 		if err != nil {
-			return 0, err
+			return -1, NewInvalidDateFormatKeyError(key)
 		}
 		return yearMonthDay, nil
 	case string:
 		if len(val) < len(timeFormat) {
-			return 0, fmt.Errorf("invalid date format %s", val)
+			return -1, NewInvalidDateFormatKeyError(key)
 		}
 		s := val[:4] + val[5:7] + val[8:10]
 		if v, err := strconv.Atoi(s); err != nil {
-			return 0, fmt.Errorf("invalid date format %s", val)
+			return -1, NewInvalidDateFormatKeyError(key)
 		} else {
 			return v, nil
 		}
 	}
-	panic(NewKeyError("Unexpected key variable type %T", key))
+	return -1, NewKeyError("Unexpected key variable type %T", key)
 }
 
 type DefaultShard struct {
