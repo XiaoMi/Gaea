@@ -804,15 +804,18 @@ func getFindTableIndexesFunc(op opcode.Op) func(rule router.Rule, columnName str
 				if err != nil {
 					return nil, err
 				}
-				if op == opcode.GT {
-					index = adjustShardIndex(rangeShard, v, index)
+				if op == opcode.LT || op == opcode.LE {
+					if op == opcode.LT {
+						index = adjustShardIndex(rangeShard, v, index)
+					}
+					return makeList(0, index+1), nil
+				} else {
+					return makeList(index, len(rule.GetSubTableIndexes())), nil
 				}
-				return makeList(0, index+1), nil
 			}
 
 			// 如果不是 (即hash路由), 则返回所有分片
 			return rule.GetSubTableIndexes(), nil
-
 		default: // should not going here
 			return rule.GetSubTableIndexes(), nil
 		}
@@ -824,10 +827,7 @@ func getFindTableIndexesFunc(op opcode.Op) func(rule router.Rule, columnName str
 // copy from PlanBuilder.adjustShardIndex()
 func adjustShardIndex(s router.RangeShard, value interface{}, index int) int {
 	if s.EqualStart(value, index) {
-		index--
-		if index < 0 {
-			panic(fmt.Errorf("invalid range sharding"))
-		}
+		return index - 1
 	}
 	return index
 }
@@ -835,13 +835,13 @@ func adjustShardIndex(s router.RangeShard, value interface{}, index int) int {
 func inverseOperator(op opcode.Op) opcode.Op {
 	switch op {
 	case opcode.GT:
-		return opcode.LE
-	case opcode.GE:
 		return opcode.LT
+	case opcode.GE:
+		return opcode.LE
 	case opcode.LT:
-		return opcode.GE
-	case opcode.LE:
 		return opcode.GT
+	case opcode.LE:
+		return opcode.GE
 	default:
 		return op
 	}
