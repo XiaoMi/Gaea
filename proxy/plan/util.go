@@ -30,6 +30,9 @@ package plan
 
 /*2,5 ==> [2,3,4]*/
 func makeList(start, end int) []int {
+	if start >= end {
+		return []int{}
+	}
 	list := make([]int, end-start)
 	for i := start; i < end; i++ {
 		list[i-start] = i
