@@ -1,3 +1,6 @@
+env:
+  - TZ=Asia/Shanghai
+
 sudo: required
 
 language: go
