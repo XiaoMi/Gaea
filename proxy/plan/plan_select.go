@@ -808,9 +808,9 @@ func getFindTableIndexesFunc(op opcode.Op) func(rule router.Rule, columnName str
 					if op == opcode.LT {
 						index = adjustShardIndex(rangeShard, v, index)
 					}
-					return makeList(0, index+1), nil
+					return makeList(rule.GetFirstTableIndex(), index+1), nil
 				} else {
-					return makeList(index, len(rule.GetSubTableIndexes())), nil
+					return makeList(index, rule.GetLastTableIndex()+1), nil
 				}
 			}
 

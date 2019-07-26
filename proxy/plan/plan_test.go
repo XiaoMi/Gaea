@@ -264,6 +264,48 @@ func preparePlanInfo() (*PlanInfo, error) {
             ],
 			"table_row_limit": 100
 		},
+		{
+			"db": "db_ks",
+            "table": "tbl_ks_year",
+            "type": "date_year",
+			"key": "create_time",
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+			"date_range": [
+				"2014-2017",
+				"2018-2019"
+			]
+		},
+		{
+			"db": "db_ks",
+            "table": "tbl_ks_month",
+            "type": "date_month",
+			"key": "create_time",
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+			"date_range": [
+				"201405-201406",
+				"201408-201409"
+			]
+		},
+		{
+			"db": "db_ks",
+            "table": "tbl_ks_day",
+            "type": "date_day",
+			"key": "create_time",
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+			"date_range": [
+				"20140901-20140905",
+				"20140907-20140908"
+			]
+		},
         {
             "db": "db_mycat",
             "table": "tbl_mycat",

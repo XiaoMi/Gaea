@@ -164,8 +164,8 @@ func getShardBetweenExprRouteResult(rule router.Rule, n *ast.BetweenExpr) ([]int
 			start = adjustShardIndex(rangeShard, leftValue, start)
 		}
 
-		l1 := makeList(0, start+1)
-		l2 := makeList(last, len(rule.GetSubTableIndexes()))
+		l1 := makeList(rule.GetFirstTableIndex(), start+1)
+		l2 := makeList(last, rule.GetLastTableIndex()+1)
 		return unionList(l1, l2), nil
 
 	}
