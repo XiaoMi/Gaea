@@ -70,6 +70,8 @@ type Rule interface {
 	GetSliceIndexFromTableIndex(i int) int
 	GetSlices() []string
 	GetSubTableIndexes() []int
+	GetFirstTableIndex() int
+	GetLastTableIndex() int
 	GetType() string
 	GetDatabaseNameByTableIndex(index int) (string, error)
 }
@@ -161,6 +163,14 @@ func (r *BaseRule) GetSubTableIndexes() []int {
 	return r.subTableIndexes
 }
 
+func (r *BaseRule) GetFirstTableIndex() int {
+	return r.subTableIndexes[0]
+}
+
+func (r *BaseRule) GetLastTableIndex() int {
+	return r.subTableIndexes[len(r.subTableIndexes)-1]
+}
+
 func (r *BaseRule) GetType() string {
 	return r.ruleType
 }
@@ -214,6 +224,14 @@ func (l *LinkedRule) GetShard() Shard {
 
 func (l *LinkedRule) FindTableIndex(key interface{}) (int, error) {
 	return l.linkToRule.FindTableIndex(key)
+}
+
+func (l *LinkedRule) GetFirstTableIndex() int {
+	return l.linkToRule.GetFirstTableIndex()
+}
+
+func (l *LinkedRule) GetLastTableIndex() int {
+	return l.linkToRule.GetLastTableIndex()
 }
 
 func (l *LinkedRule) GetSlice(i int) string {
