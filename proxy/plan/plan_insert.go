@@ -250,7 +250,7 @@ func handleInsertValues(p *InsertPlan) error {
 		}
 	}
 	if len(p.result.GetShardIndexes()) == 0 {
-		return fmt.Errorf("batch insert has cross slice values")
+		return fmt.Errorf("batch insert has cross slice values or no route found")
 	}
 	return nil
 }
