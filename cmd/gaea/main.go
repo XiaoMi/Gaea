@@ -49,24 +49,22 @@ func main() {
 		return
 	}
 
-	err = initXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service)
-
-	if err != nil {
+	if err = initXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service); err != nil {
 		fmt.Printf("init xlog error: %v\n", err.Error())
 		return
 	}
+	defer log.Close()
 
 	// init manager
 	mgr, err := server.LoadAndCreateManager(cfg)
 	if err != nil {
-		fmt.Printf("init manager failed, error: %v", err)
+		log.Fatal("init manager failed, error: %v", err)
 		return
 	}
 
 	svr, err := server.NewServer(cfg, mgr)
 	if err != nil {
-		log.Fatal(fmt.Sprintf("NewServer error, quit. error: %s", err.Error()))
-		log.Close()
+		log.Fatal("NewServer error, quit. error: %s", err.Error())
 		return
 	}
 
@@ -88,7 +86,6 @@ func main() {
 			if sig == syscall.SIGINT || sig == syscall.SIGTERM || sig == syscall.SIGQUIT {
 				log.Notice("Got signal %d, quit", sig)
 				svr.Close()
-				log.Close()
 				break
 			} else if sig == syscall.SIGPIPE {
 				log.Notice("Ignore broken pipe signal")
