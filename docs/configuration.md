@@ -116,3 +116,369 @@ namespace的配置格式为json，包含分表、非分表、实例等配置信�
 | rw_flag        | int      | 读写标识, 只读=1, 读写=2                |
 | rw_split       | int      | 是否读写分离, 非读写分离=0, 读写分离=1     |
 | other_property | int      | 目前用来标识是否走统计从实例, 普通用户=0, 统计用户=1 |
+
+## 配置示例
+
+```
+{
+    "name": "gaea_namespace_1",
+    "online": true,
+    "read_only": true,
+    "allowed_dbs": {
+        "db_ks": true,
+        "db_mycat": true
+    },
+    "default_phy_dbs": {
+        "db_ks": "db_ks",
+        "db_mycat": "db_mycat_0"
+    },
+    "slices": [
+        {
+            "name": "slice-0",
+            "user_name": "root",
+            "password": "root",
+            "master": "127.0.0.1:3306",
+            "capacity": 64,
+            "max_capacity": 128,
+            "idle_timeout": 3600
+        },
+        {
+            "name": "slice-1",
+            "user_name": "root",
+            "password": "root",
+            "master": "127.0.0.1:3307",
+            "capacity": 64,
+            "max_capacity": 128,
+            "idle_timeout": 3600
+        }
+    ],
+    "shard_rules": [
+        {
+            "db": "db_ks",
+            "table": "tbl_ks",
+            "type": "hash",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ]
+        },
+        {
+            "db": "db_ks",
+            "table": "tbl_ks_child",
+            "type": "linked",
+            "key": "id",
+            "parent_table": "tbl_ks"
+        },
+        {
+            "db": "db_ks",
+            "table": "tbl_ks_global",
+            "type": "global",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ]
+        },
+        {
+            "db": "db_ks",
+            "table": "tbl_ks_range",
+            "type": "range",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "table_row_limit": 100
+        },
+        {
+            "db": "db_ks",
+            "table": "tbl_ks_year",
+            "type": "date_year",
+            "key": "create_time",
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "date_range": [
+                "2014-2017",
+                "2018-2019"
+            ]
+        },
+        {
+            "db": "db_ks",
+            "table": "tbl_ks_month",
+            "type": "date_month",
+            "key": "create_time",
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "date_range": [
+                "201405-201406",
+                "201408-201409"
+            ]
+        },
+        {
+            "db": "db_ks",
+            "table": "tbl_ks_day",
+            "type": "date_day",
+            "key": "create_time",
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "date_range": [
+                "20140901-20140905",
+                "20140907-20140908"
+            ]
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat",
+            "type": "mycat_mod",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ]
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_child",
+            "type": "linked",
+            "parent_table": "tbl_mycat",
+            "key": "id"
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_murmur",
+            "type": "mycat_murmur",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_0",
+                "db_mycat_1",
+                "db_mycat_2",
+                "db_mycat_3"
+            ],
+            "seed": "0",
+            "virtual_bucket_times": "160"
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_long",
+            "type": "mycat_long",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ],
+            "partition_count": "4",
+            "partition_length": "256"
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_global",
+            "type": "global",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ]
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_string",
+            "type": "mycat_string",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ],
+            "partition_count": "4",
+            "partition_length": "256",
+            "hash_slice": "20"
+        }
+    ],
+    "global_sequences": [
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat",
+            "type": "test",
+            "pk_name": "id"
+        },
+        {
+            "db": "db_ks",
+            "table": "tbl_ks",
+            "type": "test",
+            "pk_name": "user_id"
+        }
+    ],
+    "users": [
+        {
+            "user_name": "test_shard",
+            "password": "test_shard",
+            "namespace": "gaea_namespace_1",
+            "rw_flag": 2,
+            "rw_split": 1
+        }
+    ],
+    "default_slice": "slice-0"
+}
+```
+
+本配置截取自proxy/plan/plan_test.go, 如果对Gaea分表有困惑, 也可以参考这个包下的测试用例. 下面将结合该配置示例介绍Gaea的namespace配置细节.
+
+namespace名称为`gaea_namespace_1`. 在该namespace的`users`字段中添加一个gaea用户`test_shard`. 特别注意Gaea中的`用户名+密码`是全局唯一的 (映射到唯一的namespace). 该用户是读写用户, 且使用读写分离.
+
+在namespace中通过`allowed_dbs`字段配置了两个可用的数据库, 另一个相关的字段为`default_phy_dbs`, 该字段仅用于mycat分库路由的场景, 用于标记后端实际库名. 如果没有使用mycat路由, 则可以只配置`allowed_dbs`字段, 不配置`default_phy_dbs`字段.
+
+通过`slices`字段配置后端的slice. 一个slice实际上对应着一组MySQL实例, 可以包含一主多从. slice的名称目前必须使用`slice-0`, `slice-1`这样的格式, 如果自定义slice名称会出现找不到默认slice的问题. 
+
+在`shard_rules`字段中配置分片表信息. 按照Gaea处理方式, 可以将分片表分为3类: kingshard路由模式的分片表, mycat路由模式的分片表, 全局表.
+
+### kingshard路由
+
+kingshard路由模式下, 分片表要求后端数据库的库名相同, 子表的表名为`table_后缀`的模式.
+
+```
+{
+    "db": "db_ks",
+    "table": "tbl_ks",
+    "type": "hash",
+    "key": "id",
+    "locations": [
+        2,
+        2
+    ],
+    "slices": [
+        "slice-0",
+        "slice-1"
+    ]
+}
+```
+
+以这个kingshard hash分片表配置为例, 路由规则为hash, 逻辑表名为tbl_ks, locations 2,2表示有两个slice, 每个slice上面分配两张子表, `slices`配置了两个slice的名称. 那么后端数据库的子表需要按照以下规则创建:
+
+| slice | db | table |
+|:---:|:---:|:---:|
+| slice-0 | db_ks | tbl_ks_0000 |
+| slice-0 | db_ks | tbl_ks_0001 |
+| slice-1 | db_ks | tbl_ks_0002 |
+| slice-1 | db_ks | tbl_ks_0003 |
+
+其他kingshard路由的表名映射关系均类似, 再以range路由举例:
+
+```
+{
+    "db": "db_ks",
+    "table": "tbl_ks_month",
+    "type": "date_month",
+    "key": "create_time",
+    "slices": [
+        "slice-0",
+        "slice-1"
+    ],
+    "date_range": [
+        "201405-201406",
+        "201408-201409"
+    ]
+}
+```
+
+| slice | db | table |
+|:---:|:---:|:---:|
+| slice-0 | db_ks | tbl_ks_201405 |
+| slice-0 | db_ks | tbl_ks_201406 |
+| slice-1 | db_ks | tbl_ks_201408 |
+| slice-1 | db_ks | tbl_ks_201409 |
+
+kingshard路由不需要配置`databases`字段, 因为后端数据库名与逻辑库名相同.
+
+### mycat路由
+
+mycat路由与kingshard不完全相同, Gaea主要兼容了mycat的分库路由模式. 
+
+```
+{
+    "db": "db_mycat",
+    "table": "tbl_mycat_murmur",
+    "type": "mycat_murmur",
+    "key": "id",
+    "locations": [
+        2,
+        2
+    ],
+    "slices": [
+        "slice-0",
+        "slice-1"
+    ],
+    "databases": [
+        "db_mycat_0",
+        "db_mycat_1",
+        "db_mycat_2",
+        "db_mycat_3"
+    ],
+    "seed": "0",
+    "virtual_bucket_times": "160"
+}
+```
+
+| slice | db | table |
+|:---:|:---:|:---:|
+| slice-0 | db_mycat_0 | tbl_mycat_murmur |
+| slice-0 | db_mycat_1 | tbl_mycat_murmur |
+| slice-1 | db_mycat_2 | tbl_mycat_murmur |
+| slice-1 | db_mycat_3 | tbl_mycat_murmur |
+
+其中`databases`字段需要按路由顺序指定后端数据库的实际库名, 且数量需要与`locations`的总和相等.
+
+### 全局表路由
+
+全局表路由与mycat路由配置类似, 但是可以不指定`databases`. 如果不指定, 则全局表在各个后端的数据库名和表名均相同.
