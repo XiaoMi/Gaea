@@ -712,3 +712,25 @@ func TestMycatInsertSequenceUnshardKey(t *testing.T) {
 		t.Run(test.sql, getTestFunc(ns, test))
 	}
 }
+
+func TestEscapeBackslashShard(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_ks",
+			sql: `insert into tbl_ks (id,name) values (1,'hello\\"world')`,
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {"INSERT INTO `tbl_ks_0001` (`id`,`name`) VALUES (1,'hello\\\\\"world')"},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}

@@ -494,7 +494,7 @@ func generateShardingSQLs(stmt ast.StmtNode, result *RouteResult, router *router
 
 	for result.HasNext() {
 		sb := &strings.Builder{}
-		ctx := format.NewRestoreCtx(format.DefaultRestoreFlags, sb)
+		ctx := format.NewRestoreCtx(format.EscapeRestoreFlags, sb)
 		if err := stmt.Restore(ctx); err != nil {
 			return nil, err
 		}
