@@ -75,7 +75,7 @@ func buildExplainPlan(stmt *ast.ExplainStmt, db, sql string, r *router.Router, s
 		ep.sqls = make(map[string]map[string][]string)
 		dbSQLs := make(map[string][]string)
 		s := &strings.Builder{}
-		ctx := format.NewRestoreCtx(format.DefaultRestoreFlags, s)
+		ctx := format.NewRestoreCtx(format.EscapeRestoreFlags, s)
 		_ = pl.stmt.Restore(ctx)
 		dbSQLs[pl.db] = []string{s.String()}
 		ep.sqls[backend.DefaultSlice] = dbSQLs
