@@ -221,6 +221,7 @@ const (
 const (
 	// DefaultRestoreFlags means default restore flags
 	DefaultRestoreFlags = RestoreStringSingleQuotes | RestoreKeyWordUppercase | RestoreNameBackQuotes
+	EscapeRestoreFlags  = RestoreStringSingleQuotes | RestoreStringEscapeBackslash | RestoreKeyWordUppercase | RestoreNameBackQuotes
 )
 
 func (rf RestoreFlags) has(flag RestoreFlags) bool {
