@@ -40,7 +40,7 @@ func GetValueExprResult(n *driver.ValueExpr) (interface{}, error) {
 		return n.GetString(), nil
 	default:
 		s := &strings.Builder{}
-		ctx := format.NewRestoreCtx(format.DefaultRestoreFlags, s)
+		ctx := format.NewRestoreCtx(format.EscapeRestoreFlags, s)
 		err := n.Restore(ctx)
 		if err != nil {
 			return nil, err
