@@ -7,7 +7,7 @@ gaea基于go开发，基于go modules进行版本管理，并依赖goyacc、gofm
 * go >= 1.11
 
 ```bash
-# 如果你已配置GOPATH，同时GO11MODULE设置为auto，请克隆Gaea到GOPATH外的目录
+# 如果你已配置GOPATH，同时GO111MODULE设置为auto，请克隆Gaea到GOPATH外的目录
 git clone git@github.com:XiaoMi/Gaea.git
 
 # 如果拉取依赖速度慢，可以配置GOPROXY
