@@ -53,8 +53,8 @@ func (n *Namespace) Encode() []byte {
 
 // Verify verify namespace contents
 func (n *Namespace) Verify() error {
-	if n.Name == "" {
-		return errors.New("must specify namespace name")
+	if err := n.verifyName(); err != nil {
+		return err
 	}
 
 	if len(n.AllowedDBS) == 0 {
@@ -176,6 +176,17 @@ func (n *Namespace) Verify() error {
 		}
 	}
 	return nil
+}
+
+func (n *Namespace) verifyName() error {
+	if n.isNameExists() {
+		return fmt.Errorf("must specify namespace name")
+	}
+	return nil
+}
+
+func (n *Namespace) isNameExists() bool {
+	return n.Name != ""
 }
 
 // Decrypt decrypt user/password in namespace
