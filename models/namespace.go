@@ -19,8 +19,10 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/XiaoMi/Gaea/mysql"
+	"github.com/XiaoMi/Gaea/util"
 	"github.com/XiaoMi/Gaea/util/crypto"
 )
 
@@ -67,6 +69,14 @@ func (p *Namespace) Verify() error {
 		return errors.New("invalid slow sql time")
 	}
 
+	if err := verifyDefaultPhyDB(p.DefaultPhyDBS, p.AllowedDBS); err != nil {
+		return fmt.Errorf("verify defaultPhyDBs error: %v", err)
+	}
+
+	if err := verifyAllowIps(p.AllowedIP); err != nil {
+		return fmt.Errorf("verify allowips error: %v", err)
+	}
+
 	if err := mysql.VerifyCharset(p.DefaultCharset, p.DefaultCollation); err != nil {
 		return err
 	}
@@ -93,7 +103,9 @@ func (p *Namespace) Verify() error {
 		return errors.New("empty slices")
 	}
 
+	var sliceNames []string
 	for i, n := range p.Slices {
+		sliceNames = append(sliceNames, n.Name)
 		if err := n.verify(); err != nil {
 			return fmt.Errorf("slice cfg error, namespace: %s, err: %s", p.Name, err.Error())
 		}
@@ -120,12 +132,49 @@ func (p *Namespace) Verify() error {
 		}
 	}
 
+	rules := make(map[string]map[string]string)
+	linkedRuleShards := []*Shard{}
 	for _, s := range p.ShardRules {
+
+		for _, slice := range s.Slices {
+			if !includeSlice(sliceNames, slice) {
+				return fmt.Errorf("shard table[%s] slice[%s] not in the namespace.slices list:[%s]",
+					s.Table, slice, strings.Join(s.Slices, ","))
+			}
+		}
+		if s.Type == ShardLinked {
+			linkedRuleShards = append(linkedRuleShards, s)
+		}
 		if err := s.verify(); err != nil {
 			return err
 		}
-	}
 
+		//if the database exist in rules
+		if _, ok := rules[s.DB]; ok {
+			if _, ok := rules[s.DB][s.Table]; ok {
+				return fmt.Errorf("table %s rule in %s duplicate", s.Table, s.DB)
+			} else {
+				rules[s.DB][s.Table] = s.Type
+			}
+		} else {
+			m := make(map[string]string)
+			rules[s.DB] = m
+			rules[s.DB][s.Table] = s.Type
+		}
+	}
+	for _, s := range linkedRuleShards {
+		tableRules, ok := rules[s.DB]
+		if !ok {
+			return fmt.Errorf("db of LinkedRule is not found in parent rules")
+		}
+		dbRuleType, ok := tableRules[s.ParentTable]
+		if !ok {
+			return fmt.Errorf("parent table of LinkedRule is not found in parent rules")
+		}
+		if dbRuleType == ShardLinked {
+			return fmt.Errorf("LinkedRule cannot link to another LinkedRule")
+		}
+	}
 	return nil
 }
 
@@ -218,4 +267,33 @@ func encrypt(key, data string) (string, error) {
 	}
 	base64Str := base64.StdEncoding.EncodeToString(tmp)
 	return base64Str, nil
+}
+
+func verifyDefaultPhyDB(defaultPhyDBs map[string]string, allowedDBs map[string]bool) error {
+	// no logic database mode
+	if len(defaultPhyDBs) == 0 {
+		return nil
+	}
+
+	// logic database mode
+	for db := range allowedDBs {
+		if _, ok := defaultPhyDBs[db]; !ok {
+			return fmt.Errorf("db %s have no phy db", db)
+		}
+	}
+	return nil
+}
+
+func verifyAllowIps(allowedIP []string) error {
+	for _, ipStr := range allowedIP {
+		ipStr = strings.TrimSpace(ipStr)
+		if len(ipStr) == 0 {
+			continue
+		}
+		_, err := util.ParseIPInfo(ipStr)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
