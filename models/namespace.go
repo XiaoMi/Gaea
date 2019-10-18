@@ -47,94 +47,94 @@ type Namespace struct {
 }
 
 // Encode encode json
-func (p *Namespace) Encode() []byte {
-	return JSONEncode(p)
+func (n *Namespace) Encode() []byte {
+	return JSONEncode(n)
 }
 
 // Verify verify namespace contents
-func (p *Namespace) Verify() error {
-	if p.Name == "" {
+func (n *Namespace) Verify() error {
+	if n.Name == "" {
 		return errors.New("must specify namespace name")
 	}
 
-	if len(p.AllowedDBS) == 0 {
+	if len(n.AllowedDBS) == 0 {
 		return errors.New("must specify usable dbs")
 	}
 
-	if len(p.Users) == 0 {
+	if len(n.Users) == 0 {
 		return errors.New("must specify proxy access users")
 	}
 
-	if verifySlowSQLTime(p.SlowSQLTime) != nil {
+	if verifySlowSQLTime(n.SlowSQLTime) != nil {
 		return errors.New("invalid slow sql time")
 	}
 
-	if err := verifyDefaultPhyDB(p.DefaultPhyDBS, p.AllowedDBS); err != nil {
+	if err := verifyDefaultPhyDB(n.DefaultPhyDBS, n.AllowedDBS); err != nil {
 		return fmt.Errorf("verify defaultPhyDBs error: %v", err)
 	}
 
-	if err := verifyAllowIps(p.AllowedIP); err != nil {
+	if err := verifyAllowIps(n.AllowedIP); err != nil {
 		return fmt.Errorf("verify allowips error: %v", err)
 	}
 
-	if err := mysql.VerifyCharset(p.DefaultCharset, p.DefaultCollation); err != nil {
+	if err := mysql.VerifyCharset(n.DefaultCharset, n.DefaultCollation); err != nil {
 		return err
 	}
 
-	for i, u := range p.Users {
+	for i, u := range n.Users {
 		if u.Namespace == "" {
-			u.Namespace = p.Name
-		} else if u.Namespace != p.Name {
-			return fmt.Errorf("user's namespace name mismatch, user: %s, namespace: %s, %s", u.UserName, p.Name, u.Namespace)
+			u.Namespace = n.Name
+		} else if u.Namespace != n.Name {
+			return fmt.Errorf("user's namespace name mismatch, user: %s, namespace: %s, %s", u.UserName, n.Name, u.Namespace)
 		}
 
 		if err := u.verify(); err != nil {
-			return fmt.Errorf("user config error, schema: %s, %v", p.Name, err)
+			return fmt.Errorf("user config error, schema: %s, %v", n.Name, err)
 		}
 
 		for j := 0; j < i; j++ {
-			if p.Users[j].UserName == u.UserName {
-				return fmt.Errorf("user duped, namespace: %s, user: %s", p.Name, u.UserName)
+			if n.Users[j].UserName == u.UserName {
+				return fmt.Errorf("user duped, namespace: %s, user: %s", n.Name, u.UserName)
 			}
 		}
 	}
 
-	if len(p.Slices) == 0 {
+	if len(n.Slices) == 0 {
 		return errors.New("empty slices")
 	}
 
 	var sliceNames []string
-	for i, n := range p.Slices {
-		sliceNames = append(sliceNames, n.Name)
-		if err := n.verify(); err != nil {
-			return fmt.Errorf("slice cfg error, namespace: %s, err: %s", p.Name, err.Error())
+	for i, slice := range n.Slices {
+		sliceNames = append(sliceNames, slice.Name)
+		if err := slice.verify(); err != nil {
+			return fmt.Errorf("slice cfg error, namespace: %s, err: %s", n.Name, err.Error())
 		}
 
 		for j := 0; j < i; j++ {
-			if p.Slices[j].Name == n.Name {
-				return fmt.Errorf("slice name duped, namespace: %s, slice: %s", p.Name, n.Name)
+			if n.Slices[j].Name == slice.Name {
+				return fmt.Errorf("slice name duped, namespace: %s, slice: %s", n.Name, slice.Name)
 			}
 		}
 	}
 
-	if p.DefaultSlice != "" {
+	if n.DefaultSlice != "" {
 		exist := false
 
-		for _, n := range p.Slices {
-			if n.Name == p.DefaultSlice {
+		for _, slice := range n.Slices {
+			if slice.Name == n.DefaultSlice {
 				exist = true
 				break
 			}
 		}
 
 		if !exist {
-			return fmt.Errorf("invalid default slice: %s", p.DefaultSlice)
+			return fmt.Errorf("invalid default slice: %s", n.DefaultSlice)
 		}
 	}
 
 	rules := make(map[string]map[string]string)
 	linkedRuleShards := []*Shard{}
-	for _, s := range p.ShardRules {
+	for _, s := range n.ShardRules {
 
 		for _, slice := range s.Slices {
 			if !includeSlice(sliceNames, slice) {
@@ -179,28 +179,28 @@ func (p *Namespace) Verify() error {
 }
 
 // Decrypt decrypt user/password in namespace
-func (p *Namespace) Decrypt(key string) (err error) {
-	if !p.IsEncrypt {
+func (n *Namespace) Decrypt(key string) (err error) {
+	if !n.IsEncrypt {
 		return nil
 	}
 	// Users
-	for i := range p.Users {
-		p.Users[i].UserName, err = decrypt(key, p.Users[i].UserName)
+	for i := range n.Users {
+		n.Users[i].UserName, err = decrypt(key, n.Users[i].UserName)
 		if err != nil {
 			return
 		}
-		p.Users[i].Password, err = decrypt(key, p.Users[i].Password)
+		n.Users[i].Password, err = decrypt(key, n.Users[i].Password)
 		if err != nil {
 			return
 		}
 	}
 	// Slices
-	for i := range p.Slices {
-		p.Slices[i].UserName, err = decrypt(key, p.Slices[i].UserName)
+	for i := range n.Slices {
+		n.Slices[i].UserName, err = decrypt(key, n.Slices[i].UserName)
 		if err != nil {
 			return
 		}
-		p.Slices[i].Password, err = decrypt(key, p.Slices[i].Password)
+		n.Slices[i].Password, err = decrypt(key, n.Slices[i].Password)
 		if err != nil {
 			return
 		}
@@ -210,26 +210,26 @@ func (p *Namespace) Decrypt(key string) (err error) {
 }
 
 // Encrypt encrypt user/password in namespace
-func (p *Namespace) Encrypt(key string) (err error) {
-	p.IsEncrypt = true
+func (n *Namespace) Encrypt(key string) (err error) {
+	n.IsEncrypt = true
 	// Users
-	for i := range p.Users {
-		p.Users[i].UserName, err = encrypt(key, p.Users[i].UserName)
+	for i := range n.Users {
+		n.Users[i].UserName, err = encrypt(key, n.Users[i].UserName)
 		if err != nil {
 			return
 		}
-		p.Users[i].Password, err = encrypt(key, p.Users[i].Password)
+		n.Users[i].Password, err = encrypt(key, n.Users[i].Password)
 		if err != nil {
 			return
 		}
 	}
 	// Slices
-	for i := range p.Slices {
-		p.Slices[i].UserName, err = encrypt(key, p.Slices[i].UserName)
+	for i := range n.Slices {
+		n.Slices[i].UserName, err = encrypt(key, n.Slices[i].UserName)
 		if err != nil {
 			return
 		}
-		p.Slices[i].Password, err = encrypt(key, p.Slices[i].Password)
+		n.Slices[i].Password, err = encrypt(key, n.Slices[i].Password)
 		if err != nil {
 			return
 		}
