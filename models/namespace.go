@@ -81,24 +81,6 @@ func (n *Namespace) Verify() error {
 		return err
 	}
 
-	for i, u := range n.Users {
-		if u.Namespace == "" {
-			u.Namespace = n.Name
-		} else if u.Namespace != n.Name {
-			return fmt.Errorf("user's namespace name mismatch, user: %s, namespace: %s, %s", u.UserName, n.Name, u.Namespace)
-		}
-
-		if err := u.verify(); err != nil {
-			return fmt.Errorf("user config error, schema: %s, %v", n.Name, err)
-		}
-
-		for j := 0; j < i; j++ {
-			if n.Users[j].UserName == u.UserName {
-				return fmt.Errorf("user duped, namespace: %s, user: %s", n.Name, u.UserName)
-			}
-		}
-	}
-
 	if len(n.Slices) == 0 {
 		return errors.New("empty slices")
 	}
@@ -203,6 +185,26 @@ func (n *Namespace) isAllowedDBSEmpty() bool {
 func (n *Namespace) verifyUsers() error {
 	if n.isUsersEmpty() {
 		return errors.New("must specify proxy access users")
+	}
+
+	for i, u := range n.Users {
+		//check namespace
+		if u.Namespace == "" {
+			u.Namespace = n.Name
+		} else if u.Namespace != n.Name {
+			return fmt.Errorf("user's namespace name mismatch, user: %s, namespace: %s, %s", u.UserName, n.Name, u.Namespace)
+		}
+
+		if err := u.verify(); err != nil {
+			return fmt.Errorf("user config error, schema: %s, %v", n.Name, err)
+		}
+
+		//check repeat username
+		for j := 0; j < i; j++ {
+			if n.Users[j].UserName == u.UserName {
+				return fmt.Errorf("user duped, namespace: %s, user: %s", n.Name, u.UserName)
+			}
+		}
 	}
 	return nil
 }
