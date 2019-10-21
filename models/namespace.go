@@ -81,39 +81,18 @@ func (n *Namespace) Verify() error {
 		return err
 	}
 
-	if len(n.Slices) == 0 {
-		return errors.New("empty slices")
+	if err := n.verifySlices(); err != nil {
+		return err
+	}
+
+	if err := n.verifyDefaultSlice(); err != nil {
+		return err
 	}
 
 	var sliceNames []string
-	for i, slice := range n.Slices {
+	for _, slice := range n.Slices {
 		sliceNames = append(sliceNames, slice.Name)
-		if err := slice.verify(); err != nil {
-			return fmt.Errorf("slice cfg error, namespace: %s, err: %s", n.Name, err.Error())
-		}
-
-		for j := 0; j < i; j++ {
-			if n.Slices[j].Name == slice.Name {
-				return fmt.Errorf("slice name duped, namespace: %s, slice: %s", n.Name, slice.Name)
-			}
-		}
 	}
-
-	if n.DefaultSlice != "" {
-		exist := false
-
-		for _, slice := range n.Slices {
-			if slice.Name == n.DefaultSlice {
-				exist = true
-				break
-			}
-		}
-
-		if !exist {
-			return fmt.Errorf("invalid default slice: %s", n.DefaultSlice)
-		}
-	}
-
 	rules := make(map[string]map[string]string)
 	linkedRuleShards := []*Shard{}
 	for _, s := range n.ShardRules {
@@ -277,6 +256,53 @@ func (n *Namespace) verifyAllowIps() error {
 func (n *Namespace) verifyCharset() error {
 	if err := mysql.VerifyCharset(n.DefaultCharset, n.DefaultCollation); err != nil {
 		return fmt.Errorf("verify charset error: %v", err)
+	}
+	return nil
+}
+
+func (n *Namespace) verifySlices() error {
+	if n.isSlicesEmpty() {
+		return errors.New("empty slices")
+	}
+	if err := n.verifyEachSlice(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (n *Namespace) isSlicesEmpty() bool {
+	return len(n.Slices) == 0
+}
+
+func (n *Namespace) verifyEachSlice() error {
+	for i, slice := range n.Slices {
+		if err := slice.verify(); err != nil {
+			return fmt.Errorf("slice cfg error, namespace: %s, err: %s", n.Name, err.Error())
+		}
+
+		//check repeat slice
+		for j := 0; j < i; j++ {
+			if n.Slices[j].Name == slice.Name {
+				return fmt.Errorf("slice name duped, namespace: %s, slice: %s", n.Name, slice.Name)
+			}
+		}
+	}
+	return nil
+}
+
+func (n *Namespace) verifyDefaultSlice() error {
+	if n.DefaultSlice != "" {
+		exist := false
+		for _, slice := range n.Slices {
+			if slice.Name == n.DefaultSlice {
+				exist = true
+				break
+			}
+		}
+
+		if !exist {
+			return fmt.Errorf("invalid default slice: %s", n.DefaultSlice)
+		}
 	}
 	return nil
 }
