@@ -61,8 +61,8 @@ func (n *Namespace) Verify() error {
 		return err
 	}
 
-	if len(n.Users) == 0 {
-		return errors.New("must specify proxy access users")
+	if err := n.verifyUsers(); err != nil {
+		return err
 	}
 
 	if verifySlowSQLTime(n.SlowSQLTime) != nil {
@@ -179,7 +179,7 @@ func (n *Namespace) Verify() error {
 }
 
 func (n *Namespace) verifyName() error {
-	if n.isNameExists() {
+	if !n.isNameExists() {
 		return fmt.Errorf("must specify namespace name")
 	}
 	return nil
@@ -198,6 +198,17 @@ func (n *Namespace) verifyAllowDBS() error {
 
 func (n *Namespace) isAllowedDBSEmpty() bool {
 	return len(n.AllowedDBS) == 0
+}
+
+func (n *Namespace) verifyUsers() error {
+	if n.isUsersEmpty() {
+		return errors.New("must specify proxy access users")
+	}
+	return nil
+}
+
+func (n *Namespace) isUsersEmpty() bool {
+	return len(n.Users) == 0
 }
 
 // Decrypt decrypt user/password in namespace
