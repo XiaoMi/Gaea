@@ -77,7 +77,7 @@ func (n *Namespace) Verify() error {
 		return err
 	}
 
-	if err := mysql.VerifyCharset(n.DefaultCharset, n.DefaultCollation); err != nil {
+	if err := n.verifyCharset(); err != nil {
 		return err
 	}
 
@@ -268,6 +268,13 @@ func (n *Namespace) verifyAllowIps() error {
 		if _, err := util.ParseIPInfo(ipStr); err != nil {
 			return fmt.Errorf("verify allowips error: %v", err)
 		}
+	}
+	return nil
+}
+
+func (n *Namespace) verifyCharset() error {
+	if err := mysql.VerifyCharset(n.DefaultCharset, n.DefaultCollation); err != nil {
+		return fmt.Errorf("verify charset error: %v", err)
 	}
 	return nil
 }
