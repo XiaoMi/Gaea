@@ -73,8 +73,8 @@ func (n *Namespace) Verify() error {
 		return err
 	}
 
-	if err := verifyAllowIps(n.AllowedIP); err != nil {
-		return fmt.Errorf("verify allowips error: %v", err)
+	if err := n.verifyAllowIps(); err != nil {
+		return err
 	}
 
 	if err := mysql.VerifyCharset(n.DefaultCharset, n.DefaultCollation); err != nil {
@@ -258,6 +258,20 @@ func (n *Namespace) isAllowedDBSValid() error {
 	return nil
 }
 
+func (n *Namespace) verifyAllowIps() error {
+	for _, ipStr := range n.AllowedIP {
+		ipStr = strings.TrimSpace(ipStr)
+		if len(ipStr) == 0 {
+			continue
+		}
+
+		if _, err := util.ParseIPInfo(ipStr); err != nil {
+			return fmt.Errorf("verify allowips error: %v", err)
+		}
+	}
+	return nil
+}
+
 // Decrypt decrypt user/password in namespace
 func (n *Namespace) Decrypt(key string) (err error) {
 	if !n.IsEncrypt {
@@ -334,18 +348,4 @@ func encrypt(key, data string) (string, error) {
 	}
 	base64Str := base64.StdEncoding.EncodeToString(tmp)
 	return base64Str, nil
-}
-
-func verifyAllowIps(allowedIP []string) error {
-	for _, ipStr := range allowedIP {
-		ipStr = strings.TrimSpace(ipStr)
-		if len(ipStr) == 0 {
-			continue
-		}
-		_, err := util.ParseIPInfo(ipStr)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
