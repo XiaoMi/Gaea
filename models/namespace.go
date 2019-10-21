@@ -65,8 +65,8 @@ func (n *Namespace) Verify() error {
 		return err
 	}
 
-	if verifySlowSQLTime(n.SlowSQLTime) != nil {
-		return errors.New("invalid slow sql time")
+	if err := n.verifySlowSQLTime(); err != nil {
+		return err
 	}
 
 	if err := verifyDefaultPhyDB(n.DefaultPhyDBS, n.AllowedDBS); err != nil {
@@ -211,6 +211,27 @@ func (n *Namespace) isUsersEmpty() bool {
 	return len(n.Users) == 0
 }
 
+func (n *Namespace) verifySlowSQLTime() error {
+	if !n.isSlowSQLTimeExists() {
+		return nil
+	}
+	if err := n.isSlowSQLTimeValid(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (n *Namespace) isSlowSQLTimeExists() bool {
+	return n.SlowSQLTime != ""
+}
+
+func (n *Namespace) isSlowSQLTimeValid() error {
+	if slowSQLTime, err := strconv.ParseInt(n.SlowSQLTime, 10, 64); err != nil || slowSQLTime < 0 {
+		return errors.New("invalid slow sql time")
+	}
+	return nil
+}
+
 // Decrypt decrypt user/password in namespace
 func (n *Namespace) Decrypt(key string) (err error) {
 	if !n.IsEncrypt {
@@ -266,19 +287,6 @@ func (n *Namespace) Encrypt(key string) (err error) {
 		if err != nil {
 			return
 		}
-	}
-
-	return nil
-}
-
-func verifySlowSQLTime(slowSQLTimeStr string) error {
-	if slowSQLTimeStr == "" {
-		return nil
-	}
-
-	slowSQLTime, err := strconv.ParseInt(slowSQLTimeStr, 10, 64)
-	if err != nil || slowSQLTime < 0 {
-		return errors.New("invalid slow sql time")
 	}
 
 	return nil
