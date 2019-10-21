@@ -57,8 +57,8 @@ func (n *Namespace) Verify() error {
 		return err
 	}
 
-	if len(n.AllowedDBS) == 0 {
-		return errors.New("must specify usable dbs")
+	if err := n.verifyAllowDBS(); err != nil {
+		return err
 	}
 
 	if len(n.Users) == 0 {
@@ -187,6 +187,17 @@ func (n *Namespace) verifyName() error {
 
 func (n *Namespace) isNameExists() bool {
 	return n.Name != ""
+}
+
+func (n *Namespace) verifyAllowDBS() error {
+	if n.isAllowedDBSEmpty() {
+		return errors.New("must specify usable dbs")
+	}
+	return nil
+}
+
+func (n *Namespace) isAllowedDBSEmpty() bool {
+	return len(n.AllowedDBS) == 0
 }
 
 // Decrypt decrypt user/password in namespace
