@@ -69,8 +69,8 @@ func (n *Namespace) Verify() error {
 		return err
 	}
 
-	if err := verifyDefaultPhyDB(n.DefaultPhyDBS, n.AllowedDBS); err != nil {
-		return fmt.Errorf("verify defaultPhyDBs error: %v", err)
+	if err := n.verifyDBs(); err != nil {
+		return err
 	}
 
 	if err := verifyAllowIps(n.AllowedIP); err != nil {
@@ -232,6 +232,32 @@ func (n *Namespace) isSlowSQLTimeValid() error {
 	return nil
 }
 
+func (n *Namespace) verifyDBs() error {
+	// no logic database mode
+	if n.isDefaultPhyDBSEmpty() {
+		return nil
+	}
+
+	// logic database mode
+	if err := n.isAllowedDBSValid(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (n *Namespace) isDefaultPhyDBSEmpty() bool {
+	return len(n.DefaultPhyDBS) == 0
+}
+
+func (n *Namespace) isAllowedDBSValid() error {
+	for db := range n.AllowedDBS {
+		if _, ok := n.DefaultPhyDBS[db]; !ok {
+			return fmt.Errorf("db %s have no phy db", db)
+		}
+	}
+	return nil
+}
+
 // Decrypt decrypt user/password in namespace
 func (n *Namespace) Decrypt(key string) (err error) {
 	if !n.IsEncrypt {
@@ -308,21 +334,6 @@ func encrypt(key, data string) (string, error) {
 	}
 	base64Str := base64.StdEncoding.EncodeToString(tmp)
 	return base64Str, nil
-}
-
-func verifyDefaultPhyDB(defaultPhyDBs map[string]string, allowedDBs map[string]bool) error {
-	// no logic database mode
-	if len(defaultPhyDBs) == 0 {
-		return nil
-	}
-
-	// logic database mode
-	for db := range allowedDBs {
-		if _, ok := defaultPhyDBs[db]; !ok {
-			return fmt.Errorf("db %s have no phy db", db)
-		}
-	}
-	return nil
 }
 
 func verifyAllowIps(allowedIP []string) error {
