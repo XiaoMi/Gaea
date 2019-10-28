@@ -89,53 +89,10 @@ func (n *Namespace) Verify() error {
 		return err
 	}
 
-	var sliceNames []string
-	for _, slice := range n.Slices {
-		sliceNames = append(sliceNames, slice.Name)
+	if err := n.verifyShardRules(); err != nil {
+		return err
 	}
-	rules := make(map[string]map[string]string)
-	linkedRuleShards := []*Shard{}
-	for _, s := range n.ShardRules {
 
-		for _, slice := range s.Slices {
-			if !includeSlice(sliceNames, slice) {
-				return fmt.Errorf("shard table[%s] slice[%s] not in the namespace.slices list:[%s]",
-					s.Table, slice, strings.Join(s.Slices, ","))
-			}
-		}
-		if s.Type == ShardLinked {
-			linkedRuleShards = append(linkedRuleShards, s)
-		}
-		if err := s.verify(); err != nil {
-			return err
-		}
-
-		//if the database exist in rules
-		if _, ok := rules[s.DB]; ok {
-			if _, ok := rules[s.DB][s.Table]; ok {
-				return fmt.Errorf("table %s rule in %s duplicate", s.Table, s.DB)
-			} else {
-				rules[s.DB][s.Table] = s.Type
-			}
-		} else {
-			m := make(map[string]string)
-			rules[s.DB] = m
-			rules[s.DB][s.Table] = s.Type
-		}
-	}
-	for _, s := range linkedRuleShards {
-		tableRules, ok := rules[s.DB]
-		if !ok {
-			return fmt.Errorf("db of LinkedRule is not found in parent rules")
-		}
-		dbRuleType, ok := tableRules[s.ParentTable]
-		if !ok {
-			return fmt.Errorf("parent table of LinkedRule is not found in parent rules")
-		}
-		if dbRuleType == ShardLinked {
-			return fmt.Errorf("LinkedRule cannot link to another LinkedRule")
-		}
-	}
 	return nil
 }
 
@@ -302,6 +259,65 @@ func (n *Namespace) verifyDefaultSlice() error {
 
 		if !exist {
 			return fmt.Errorf("invalid default slice: %s", n.DefaultSlice)
+		}
+	}
+	return nil
+}
+
+func (n *Namespace) verifyShardRules() error {
+	var sliceNames []string
+	var linkedRuleShards []*Shard
+	var rules = make(map[string]map[string]string)
+
+	for _, slice := range n.Slices {
+		sliceNames = append(sliceNames, slice.Name)
+	}
+
+	for _, s := range n.ShardRules {
+		for _, slice := range s.Slices {
+			if !includeSlice(sliceNames, slice) {
+				return fmt.Errorf("shard table[%s] slice[%s] not in the namespace.slices list:[%s]",
+					s.Table, slice, strings.Join(s.Slices, ","))
+			}
+		}
+
+		switch s.Type {
+		case ShardDefault:
+			return errors.New("[default-rule] duplicate, must only one")
+		// get index of linked table config and handle it later
+		case ShardLinked:
+			linkedRuleShards = append(linkedRuleShards, s)
+		default:
+			if err := s.verify(); err != nil {
+				return err
+			}
+		}
+
+		//if the database exist in rules
+		if _, ok := rules[s.DB]; ok {
+			if _, ok := rules[s.DB][s.Table]; ok {
+				return fmt.Errorf("table %s rule in %s duplicate", s.Table, s.DB)
+			} else {
+				rules[s.DB][s.Table] = s.Type
+			}
+		} else {
+			m := make(map[string]string)
+			rules[s.DB] = m
+			rules[s.DB][s.Table] = s.Type
+		}
+	}
+
+	for _, s := range linkedRuleShards {
+		tableRules, ok := rules[s.DB]
+		if !ok {
+			return fmt.Errorf("db of LinkedRule is not found in parent rules")
+		}
+		dbRuleType, ok := tableRules[s.ParentTable]
+		if !ok {
+			return fmt.Errorf("parent table of LinkedRule is not found in parent rules")
+		}
+		if dbRuleType == ShardLinked {
+			return fmt.Errorf("LinkedRule cannot link to another LinkedRule")
 		}
 	}
 	return nil
