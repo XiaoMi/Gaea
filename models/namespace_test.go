@@ -95,3 +95,16 @@ func TestFunc_VerifyName(t *testing.T) {
 		t.Errorf("test verifyName failed, should fail but pass, name: %v", nf.Name)
 	}
 }
+
+func TestFunc_VerifyAllowDBS(t *testing.T) {
+	n := defaultNamespace()
+	n.AllowedDBS["db1"] = true
+	if err := n.verifyAllowDBS(); err != nil {
+		t.Errorf("test verifyAllowDBS failed, %v", err)
+	}
+
+	nf := defaultNamespace()
+	if err := nf.verifyAllowDBS(); err == nil {
+		t.Errorf("test verifyAllowDBS failed, should fail but pass, name: %v", nf.Name)
+	}
+}
