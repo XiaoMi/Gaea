@@ -17,6 +17,28 @@ import (
 	"testing"
 )
 
+func defaultNamespace() *Namespace {
+	n := &Namespace{
+		IsEncrypt:        false,
+		Name:             "default",
+		Online:           true,
+		ReadOnly:         true,
+		AllowedDBS:       make(map[string]bool),
+		DefaultPhyDBS:    nil,
+		SlowSQLTime:      "",
+		BlackSQL:         nil,
+		AllowedIP:        nil,
+		Slices:           make([]*Slice, 0),
+		ShardRules:       make([]*Shard, 0),
+		Users:            make([]*User, 0),
+		DefaultSlice:     "",
+		GlobalSequences:  nil,
+		DefaultCharset:   "",
+		DefaultCollation: "",
+	}
+	return n
+}
+
 func TestNamespaceEncode(t *testing.T) {
 	var namespace = &Namespace{Name: "gaea_namespace_1", Online: true, ReadOnly: true, AllowedDBS: make(map[string]bool), Slices: make([]*Slice, 0), ShardRules: make([]*Shard, 0), Users: make([]*User, 0), DefaultSlice: "slice-0"}
 
@@ -59,4 +81,17 @@ func TestEncrypt(t *testing.T) {
 		t.Errorf("test namespace failed, %v", err)
 	}
 	t.Logf(string(namespace.Encode()))
+}
+
+func TestFunc_VerifyName(t *testing.T) {
+	n := defaultNamespace()
+	if err := n.verifyName(); err != nil {
+		t.Errorf("test verifyName failed, %v", err)
+	}
+
+	nf := defaultNamespace()
+	nf.Name = ""
+	if err := nf.verifyName(); err == nil {
+		t.Errorf("test verifyName failed, should fail but pass, name: %v", nf.Name)
+	}
 }
