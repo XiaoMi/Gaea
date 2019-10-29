@@ -108,3 +108,27 @@ func TestFunc_VerifyAllowDBS(t *testing.T) {
 		t.Errorf("test verifyAllowDBS failed, should fail but pass, name: %v", nf.Name)
 	}
 }
+
+func TestFunc_VerifyUsers(t *testing.T) {
+	n := defaultNamespace()
+	u1 := &User{UserName: "u1", Namespace: n.Name, Password: "pw1", RWFlag: ReadOnly, RWSplit: NoReadWriteSplit, OtherProperty: 0}
+	u2 := &User{UserName: "u2", Namespace: n.Name, Password: "pw2", RWFlag: ReadWrite, RWSplit: ReadWriteSplit, OtherProperty: StatisticUser}
+	n.Users = append(n.Users, u1)
+	n.Users = append(n.Users, u2)
+
+	if err := n.verifyUsers(); err != nil {
+		t.Errorf("test verifyUsers failed, %v", err)
+	}
+
+	nf := defaultNamespace()
+	uf1 := &User{UserName: "u1", Namespace: "someone", Password: "pw1", RWFlag: -1, RWSplit: -1, OtherProperty: -1}
+	uf2 := &User{UserName: "u1", Namespace: n.Name, Password: "pw2", RWFlag: -1, RWSplit: -1, OtherProperty: -1}
+	uf3 := &User{UserName: "", Namespace: "", Password: "", RWFlag: -1, RWSplit: -1, OtherProperty: -1}
+	nf.Users = append(nf.Users, uf1)
+	nf.Users = append(nf.Users, uf2)
+	nf.Users = append(nf.Users, uf3)
+
+	if err := nf.verifyUsers(); err == nil {
+		t.Errorf("test verifyUsers failed, should fail but pass, users: %s", JSONEncode(nf.Users))
+	}
+}
