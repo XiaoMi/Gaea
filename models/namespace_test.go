@@ -242,3 +242,22 @@ func TestFunc_VerifySlices(t *testing.T) {
 		}
 	}
 }
+
+func TestFunc_VerifyDefaultSlice(t *testing.T) {
+	n := defaultNamespace()
+	n.Slices = append(n.Slices, &Slice{Name: "slice1"})
+	var dss = []string{"", "slice1"}
+	for _, ds := range dss {
+		n.DefaultSlice = ds
+		if err := n.verifyDefaultSlice(); err != nil {
+			t.Errorf("test verifyDefaultSlice failed, %v", err)
+		}
+	}
+
+	nf := defaultNamespace()
+	nf.Slices = append(nf.Slices, &Slice{Name: "slice1"})
+	nf.DefaultSlice = "slice2"
+	if err := nf.verifyDefaultSlice(); err == nil {
+		t.Errorf("test verifyDefaultSlice should fail but pass, defaultSlice: %s", nf.DefaultSlice)
+	}
+}
