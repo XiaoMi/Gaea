@@ -192,3 +192,24 @@ func TestFunc_VerifyAllowIps(t *testing.T) {
 		}
 	}
 }
+
+func TestFunc_VerifyCharset(t *testing.T) {
+	n := defaultNamespace()
+	var ccs = [][]string{[]string{"", ""}, []string{"big5", ""}, []string{"big5", "big5_chinese_ci"}}
+	for _, cc := range ccs {
+		n.DefaultCharset = cc[0]
+		n.DefaultCollation = cc[1]
+		if err := n.verifyCharset(); err != nil {
+			t.Errorf("test verifyCharset failed, %v", err)
+		}
+	}
+
+	var ccfs = [][]string{[]string{"", "test"}, []string{"test", ""}, []string{"big5", "test"}, []string{"big5", "latin2_czech_cs"}}
+	for _, ccf := range ccfs {
+		n.DefaultCharset = ccf[0]
+		n.DefaultCollation = ccf[1]
+		if err := n.verifyCharset(); err == nil {
+			t.Errorf("test verifyCharset should fail but pass, charset: %s, collation: %s", n.DefaultCharset, n.DefaultCollation)
+		}
+	}
+}
