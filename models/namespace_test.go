@@ -24,7 +24,7 @@ func defaultNamespace() *Namespace {
 		Online:           true,
 		ReadOnly:         true,
 		AllowedDBS:       make(map[string]bool),
-		DefaultPhyDBS:    nil,
+		DefaultPhyDBS:    make(map[string]string),
 		SlowSQLTime:      "",
 		BlackSQL:         nil,
 		AllowedIP:        nil,
@@ -149,5 +149,28 @@ func TestFunc_VerifySlowSQLTime(t *testing.T) {
 		if err := n.verifySlowSQLTime(); err == nil {
 			t.Errorf("test verifySlowSQLTime failed, should fail but pass, sst: %v", n.SlowSQLTime)
 		}
+	}
+}
+
+func TestFunc_VerifyDBs(t *testing.T) {
+	n := defaultNamespace()
+	// no logic database mode
+	if err := n.verifyDBs(); err != nil {
+		t.Errorf("test verifyDBs failed, %v", err)
+	}
+
+	// logic database mode
+	n.AllowedDBS["test1"] = true
+	n.DefaultPhyDBS["test1"] = ""
+	if err := n.verifyDBs(); err != nil {
+		t.Errorf("test verifyDBs failed, %v", err)
+	}
+
+	nf := defaultNamespace()
+	// logic database mode
+	nf.AllowedDBS["test1"] = true
+	nf.DefaultPhyDBS["test2"] = ""
+	if err := nf.verifyDBs(); err == nil {
+		t.Errorf("test verifyDBs should fail but pass, allowedDBS: %v, defaultPhyDBS: %v", nf.AllowedDBS, nf.DefaultPhyDBS)
 	}
 }
