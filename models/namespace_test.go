@@ -132,3 +132,22 @@ func TestFunc_VerifyUsers(t *testing.T) {
 		t.Errorf("test verifyUsers failed, should fail but pass, users: %s", JSONEncode(nf.Users))
 	}
 }
+
+func TestFunc_VerifySlowSQLTime(t *testing.T) {
+	n := defaultNamespace()
+	ssts := []string{"", "10"}
+	for _, sst := range ssts {
+		n.SlowSQLTime = sst
+		if err := n.verifySlowSQLTime(); err != nil {
+			t.Errorf("test verifySlowSQLTime failed, %v", err)
+		}
+	}
+
+	sstfs := []string{"-1", "10.0", "test"}
+	for _, sst := range sstfs {
+		n.SlowSQLTime = sst
+		if err := n.verifySlowSQLTime(); err == nil {
+			t.Errorf("test verifySlowSQLTime failed, should fail but pass, sst: %v", n.SlowSQLTime)
+		}
+	}
+}
