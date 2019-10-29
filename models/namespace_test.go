@@ -174,3 +174,21 @@ func TestFunc_VerifyDBs(t *testing.T) {
 		t.Errorf("test verifyDBs should fail but pass, allowedDBS: %v, defaultPhyDBS: %v", nf.AllowedDBS, nf.DefaultPhyDBS)
 	}
 }
+
+func TestFunc_VerifyAllowIps(t *testing.T) {
+	n := defaultNamespace()
+	n.AllowedIP = append(n.AllowedIP, "  ")
+	n.AllowedIP = append(n.AllowedIP, "10.221.163.82")
+	if err := n.verifyAllowIps(); err != nil {
+		t.Errorf("test verifyAllowIps failed, %v", err)
+	}
+
+	nf := defaultNamespace()
+	var ipfs = []string{"test", "1.1.1"}
+	for _, ipf := range ipfs {
+		nf.AllowedIP = []string{ipf}
+		if err := nf.verifyAllowIps(); err == nil {
+			t.Errorf("test verifyAllowIps should fail but pass, %v", nf.AllowedIP)
+		}
+	}
+}
