@@ -213,3 +213,32 @@ func TestFunc_VerifyCharset(t *testing.T) {
 		}
 	}
 }
+
+func TestFunc_VerifySlices(t *testing.T) {
+	n := defaultNamespace()
+	var slice1 = &Slice{Name: "slice1", UserName: "user", Password: "", Master: "1.1.1.1:1", Slaves: []string{"1.1.1.1:2"}, Capacity: 1, MaxCapacity: 1, IdleTimeout: 100}
+	var slice2 = &Slice{Name: "slice2", UserName: "user", Password: "", Master: "1.1.1.1:1", Slaves: []string{"1.1.1.1:2"}, Capacity: 1, MaxCapacity: 1, IdleTimeout: 100}
+	n.Slices = append(n.Slices, slice1)
+	n.Slices = append(n.Slices, slice2)
+	if err := n.verifySlices(); err != nil {
+		t.Errorf("test verifySlices failed, %v", err)
+	}
+
+	nf := defaultNamespace()
+	var slicefs = []*Slice{
+		&Slice{Name: "", UserName: "user", Password: "", Master: "1.1.1.1:1", Slaves: []string{"1.1.1.1:2"}, Capacity: 1, MaxCapacity: 1, IdleTimeout: 100},
+		&Slice{Name: "slice1", UserName: "user", Password: "", Master: "1.1.1.1:1", Slaves: []string{"1.1.1.1:2"}, Capacity: 1, MaxCapacity: 1, IdleTimeout: 100},
+		&Slice{Name: "slice1", UserName: "", Password: "", Master: "1.1.1.1:1", Slaves: []string{"1.1.1.1:2"}, Capacity: 1, MaxCapacity: 1, IdleTimeout: 100},
+		&Slice{Name: "slice1", UserName: "user", Password: "", Master: "", Slaves: []string{}, Capacity: 1, MaxCapacity: 1, IdleTimeout: 100},
+		&Slice{Name: "slice1", UserName: "user", Password: "", Master: "", Slaves: []string{""}, Capacity: 1, MaxCapacity: 1, IdleTimeout: 100},
+		&Slice{Name: "slice1", UserName: "user", Password: "", Master: "1.1.1.1:1", Slaves: []string{"1.1.1.1:2"}, Capacity: 0, MaxCapacity: 1, IdleTimeout: 100},
+		&Slice{Name: "slice1", UserName: "user", Password: "", Master: "1.1.1.1:1", Slaves: []string{"1.1.1.1:2"}, Capacity: 1, MaxCapacity: 0, IdleTimeout: 100},
+	}
+	for _, slicef := range slicefs {
+		nf.Slices = append(nf.Slices, slice1)
+		nf.Slices = append(nf.Slices, slicef)
+		if err := nf.verifySlices(); err == nil {
+			t.Errorf("test verifySlices should fail but pass, slices: %s", JSONEncode(n.Slices))
+		}
+	}
+}
