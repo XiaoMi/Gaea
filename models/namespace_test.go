@@ -14,6 +14,7 @@
 package models
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -289,5 +290,309 @@ func TestFunc_VerifyShardRules(t *testing.T) {
 	}
 	if err := n.verifyShardRules(); err != nil {
 		t.Errorf("test verifyShardRules failed, %v", err)
+	}
+}
+
+func TestNamespace_Verify(t *testing.T) {
+	nsStr := `
+{
+    "name": "gaea_namespace_1",
+    "online": true,
+    "read_only": true,
+    "allowed_dbs": {
+        "db_ks": true,
+        "db_mycat": true
+    },
+    "default_phy_dbs": {
+        "db_ks": "db_ks",
+        "db_mycat": "db_mycat_0"
+    },
+    "slices": [
+        {
+            "name": "slice-0",
+            "user_name": "root",
+            "password": "root",
+            "master": "127.0.0.1:3306",
+            "capacity": 64,
+            "max_capacity": 128,
+            "idle_timeout": 3600
+        },
+        {
+            "name": "slice-1",
+            "user_name": "root",
+            "password": "root",
+            "master": "127.0.0.1:3307",
+            "capacity": 64,
+            "max_capacity": 128,
+            "idle_timeout": 3600
+        }
+    ],
+    "shard_rules": [
+        {
+            "db": "db_ks",
+            "table": "tbl_ks",
+            "type": "mod",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ]
+        },
+        {
+            "db": "db_ks",
+            "table": "tbl_ks_child",
+            "type": "linked",
+            "key": "id",
+            "parent_table": "tbl_ks"
+        },
+        {
+            "db": "db_ks",
+            "table": "tbl_ks_user_child",
+            "type": "linked",
+            "key": "user_id",
+            "parent_table": "tbl_ks"
+        },
+		{
+            "db": "db_ks",
+            "table": "tbl_ks_global_one",
+            "type": "global",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ]
+        },
+		{
+            "db": "db_ks",
+            "table": "tbl_ks_global_two",
+            "type": "global",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ]
+        },
+		{
+			"db": "db_ks",
+            "table": "tbl_ks_range",
+            "type": "range",
+			"key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+			"table_row_limit": 100
+		},
+		{
+			"db": "db_ks",
+            "table": "tbl_ks_year",
+            "type": "date_year",
+			"key": "create_time",
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+			"date_range": [
+				"2014-2017",
+				"2018-2019"
+			]
+		},
+		{
+			"db": "db_ks",
+            "table": "tbl_ks_month",
+            "type": "date_month",
+			"key": "create_time",
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+			"date_range": [
+				"201405-201406",
+				"201408-201409"
+			]
+		},
+		{
+			"db": "db_ks",
+            "table": "tbl_ks_day",
+            "type": "date_day",
+			"key": "create_time",
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+			"date_range": [
+				"20140901-20140905",
+				"20140907-20140908"
+			]
+		},
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat",
+            "type": "mycat_mod",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ]
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_child",
+            "type": "linked",
+            "parent_table": "tbl_mycat",
+            "key": "id"
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_user_child",
+            "type": "linked",
+            "parent_table": "tbl_mycat",
+            "key": "user_id"
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_murmur",
+            "type": "mycat_murmur",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_0","db_mycat_1","db_mycat_2","db_mycat_3"
+            ],
+			"seed": "0",
+			"virtual_bucket_times": "160"
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_long",
+            "type": "mycat_long",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ],
+			"partition_count": "4",
+			"partition_length": "256"
+        },
+		{
+            "db": "db_mycat",
+            "table": "tbl_mycat_global_one",
+            "type": "global",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ]
+        },
+		{
+            "db": "db_mycat",
+            "table": "tbl_mycat_global_two",
+            "type": "global",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ]
+        },
+        {
+            "db": "db_mycat",
+            "table": "tbl_mycat_string",
+            "type": "mycat_string",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ],
+			"partition_count": "4",
+			"partition_length": "256",
+			"hash_slice": "20"
+        }
+    ],
+	"global_sequences": [
+		{
+			"db": "db_mycat",
+			"table": "tbl_mycat",
+			"type": "test",
+			"pk_name": "id"
+		},
+		{
+			"db": "db_ks",
+			"table": "tbl_ks",
+			"type": "test",
+			"pk_name": "user_id"
+		}
+	],
+    "users": [
+        {
+            "user_name": "test_shard_hash",
+            "password": "test_shard_hash",
+            "namespace": "gaea_namespace_1",
+            "rw_flag": 2,
+            "rw_split": 1
+        }
+    ],
+    "default_slice": "slice-0"
+}`
+
+	ns := &Namespace{}
+	if err := json.Unmarshal([]byte(nsStr), ns); err != nil {
+		t.Errorf("namespace unmarshal failed, err: %v", err)
+	}
+
+	if err := ns.Verify(); err != nil {
+		t.Errorf("namespace verify failed, err: %v", err)
 	}
 }
