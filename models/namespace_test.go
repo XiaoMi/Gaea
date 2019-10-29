@@ -84,33 +84,37 @@ func TestEncrypt(t *testing.T) {
 	t.Logf(string(namespace.Encode()))
 }
 
-func TestFunc_VerifyName(t *testing.T) {
+func TestVerifyName_Success(t *testing.T) {
 	n := defaultNamespace()
 	if err := n.verifyName(); err != nil {
 		t.Errorf("test verifyName failed, %v", err)
 	}
+}
 
+func TestVerifyName_Error(t *testing.T) {
 	nf := defaultNamespace()
 	nf.Name = ""
 	if err := nf.verifyName(); err == nil {
-		t.Errorf("test verifyName failed, should fail but pass, name: %v", nf.Name)
+		t.Errorf("test verifyName should fail but pass, name: %v", nf.Name)
 	}
 }
 
-func TestFunc_VerifyAllowDBS(t *testing.T) {
+func TestVerifyAllowDBS_Success(t *testing.T) {
 	n := defaultNamespace()
 	n.AllowedDBS["db1"] = true
 	if err := n.verifyAllowDBS(); err != nil {
 		t.Errorf("test verifyAllowDBS failed, %v", err)
 	}
 
+}
+func TestVerifyAllowDBS_Error(t *testing.T) {
 	nf := defaultNamespace()
 	if err := nf.verifyAllowDBS(); err == nil {
-		t.Errorf("test verifyAllowDBS failed, should fail but pass, name: %v", nf.Name)
+		t.Errorf("test verifyAllowDBS should fail but pass, name: %v", nf.Name)
 	}
 }
 
-func TestFunc_VerifyUsers(t *testing.T) {
+func TestVerifyUsers_Success(t *testing.T) {
 	n := defaultNamespace()
 	u1 := &User{UserName: "u1", Namespace: n.Name, Password: "pw1", RWFlag: ReadOnly, RWSplit: NoReadWriteSplit, OtherProperty: 0}
 	u2 := &User{UserName: "u2", Namespace: n.Name, Password: "pw2", RWFlag: ReadWrite, RWSplit: ReadWriteSplit, OtherProperty: StatisticUser}
@@ -120,21 +124,23 @@ func TestFunc_VerifyUsers(t *testing.T) {
 	if err := n.verifyUsers(); err != nil {
 		t.Errorf("test verifyUsers failed, %v", err)
 	}
+}
 
+func TestVerifyUsers_Error(t *testing.T) {
 	nf := defaultNamespace()
 	uf1 := &User{UserName: "u1", Namespace: "someone", Password: "pw1", RWFlag: -1, RWSplit: -1, OtherProperty: -1}
-	uf2 := &User{UserName: "u1", Namespace: n.Name, Password: "pw2", RWFlag: -1, RWSplit: -1, OtherProperty: -1}
+	uf2 := &User{UserName: "u1", Namespace: nf.Name, Password: "pw2", RWFlag: -1, RWSplit: -1, OtherProperty: -1}
 	uf3 := &User{UserName: "", Namespace: "", Password: "", RWFlag: -1, RWSplit: -1, OtherProperty: -1}
 	nf.Users = append(nf.Users, uf1)
 	nf.Users = append(nf.Users, uf2)
 	nf.Users = append(nf.Users, uf3)
 
 	if err := nf.verifyUsers(); err == nil {
-		t.Errorf("test verifyUsers failed, should fail but pass, users: %s", JSONEncode(nf.Users))
+		t.Errorf("test verifyUsers should fail but pass, users: %s", JSONEncode(nf.Users))
 	}
 }
 
-func TestFunc_VerifySlowSQLTime(t *testing.T) {
+func TestVerifySlowSQLTime_Success(t *testing.T) {
 	n := defaultNamespace()
 	ssts := []string{"", "10"}
 	for _, sst := range ssts {
@@ -143,17 +149,20 @@ func TestFunc_VerifySlowSQLTime(t *testing.T) {
 			t.Errorf("test verifySlowSQLTime failed, %v", err)
 		}
 	}
+}
 
+func TestVerifySlowSQLTime_Error(t *testing.T) {
+	nf := defaultNamespace()
 	sstfs := []string{"-1", "10.0", "test"}
 	for _, sst := range sstfs {
-		n.SlowSQLTime = sst
-		if err := n.verifySlowSQLTime(); err == nil {
-			t.Errorf("test verifySlowSQLTime failed, should fail but pass, sst: %v", n.SlowSQLTime)
+		nf.SlowSQLTime = sst
+		if err := nf.verifySlowSQLTime(); err == nil {
+			t.Errorf("test verifySlowSQLTime should fail but pass, sst: %v", nf.SlowSQLTime)
 		}
 	}
 }
 
-func TestFunc_VerifyDBs(t *testing.T) {
+func TestVerifyDBs_Success(t *testing.T) {
 	n := defaultNamespace()
 	// no logic database mode
 	if err := n.verifyDBs(); err != nil {
@@ -166,7 +175,9 @@ func TestFunc_VerifyDBs(t *testing.T) {
 	if err := n.verifyDBs(); err != nil {
 		t.Errorf("test verifyDBs failed, %v", err)
 	}
+}
 
+func TestVerifyDBs_Error(t *testing.T) {
 	nf := defaultNamespace()
 	// logic database mode
 	nf.AllowedDBS["test1"] = true
@@ -176,14 +187,16 @@ func TestFunc_VerifyDBs(t *testing.T) {
 	}
 }
 
-func TestFunc_VerifyAllowIps(t *testing.T) {
+func TestVerifyAllowIps_Success(t *testing.T) {
 	n := defaultNamespace()
 	n.AllowedIP = append(n.AllowedIP, "  ")
 	n.AllowedIP = append(n.AllowedIP, "10.221.163.82")
 	if err := n.verifyAllowIps(); err != nil {
 		t.Errorf("test verifyAllowIps failed, %v", err)
 	}
+}
 
+func TestVerifyAllowIps_Error(t *testing.T) {
 	nf := defaultNamespace()
 	var ipfs = []string{"test", "1.1.1"}
 	for _, ipf := range ipfs {
@@ -194,7 +207,7 @@ func TestFunc_VerifyAllowIps(t *testing.T) {
 	}
 }
 
-func TestFunc_VerifyCharset(t *testing.T) {
+func TestVerifyCharset_Success(t *testing.T) {
 	n := defaultNamespace()
 	var ccs = [][]string{[]string{"", ""}, []string{"big5", ""}, []string{"big5", "big5_chinese_ci"}}
 	for _, cc := range ccs {
@@ -204,18 +217,21 @@ func TestFunc_VerifyCharset(t *testing.T) {
 			t.Errorf("test verifyCharset failed, %v", err)
 		}
 	}
+}
 
+func TestVerifyCharset_Error(t *testing.T) {
+	nf := defaultNamespace()
 	var ccfs = [][]string{[]string{"", "test"}, []string{"test", ""}, []string{"big5", "test"}, []string{"big5", "latin2_czech_cs"}}
 	for _, ccf := range ccfs {
-		n.DefaultCharset = ccf[0]
-		n.DefaultCollation = ccf[1]
-		if err := n.verifyCharset(); err == nil {
-			t.Errorf("test verifyCharset should fail but pass, charset: %s, collation: %s", n.DefaultCharset, n.DefaultCollation)
+		nf.DefaultCharset = ccf[0]
+		nf.DefaultCollation = ccf[1]
+		if err := nf.verifyCharset(); err == nil {
+			t.Errorf("test verifyCharset should fail but pass, charset: %s, collation: %s", nf.DefaultCharset, nf.DefaultCollation)
 		}
 	}
 }
 
-func TestFunc_VerifySlices(t *testing.T) {
+func TestVerifySlices_Success(t *testing.T) {
 	n := defaultNamespace()
 	var slice1 = &Slice{Name: "slice1", UserName: "user", Password: "", Master: "1.1.1.1:1", Slaves: []string{"1.1.1.1:2"}, Capacity: 1, MaxCapacity: 1, IdleTimeout: 100}
 	var slice2 = &Slice{Name: "slice2", UserName: "user", Password: "", Master: "1.1.1.1:1", Slaves: []string{"1.1.1.1:2"}, Capacity: 1, MaxCapacity: 1, IdleTimeout: 100}
@@ -224,8 +240,11 @@ func TestFunc_VerifySlices(t *testing.T) {
 	if err := n.verifySlices(); err != nil {
 		t.Errorf("test verifySlices failed, %v", err)
 	}
+}
 
+func TestVerifySlices_Error(t *testing.T) {
 	nf := defaultNamespace()
+	var slice1 = &Slice{Name: "slice1", UserName: "user", Password: "", Master: "1.1.1.1:1", Slaves: []string{"1.1.1.1:2"}, Capacity: 1, MaxCapacity: 1, IdleTimeout: 100}
 	var slicefs = []*Slice{
 		&Slice{Name: "", UserName: "user", Password: "", Master: "1.1.1.1:1", Slaves: []string{"1.1.1.1:2"}, Capacity: 1, MaxCapacity: 1, IdleTimeout: 100},
 		&Slice{Name: "slice1", UserName: "user", Password: "", Master: "1.1.1.1:1", Slaves: []string{"1.1.1.1:2"}, Capacity: 1, MaxCapacity: 1, IdleTimeout: 100},
@@ -239,12 +258,12 @@ func TestFunc_VerifySlices(t *testing.T) {
 		nf.Slices = append(nf.Slices, slice1)
 		nf.Slices = append(nf.Slices, slicef)
 		if err := nf.verifySlices(); err == nil {
-			t.Errorf("test verifySlices should fail but pass, slices: %s", JSONEncode(n.Slices))
+			t.Errorf("test verifySlices should fail but pass, slices: %s", JSONEncode(nf.Slices))
 		}
 	}
 }
 
-func TestFunc_VerifyDefaultSlice(t *testing.T) {
+func TestVerifyDefaultSlice_Success(t *testing.T) {
 	n := defaultNamespace()
 	n.Slices = append(n.Slices, &Slice{Name: "slice1"})
 	var dss = []string{"", "slice1"}
@@ -254,7 +273,9 @@ func TestFunc_VerifyDefaultSlice(t *testing.T) {
 			t.Errorf("test verifyDefaultSlice failed, %v", err)
 		}
 	}
+}
 
+func TestVerifyDefaultSlice_Error(t *testing.T) {
 	nf := defaultNamespace()
 	nf.Slices = append(nf.Slices, &Slice{Name: "slice1"})
 	nf.DefaultSlice = "slice2"
@@ -263,7 +284,7 @@ func TestFunc_VerifyDefaultSlice(t *testing.T) {
 	}
 }
 
-func TestFunc_VerifyShardRules(t *testing.T) {
+func TestVerifyShardRules_Success(t *testing.T) {
 	n := defaultNamespace()
 	n.Slices = []*Slice{
 		&Slice{Name: "slice-0", UserName: "root", Password: "root", Master: "127.0.0.1:3306", Capacity: 64, MaxCapacity: 128, IdleTimeout: 3600},
@@ -291,6 +312,10 @@ func TestFunc_VerifyShardRules(t *testing.T) {
 	if err := n.verifyShardRules(); err != nil {
 		t.Errorf("test verifyShardRules failed, %v", err)
 	}
+}
+
+func TestVerifyShardRules_Error(t *testing.T) {
+	//TODO
 }
 
 func TestNamespace_Verify(t *testing.T) {
@@ -586,7 +611,6 @@ func TestNamespace_Verify(t *testing.T) {
     ],
     "default_slice": "slice-0"
 }`
-
 	ns := &Namespace{}
 	if err := json.Unmarshal([]byte(nsStr), ns); err != nil {
 		t.Errorf("namespace unmarshal failed, err: %v", err)
