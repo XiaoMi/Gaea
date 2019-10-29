@@ -261,3 +261,33 @@ func TestFunc_VerifyDefaultSlice(t *testing.T) {
 		t.Errorf("test verifyDefaultSlice should fail but pass, defaultSlice: %s", nf.DefaultSlice)
 	}
 }
+
+func TestFunc_VerifyShardRules(t *testing.T) {
+	n := defaultNamespace()
+	n.Slices = []*Slice{
+		&Slice{Name: "slice-0", UserName: "root", Password: "root", Master: "127.0.0.1:3306", Capacity: 64, MaxCapacity: 128, IdleTimeout: 3600},
+		&Slice{Name: "slice-1", UserName: "root", Password: "root", Master: "127.0.0.1:3307", Capacity: 64, MaxCapacity: 128, IdleTimeout: 3600},
+	}
+	n.ShardRules = []*Shard{
+		&Shard{DB: "db_ks", Table: "tbl_ks", Type: "mod", Key: "id", Locations: []int{2, 2}, Slices: []string{"slice-0", "slice-1"}},
+		&Shard{DB: "db_ks", Table: "tbl_ks_child", Type: "linked", Key: "id", ParentTable: "tbl_ks"},
+		&Shard{DB: "db_ks", Table: "tbl_ks_user_child", Type: "linked", Key: "user_id", ParentTable: "tbl_ks"},
+		&Shard{DB: "db_ks", Table: "tbl_ks_global_one", Type: "global", Locations: []int{2, 2}, Slices: []string{"slice-0", "slice-1"}},
+		&Shard{DB: "db_ks", Table: "tbl_ks_global_two", Type: "global", Locations: []int{2, 2}, Slices: []string{"slice-0", "slice-1"}},
+		&Shard{DB: "db_ks", Table: "tbl_ks_range", Type: "range", Key: "id", Locations: []int{2, 2}, Slices: []string{"slice-0", "slice-1"}, TableRowLimit: 100},
+		&Shard{DB: "db_ks", Table: "tbl_ks_year", Type: "date_year", Key: "create_time", Slices: []string{"slice-0", "slice-1"}, DateRange: []string{"2014-2017", "2018-2019"}},
+		&Shard{DB: "db_ks", Table: "tbl_ks_month", Type: "date_month", Key: "create_time", Slices: []string{"slice-0", "slice-1"}, DateRange: []string{"201405-201406", "201408-201409"}},
+		&Shard{DB: "db_ks", Table: "tbl_ks_day", Type: "date_day", Key: "create_time", Slices: []string{"slice-0", "slice-1"}, DateRange: []string{"20140901-20140905", "20140907-20140908"}},
+		&Shard{DB: "db_mycat", Table: "tbl_mycat", Type: "mycat_mod", Key: "id", Locations: []int{2, 2}, Slices: []string{"slice-0", "slice-1"}, Databases: []string{"db_mycat_[0-3]"}},
+		&Shard{DB: "db_mycat", Table: "tbl_mycat_child", Type: "linked", ParentTable: "tbl_mycat", Key: "id"},
+		&Shard{DB: "db_mycat", Table: "tbl_mycat_user_child", Type: "linked", ParentTable: "tbl_mycat", Key: "user_id"},
+		&Shard{DB: "db_mycat", Table: "tbl_mycat_murmur", Type: "mycat_murmur", Key: "id", Locations: []int{2, 2}, Slices: []string{"slice-0", "slice-1"}, Databases: []string{"db_mycat_0", "db_mycat_1", "db_mycat_2", "db_mycat_3"}, Seed: "0", VirtualBucketTimes: "160"},
+		&Shard{DB: "db_mycat", Table: "tbl_mycat_long", Type: "mycat_long", Key: "id", Locations: []int{2, 2}, Slices: []string{"slice-0", "slice-1"}, Databases: []string{"db_mycat_[0-3]"}, PartitionCount: "4", PartitionLength: "256"},
+		&Shard{DB: "db_mycat", Table: "tbl_mycat_global_one", Type: "global", Locations: []int{2, 2}, Slices: []string{"slice-0", "slice-1"}, Databases: []string{"db_mycat_[0-3]"}},
+		&Shard{DB: "db_mycat", Table: "tbl_mycat_global_two", Type: "global", Locations: []int{2, 2}, Slices: []string{"slice-0", "slice-1"}, Databases: []string{"db_mycat_[0-3]"}},
+		&Shard{DB: "db_mycat", Table: "tbl_mycat_string", Type: "mycat_string", Key: "id", Locations: []int{2, 2}, Slices: []string{"slice-0", "slice-1"}, Databases: []string{"db_mycat_[0-3]"}, PartitionCount: "4", PartitionLength: "256", HashSlice: "20"},
+	}
+	if err := n.verifyShardRules(); err != nil {
+		t.Errorf("test verifyShardRules failed, %v", err)
+	}
+}
