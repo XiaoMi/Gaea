@@ -360,6 +360,24 @@ func TestVerifyShardRules_Error_ShardLinked(t *testing.T) {
 	}
 }
 
+func TestVerifyShardRules_Error_ShardHash(t *testing.T) {
+	nf := defaultNamespace()
+	// locations count is not equal
+	nf.ShardRules = []*Shard{&Shard{Type: ShardHash, Locations: []int{1}, Slices: []string{}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, shardRule: %s", JSONEncode(nf.ShardRules))
+	}
+}
+
+func TestVerifyShardRules_Error_ShardMod(t *testing.T) {
+	nf := defaultNamespace()
+	// locations count is not equal
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMod, Locations: []int{1}, Slices: []string{}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, shardRule: %s", JSONEncode(nf.ShardRules))
+	}
+}
+
 func TestNamespace_Verify(t *testing.T) {
 	nsStr := `
 {
