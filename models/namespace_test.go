@@ -314,8 +314,30 @@ func TestVerifyShardRules_Success(t *testing.T) {
 	}
 }
 
-func TestVerifyShardRules_Error(t *testing.T) {
-	//TODO
+func TestVerifyShardRule_Error_common(t *testing.T) {
+	nf := defaultNamespace()
+	// slices not match
+	nf.ShardRules = []*Shard{&Shard{Slices: []string{"slice"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+
+	// db duplicate
+	nf.ShardRules = []*Shard{
+		&Shard{DB: "db", Table: "table", Type: ShardMod},
+		&Shard{DB: "db", Table: "table", Type: ShardMod},
+	}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, shardRule: %s", JSONEncode(nf.ShardRules))
+	}
+}
+
+func TestVerifyShardRules_Error_ShardDefault(t *testing.T) {
+	nf := defaultNamespace()
+	nf.ShardRules = []*Shard{&Shard{Type: ShardDefault}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, shardRule: %s", JSONEncode(nf.ShardRules))
+	}
 }
 
 func TestNamespace_Verify(t *testing.T) {
