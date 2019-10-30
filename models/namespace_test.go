@@ -340,6 +340,26 @@ func TestVerifyShardRules_Error_ShardDefault(t *testing.T) {
 	}
 }
 
+func TestVerifyShardRules_Error_ShardLinked(t *testing.T) {
+	nf := defaultNamespace()
+	// without parent rules
+	nf.ShardRules = []*Shard{
+		&Shard{Type: ShardLinked, DB: "db1", Table: "table1", ParentTable: "table2"},
+	}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, shardRule: %s", JSONEncode(nf.ShardRules))
+	}
+
+	// link to another linkedRule
+	nf.ShardRules = []*Shard{
+		&Shard{Type: ShardLinked, DB: "db1", Table: "table1", ParentTable: "table2"},
+		&Shard{Type: ShardLinked, DB: "db1", Table: "table2", ParentTable: "table2"},
+	}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, shardRule: %s", JSONEncode(nf.ShardRules))
+	}
+}
+
 func TestNamespace_Verify(t *testing.T) {
 	nsStr := `
 {
