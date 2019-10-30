@@ -378,6 +378,126 @@ func TestVerifyShardRules_Error_ShardMod(t *testing.T) {
 	}
 }
 
+func TestVerifyShardRules_Error_ShardRange(t *testing.T) {
+	nf := defaultNamespace()
+	// locations count is not equal
+	nf.ShardRules = []*Shard{&Shard{Type: ShardRange, Locations: []int{1}, Slices: []string{}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, shardRule: %s", JSONEncode(nf.ShardRules))
+	}
+}
+
+func TestVerifyShardRules_Error_ShardDay(t *testing.T) {
+	nf := defaultNamespace()
+	nf.Slices = []*Slice{&Slice{Name: "slice1"}}
+	// dateRange count is not equal
+	nf.ShardRules = []*Shard{&Shard{Type: ShardDay, DateRange: []string{"1"}, Slices: []string{}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	// dateRange not match
+	nf.ShardRules = []*Shard{&Shard{Type: ShardDay, DateRange: []string{"1"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardDay, DateRange: []string{"abc"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardDay, DateRange: []string{"22222222"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardDay, DateRange: []string{"201910301-2019103"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardDay, DateRange: []string{"22222222-33333333"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardDay, DateRange: []string{"11111111-22222222"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	// date range overlapped
+	nf.Slices = []*Slice{&Slice{Name: "slice1"}, &Slice{Name: "slice2"}}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardDay, DateRange: []string{"20181030", "20181001"}, Slices: []string{"slice1", "slice2"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+}
+
+func TestVerifyShardRules_Error_ShardMonth(t *testing.T) {
+	nf := defaultNamespace()
+	nf.Slices = []*Slice{&Slice{Name: "slice1"}}
+	// dateRange count is not equal
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMonth, DateRange: []string{"1"}, Slices: []string{}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	// dateRange not match
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMonth, DateRange: []string{"1"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMonth, DateRange: []string{"abc"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMonth, DateRange: []string{"222222"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMonth, DateRange: []string{"2019101-20191"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMonth, DateRange: []string{"222222-333333"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMonth, DateRange: []string{"111111-222222"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	// date range overlapped
+	nf.Slices = []*Slice{&Slice{Name: "slice1"}, &Slice{Name: "slice2"}}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMonth, DateRange: []string{"201810", "201809"}, Slices: []string{"slice1", "slice2"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+}
+
+func TestVerifyShardRules_Error_ShardYear(t *testing.T) {
+	nf := defaultNamespace()
+	nf.Slices = []*Slice{&Slice{Name: "slice1"}}
+	// dateRange count is not equal
+	nf.ShardRules = []*Shard{&Shard{Type: ShardYear, DateRange: []string{"1"}, Slices: []string{}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	// dateRange not match
+	nf.ShardRules = []*Shard{&Shard{Type: ShardYear, DateRange: []string{"1"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardYear, DateRange: []string{"abc"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardYear, DateRange: []string{"20191-201"}, Slices: []string{"slice1"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	// date range overlapped
+	nf.Slices = []*Slice{&Slice{Name: "slice1"}, &Slice{Name: "slice2"}}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardYear, DateRange: []string{"2018", "2017"}, Slices: []string{"slice1", "slice2"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+}
+
 func TestNamespace_Verify(t *testing.T) {
 	nsStr := `
 {
