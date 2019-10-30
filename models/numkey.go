@@ -81,6 +81,9 @@ func ParseDayRange(dateRange string) ([]int, error) {
 		if len(dateTmp[0]) != dateLength {
 			return nil, errors.ErrDateRangeIllegal
 		}
+		if _, err := time.Parse(timeFormat, dateTmp[0]); err != nil {
+			return nil, errors.ErrDateRangeIllegal
+		}
 		dateNum, err := strconv.Atoi(dateTmp[0])
 		if err != nil {
 			return nil, err
@@ -126,12 +129,16 @@ func ParseDayRange(dateRange string) ([]int, error) {
 //201510-201512
 //201510,201511,201512
 func ParseMonthRange(dateRange string) ([]int, error) {
+	timeFormat := "200601"
 	dateMonth := make([]int, 0)
 	dateLength := 6
 
 	dateTmp := strings.SplitN(dateRange, "-", 2)
 	if len(dateTmp) == 1 {
 		if len(dateTmp[0]) != dateLength {
+			return nil, errors.ErrDateRangeIllegal
+		}
+		if _, err := time.Parse(timeFormat, dateTmp[0]); err != nil {
 			return nil, errors.ErrDateRangeIllegal
 		}
 		dateNum, err := strconv.Atoi(dateTmp[0])
@@ -151,6 +158,9 @@ func ParseMonthRange(dateRange string) ([]int, error) {
 		dateTmp[0], dateTmp[1] = dateTmp[1], dateTmp[0]
 	}
 
+	if _, err := time.Parse(timeFormat, dateTmp[0]); err != nil {
+		return nil, errors.ErrDateRangeIllegal
+	}
 	beginYear, err := strconv.Atoi(dateTmp[0][:4])
 	if err != nil {
 		return nil, err
@@ -160,6 +170,9 @@ func ParseMonthRange(dateRange string) ([]int, error) {
 		return nil, err
 	}
 
+	if _, err := time.Parse(timeFormat, dateTmp[1]); err != nil {
+		return nil, errors.ErrDateRangeIllegal
+	}
 	endYear, err := strconv.Atoi(dateTmp[1][:4])
 	if err != nil {
 		return nil, err
@@ -189,12 +202,16 @@ func ParseMonthRange(dateRange string) ([]int, error) {
 //2013-2015
 //2013,2014,2015
 func ParseYearRange(dateRange string) ([]int, error) {
+	timeFormat := "2006"
 	dateYear := make([]int, 0)
 	dateLength := 4
 
 	dateTmp := strings.SplitN(dateRange, "-", 2)
 	if len(dateTmp) == 1 {
 		if len(dateTmp[0]) != dateLength {
+			return nil, errors.ErrDateRangeIllegal
+		}
+		if _, err := time.Parse(timeFormat, dateTmp[0]); err != nil {
 			return nil, errors.ErrDateRangeIllegal
 		}
 		dateNum, err := strconv.Atoi(dateTmp[0])
@@ -210,9 +227,17 @@ func ParseYearRange(dateRange string) ([]int, error) {
 	if dateTmp[1] < dateTmp[0] {
 		dateTmp[0], dateTmp[1] = dateTmp[1], dateTmp[0]
 	}
+
+	if _, err := time.Parse(timeFormat, dateTmp[0]); err != nil {
+		return nil, errors.ErrDateRangeIllegal
+	}
 	beginYear, err := strconv.Atoi(dateTmp[0])
 	if err != nil {
 		return nil, err
+	}
+
+	if _, err := time.Parse(timeFormat, dateTmp[1]); err != nil {
+		return nil, errors.ErrDateRangeIllegal
 	}
 	endYear, err := strconv.Atoi(dateTmp[1])
 	if err != nil {
