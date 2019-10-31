@@ -557,6 +557,52 @@ func testVerifyShardRules_Error_ShardMycatLong(t string) error {
 	return nil
 }
 
+func TestVerifyShardRules_Error_ShardMycatString(t *testing.T) {
+	if err := testVerifyShardRules_Error_ShardMycatMod(ShardMycatString); err != nil {
+		t.Error(err)
+	}
+
+	if err := testVerifyShardRules_Error_ShardMycatLong(ShardMycatString); err != nil {
+		t.Error(err)
+	}
+
+	nf := defaultNamespace()
+	nf.Slices = []*Slice{&Slice{Name: "slice1"}}
+	// verify hashSlice
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatString, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PartitionCount: "2", PartitionLength: "512", HashSlice: "test"}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatString, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PartitionCount: "2", PartitionLength: "512", HashSlice: "test:"}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatString, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PartitionCount: "2", PartitionLength: "512", HashSlice: ":test"}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatString, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PartitionCount: "2", PartitionLength: "512", HashSlice: "a:b:c"}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+}
+
+func TestVerifyShardRules_Error_ShardMycatMURMUR(t *testing.T) {
+
+}
+
+func TestVerifyShardRules_Error_ShardMycatPaddingMod(t *testing.T) {
+
+}
+
+func TestVerifyShardRules_Error_ShardGlobal(t *testing.T) {
+
+}
+
+func TestVerifyShardRules_Error_GetRealDatabases(t *testing.T) {
+
+}
+
 func TestNamespace_Verify(t *testing.T) {
 	nsStr := `
 {
