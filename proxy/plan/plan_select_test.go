@@ -243,6 +243,15 @@ func TestSimpleSelectShardMycatMurmur_ShardKeyTypeString(t *testing.T) {
 				},
 			},
 		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_murmur where id = '0'",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat_murmur` WHERE `id`='0'"},
+				},
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.sql, getTestFunc(ns, test))
