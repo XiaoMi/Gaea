@@ -15,6 +15,7 @@ package models
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 )
 
@@ -496,6 +497,33 @@ func TestVerifyShardRules_Error_ShardYear(t *testing.T) {
 	if err := nf.verifyShardRules(); err == nil {
 		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
 	}
+}
+
+func TestVerifyShardRules_Error_ShardMycatMod(t *testing.T) {
+	if err := testVerifyShardRules_Error_ShardMycatMod(ShardMycatMod); err != nil {
+		t.Error(err)
+	}
+}
+
+func testVerifyShardRules_Error_ShardMycatMod(t string) error {
+	nf := defaultNamespace()
+	nf.Slices = []*Slice{&Slice{Name: "slice1"}}
+	// location count is not equal of slice
+	nf.ShardRules = []*Shard{&Shard{Type: t, Locations: []int{1}, Slices: []string{}, Databases: []string{""}}}
+	if err := nf.verifyShardRules(); err == nil {
+		return fmt.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	// db bound value invalid
+	nf.ShardRules = []*Shard{&Shard{Type: t, Locations: []int{1}, Slices: []string{"slice1"}, Databases: []string{"db[1-1]"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		return fmt.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	// location count is not equal of db
+	nf.ShardRules = []*Shard{&Shard{Type: t, Locations: []int{1}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}}}
+	if err := nf.verifyShardRules(); err == nil {
+		return fmt.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	return nil
 }
 
 func TestNamespace_Verify(t *testing.T) {
