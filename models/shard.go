@@ -14,6 +14,13 @@
 
 package models
 
+import (
+	"fmt"
+	"github.com/XiaoMi/Gaea/core/errors"
+	"regexp"
+	"strconv"
+)
+
 // constants of shard type
 const (
 	ShardDefault         = "default"
@@ -30,6 +37,19 @@ const (
 	ShardMycatString     = "mycat_string"
 	ShardMycatMURMUR     = "mycat_murmur"
 	ShardMycatPaddingMod = "mycat_padding_mod"
+
+	// PartitionLength length of partition
+	PartitionLength = 1024
+
+	// mod padding
+	PaddingModLeftEnd  = 0
+	PaddingModRightEnd = 1
+
+	PaddingModDefaultPadFrom   = PaddingModRightEnd
+	PaddingModDefaultPadLength = 18
+	PaddingModDefaultModBegin  = 10
+	PaddingModDefaultModEnd    = 16
+	PaddingModDefaultMod       = 2
 )
 
 // Shard means shard model in etcd
@@ -65,11 +85,63 @@ type Shard struct {
 	ModEnd    string `json:"mod_end"`
 }
 
-func (p *Shard) verify() error {
+func (s *Shard) verify() error {
+	if err := s.verifyRuleSliceInfos(); err != nil {
+		return err
+	}
 	return nil
 }
 
+func (s *Shard) verifyRuleSliceInfos() error {
+	f, ok := ruleVerifyFuncMapping[s.Type]
+	if !ok {
+		return errors.ErrUnknownRuleType
+	}
+	return f(s)
+}
+
 // Encode encode json
-func (p *Shard) Encode() []byte {
-	return JSONEncode(p)
+func (s *Shard) Encode() []byte {
+	return JSONEncode(s)
+}
+
+func IsMycatShardingRule(ruleType string) bool {
+	return ruleType == ShardMod || ruleType == ShardMycatLong || ruleType == ShardMycatMURMUR || ruleType == ShardMycatPaddingMod || ruleType == ShardMycatString
+}
+
+var rangeDatabaseRegex = regexp.MustCompile(`^(\S+?)\[(\d+)-(\d+)\]$`)
+
+// if a dbname is a database list, then parse the real dbnames and add to the result.
+// the range contains left bound and right bound, which means [left, right].
+func getRealDatabases(dbs []string) ([]string, error) {
+	var ret []string
+	for _, db := range dbs {
+		if rangeDatabaseRegex.MatchString(db) {
+			matches := rangeDatabaseRegex.FindStringSubmatch(db)
+			if len(matches) != 4 {
+				return nil, fmt.Errorf("invalid database list: %s", db)
+			}
+			dbPrefix := matches[1]
+			leftBoundStr := matches[2]
+			rightBoundStr := matches[3]
+			leftBound, err := strconv.Atoi(leftBoundStr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid left bound value of database list: %s", db)
+			}
+			rightBound, err := strconv.Atoi(rightBoundStr)
+			if err != nil {
+				return nil, fmt.Errorf("invalid right bound value of database list: %s", db)
+			}
+			if rightBound <= leftBound {
+				return nil, fmt.Errorf("invalid bound value of database list: %s", db)
+			}
+			for i := leftBound; i <= rightBound; i++ {
+				realDB := dbPrefix + strconv.Itoa(i)
+				ret = append(ret, realDB)
+			}
+		} else {
+			ret = append(ret, db)
+		}
+	}
+	return ret, nil
 }
