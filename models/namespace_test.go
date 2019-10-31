@@ -606,7 +606,56 @@ func TestVerifyShardRules_Error_ShardMycatMURMUR(t *testing.T) {
 }
 
 func TestVerifyShardRules_Error_ShardMycatPaddingMod(t *testing.T) {
+	if err := testVerifyShardRules_Error_ShardMycatMod(ShardMycatPaddingMod); err != nil {
+		t.Error(err)
+	}
 
+	nf := defaultNamespace()
+	nf.Slices = []*Slice{&Slice{Name: "slice1"}}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatPaddingMod, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PadFrom: "test", PadLength: "", ModBegin: "", ModEnd: ""}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatPaddingMod, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PadFrom: "1", PadLength: "test", ModBegin: "", ModEnd: ""}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatPaddingMod, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PadFrom: "1", PadLength: "1", ModBegin: "test", ModEnd: ""}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatPaddingMod, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PadFrom: "1", PadLength: "1", ModBegin: "1", ModEnd: "test"}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatPaddingMod, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PadFrom: "2", PadLength: "1", ModBegin: "1", ModEnd: "1"}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatPaddingMod, Locations: []int{1}, Slices: []string{"slice1"}, Databases: []string{"db0"}, PadFrom: "1", PadLength: "1", ModBegin: "1", ModEnd: "1"}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatPaddingMod, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PadFrom: "1", PadLength: "1", ModBegin: "-1", ModEnd: "4"}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatPaddingMod, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PadFrom: "1", PadLength: "1", ModBegin: "4", ModEnd: "4"}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatPaddingMod, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PadFrom: "1", PadLength: "0", ModBegin: "0", ModEnd: "4"}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatPaddingMod, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PadFrom: "1", PadLength: "-1", ModBegin: "0", ModEnd: "4"}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatPaddingMod, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PadFrom: "1", PadLength: "2", ModBegin: "0", ModEnd: "4"}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
 }
 
 func TestVerifyShardRules_Error_ShardGlobal(t *testing.T) {
