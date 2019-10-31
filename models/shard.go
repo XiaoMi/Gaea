@@ -89,20 +89,6 @@ func (s *Shard) verify() error {
 	if err := s.verifyRuleSliceInfos(); err != nil {
 		return err
 	}
-
-	if IsMycatShardingRule(s.Type) {
-		if _, err := getRealDatabases(s.Databases); err != nil {
-			return err
-		}
-	}
-
-	if s.Type == ShardGlobal && len(s.Databases) != 0 {
-		// 如果全局表指定了物理库名, 则使用mycatDatabases存储这一信息, 否则使用逻辑库名作为物理库名.
-		if _, err := getRealDatabases(s.Databases); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
