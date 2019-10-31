@@ -588,7 +588,21 @@ func TestVerifyShardRules_Error_ShardMycatString(t *testing.T) {
 }
 
 func TestVerifyShardRules_Error_ShardMycatMURMUR(t *testing.T) {
+	if err := testVerifyShardRules_Error_ShardMycatMod(ShardMycatMURMUR); err != nil {
+		t.Error(err)
+	}
 
+	nf := defaultNamespace()
+	nf.Slices = []*Slice{&Slice{Name: "slice1"}}
+	// verify seed and virtualBucketTimes
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatMURMUR, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, Seed: "test", VirtualBucketTimes: ""}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatMURMUR, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, Seed: "5", VirtualBucketTimes: "test"}}
+	if err := nf.verifyShardRules(); err == nil {
+		t.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
 }
 
 func TestVerifyShardRules_Error_ShardMycatPaddingMod(t *testing.T) {
