@@ -526,6 +526,37 @@ func testVerifyShardRules_Error_ShardMycatMod(t string) error {
 	return nil
 }
 
+func TestVerifyShardRules_Error_ShardMycatLong(t *testing.T) {
+	if err := testVerifyShardRules_Error_ShardMycatMod(ShardMycatLong); err != nil {
+		t.Error(err)
+	}
+
+	if err := testVerifyShardRules_Error_ShardMycatLong(ShardMycatLong); err != nil {
+		t.Error(err)
+	}
+}
+
+func testVerifyShardRules_Error_ShardMycatLong(t string) error {
+	nf := defaultNamespace()
+	nf.Slices = []*Slice{&Slice{Name: "slice1"}}
+	// patitionCount to int array
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatLong, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PartitionCount: "test", PartitionLength: ""}}
+	if err := nf.verifyShardRules(); err == nil {
+		return fmt.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	// patitionLength to int array
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatLong, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PartitionCount: "4", PartitionLength: "test"}}
+	if err := nf.verifyShardRules(); err == nil {
+		return fmt.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	// partitionScope not match
+	nf.ShardRules = []*Shard{&Shard{Type: ShardMycatLong, Locations: []int{2}, Slices: []string{"slice1"}, Databases: []string{"db[0-1]"}, PartitionCount: "2", PartitionLength: "256"}}
+	if err := nf.verifyShardRules(); err == nil {
+		return fmt.Errorf("test verifyShardRules should fail but pass, slices: %s, shardRule: %s", JSONEncode(nf.Slices), JSONEncode(nf.ShardRules))
+	}
+	return nil
+}
+
 func TestNamespace_Verify(t *testing.T) {
 	nsStr := `
 {
