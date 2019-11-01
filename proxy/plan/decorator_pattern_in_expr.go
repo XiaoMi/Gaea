@@ -15,10 +15,8 @@
 package plan
 
 import (
-	"bytes"
 	"fmt"
 	"io"
-
 	"sort"
 
 	"github.com/XiaoMi/Gaea/parser/ast"
@@ -26,6 +24,7 @@ import (
 	driver "github.com/XiaoMi/Gaea/parser/tidb-types/parser_driver"
 	"github.com/XiaoMi/Gaea/parser/types"
 	"github.com/XiaoMi/Gaea/proxy/router"
+	"github.com/XiaoMi/Gaea/util"
 )
 
 // type check
@@ -130,10 +129,13 @@ func getPatternInRouteResult(n *ast.ColumnName, isNotIn bool, rule router.Rule, 
 
 	var indexes []int
 	valueMap := make(map[int][]ast.ExprNode)
-	s := &bytes.Buffer{}
 	for _, vi := range values {
-		vi.Format(s)
-		idx, err := rule.FindTableIndex(s.String())
+		v, _ := vi.(*driver.ValueExpr)
+		value, err := util.GetValueExprResult(v)
+		if err != nil {
+			return nil, nil, err
+		}
+		idx, err := rule.FindTableIndex(value)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -141,7 +143,6 @@ func getPatternInRouteResult(n *ast.ColumnName, isNotIn bool, rule router.Rule, 
 			indexes = append(indexes, idx)
 		}
 		valueMap[idx] = append(valueMap[idx], vi)
-		s.Reset()
 	}
 	sort.Ints(indexes)
 	return indexes, valueMap, nil

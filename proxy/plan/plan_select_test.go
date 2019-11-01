@@ -227,6 +227,37 @@ func TestSimpleSelectShardMycatMurmur(t *testing.T) {
 	}
 }
 
+func TestSimpleSelectShardMycatMurmur_ShardKeyTypeString(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_murmur where id in ('0')",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat_murmur` WHERE `id` IN ('0')"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat_murmur where id = '0'",
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat_murmur` WHERE `id`='0'"},
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
 func TestSimpleSelectShardMycatString(t *testing.T) {
 	ns, err := preparePlanInfo()
 	if err != nil {
