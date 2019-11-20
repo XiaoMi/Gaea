@@ -173,6 +173,13 @@ func (a *AggregateFuncSumMerger) MergeTo(from, to ResultRow) error {
 		return fmt.Errorf("field index out of bound: %d", a.fieldIndex)
 	}
 
+	fromValueI := from.GetValue(idx)
+
+	// nil对应NULL, NULL不参与比较
+	if fromValueI == nil {
+		return nil
+	}
+
 	switch to.GetValue(idx).(type) {
 	case int64:
 		return a.sumToInt64(from, to)
