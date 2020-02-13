@@ -645,12 +645,15 @@ func GenerateSelectResultRowData(r *mysql.Result) error {
 		var row []byte
 		for _, value := range vs {
 			// build row values
-			b, err := formatValue(value)
-			if err != nil {
-				return err
+			if value == nil {
+				row = append(row, 0xfb)
+			} else {
+				b, err := formatValue(value)
+				if err != nil {
+					return err
+				}
+				row = mysql.AppendLenEncStringBytes(row, b)
 			}
-
-			row = mysql.AppendLenEncStringBytes(row, b)
 		}
 
 		r.RowDatas = append(r.RowDatas, row)
