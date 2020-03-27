@@ -161,7 +161,7 @@ func CreateManager(cfg *models.Proxy, namespaceConfigs map[string]*models.Namesp
 	}
 	m.users[current] = user
 
-	m.startConnectPoolMetricsTask()
+	m.startConnectPoolMetricsTask(cfg.StatsInterval)
 	return m, nil
 }
 
@@ -357,9 +357,13 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace
 	}
 }
 
-func (m *Manager) startConnectPoolMetricsTask() {
+func (m *Manager) startConnectPoolMetricsTask(interval int) {
+	if interval <= 0 {
+		interval = 10
+	}
+
 	go func() {
-		t := time.NewTicker(1 * time.Second)
+		t := time.NewTicker(time.Duration(interval) * time.Second)
 		for {
 			select {
 			case <-m.GetStatisticManager().closeChan:

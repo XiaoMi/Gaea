@@ -50,7 +50,8 @@ type Proxy struct {
 	SessionTimeout int    `ini:"session_timeout"`
 
 	// 监控配置
-	StatsEnabled string `ini:"stats_enabled"` // set true to enable stats
+	StatsEnabled  string `ini:"stats_enabled"`  // set true to enable stats
+	StatsInterval int    `ini:"stats_interval"` // set stats interval of connect pool
 
 	EncryptKey string `ini:"encrypt_key"`
 }
