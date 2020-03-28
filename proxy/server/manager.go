@@ -388,13 +388,16 @@ func (m *Manager) recordBackendConnectPoolMetrics(namespace string) {
 	for sliceName, slice := range ns.slices {
 		m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slice.Master.Addr(), slice.Master.InUse())
 		m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slice.Master.Addr(), slice.Master.Available())
+		m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slice.Master.Addr(), slice.Master.WaitCount())
 		for _, slave := range slice.Slave {
 			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slave.Addr(), slave.InUse())
 			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slave.Addr(), slave.Available())
+			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slave.Addr(), slave.WaitCount())
 		}
 		for _, statisticSlave := range slice.StatisticSlave {
 			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.InUse())
 			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.Available())
+			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.WaitCount())
 		}
 	}
 }
@@ -616,10 +619,10 @@ type StatisticManager struct {
 	backendSQLFingerprintErrorCounts *stats.CountersWithMultiLabels // 后端SQL指纹错误数统计
 	backendConnectPoolIdleCounts     *stats.GaugesWithMultiLabels   //后端空闲连接数统计
 	backendConnectPoolInUseCounts    *stats.GaugesWithMultiLabels   //后端正在使用连接数统计
+	backendConnectPoolWaitCounts     *stats.GaugesWithMultiLabels   //后端等待队列统计
 
 	slowSQLTime int64
-
-	closeChan chan bool
+	closeChan   chan bool
 }
 
 // NewStatisticManager return empty StatisticManager
@@ -685,6 +688,7 @@ func (s *StatisticManager) Init(cfg *models.Proxy) error {
 	s.backendSQLFingerprintErrorCounts = stats.NewCountersWithMultiLabels("BackendSqlFingerprintErrorCounts", "gaea proxy backend sql fingerprint error counts", []string{statsLabelFingerprint, statsLabelNamespace})
 	s.backendConnectPoolIdleCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolIdleCounts", "gaea proxy backend idle connect counts", []string{statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
 	s.backendConnectPoolInUseCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolInUseCounts", "gaea proxy backend in-use connect counts", []string{statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
+	s.backendConnectPoolWaitCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolWaitCounts", "gaea proxy backend wait connect counts", []string{statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
 
 	s.startClearTask()
 	return nil
@@ -801,14 +805,20 @@ func (s *StatisticManager) AddWriteFlowCount(namespace string, byteCount int) {
 	s.flowCounts.Add(statsKey, int64(byteCount))
 }
 
-// IncrConnectCount add connect count
+//record idle connect count 
 func (s *StatisticManager) recordConnectPoolIdleCount(namespace string, slice string, addr string, count int64) {
 	statsKey := []string{namespace, slice, addr}
 	s.backendConnectPoolIdleCounts.Set(statsKey, count)
 }
 
-// IncrConnectCount add connect count
+//record in-use connect count
 func (s *StatisticManager) recordConnectPoolInuseCount(namespace string, slice string, addr string, count int64) {
 	statsKey := []string{namespace, slice, addr}
 	s.backendConnectPoolInUseCounts.Set(statsKey, count)
+}
+
+//record wait queue length
+func (s *StatisticManager) recordConnectPoolWaitCount(namespace string, slice string, addr string, count int64) {
+	statsKey := []string{namespace, slice, addr}
+	s.backendConnectPoolWaitCounts.Set(statsKey, count)
 }
