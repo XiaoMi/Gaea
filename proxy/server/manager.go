@@ -619,7 +619,7 @@ type StatisticManager struct {
 	backendSQLFingerprintErrorCounts *stats.CountersWithMultiLabels // 后端SQL指纹错误数统计
 	backendConnectPoolIdleCounts     *stats.GaugesWithMultiLabels   //后端空闲连接数统计
 	backendConnectPoolInUseCounts    *stats.GaugesWithMultiLabels   //后端正在使用连接数统计
-	backendConnectPoolWaitCounts     *stats.GaugesWithMultiLabels   //后端等待连接数统计
+	backendConnectPoolWaitCounts     *stats.GaugesWithMultiLabels   //后端等待队列统计
 	slowSQLTime int64
 
 	closeChan chan bool
