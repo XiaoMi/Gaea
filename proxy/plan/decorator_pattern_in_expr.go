@@ -46,39 +46,39 @@ type PatternInExprDecorator struct {
 }
 
 // NeedCreatePatternInExprDecorator check if PatternInExpr needs decoration
-func NeedCreatePatternInExprDecorator(p *TableAliasStmtInfo, n *ast.PatternInExpr) (router.Rule, bool, error) {
+func NeedCreatePatternInExprDecorator(p *TableAliasStmtInfo, n *ast.PatternInExpr) (router.Rule, bool, bool, error) {
 	if n.Sel != nil {
-		return nil, false, fmt.Errorf("TableName does not support Sel in sharding")
+		return nil, false, false, fmt.Errorf("TableName does not support Sel in sharding")
 	}
 
 	// 如果不是ColumnNameExpr, 则不做任何路由计算和装饰, 直接返回
 	columnNameExpr, ok := n.Expr.(*ast.ColumnNameExpr)
 	if !ok {
-		return nil, false, nil
+		return nil, false, false, nil
 	}
 
-	rule, need, err := NeedCreateColumnNameExprDecoratorInCondition(p, columnNameExpr)
+	rule, need, isAlias, err := NeedCreateColumnNameExprDecoratorInCondition(p, columnNameExpr)
 	if err != nil {
-		return nil, false, fmt.Errorf("check ColumnName error: %v", err)
+		return nil, false, false, fmt.Errorf("check ColumnName error: %v", err)
 	}
 
 	if !need && rule == nil {
-		return nil, false, nil
+		return nil, false, false, nil
 	}
 
 	// ColumnName不需要装饰, 不代表PatternInExpr不需要装饰, 对全局表来说, PatternInExpr也需要装饰
 	if rule.GetType() == router.GlobalTableRuleType {
-		return rule, true, nil
+		return rule, true, isAlias, nil
 	}
 
-	return rule, need, nil
+	return rule, need, isAlias, nil
 }
 
 // CreatePatternInExprDecorator create PatternInExprDecorator
 // 必须先检查是否需要装饰
-func CreatePatternInExprDecorator(n *ast.PatternInExpr, rule router.Rule, result *RouteResult) (*PatternInExprDecorator, error) {
+func CreatePatternInExprDecorator(n *ast.PatternInExpr, rule router.Rule, isAlias bool, result *RouteResult) (*PatternInExprDecorator, error) {
 	columnNameExpr := n.Expr.(*ast.ColumnNameExpr)
-	columnNameExprDecorator := CreateColumnNameExprDecorator(columnNameExpr, rule, result)
+	columnNameExprDecorator := CreateColumnNameExprDecorator(columnNameExpr, rule, isAlias, result)
 
 	tableIndexes, indexValueMap, err := getPatternInRouteResult(columnNameExpr.Name, n.Not, rule, n.List)
 	if err != nil {

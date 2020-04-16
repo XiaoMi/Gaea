@@ -287,13 +287,13 @@ func createSelectFieldFromByItem(p *SelectPlan, item *ast.ByItem) (*ast.SelectFi
 		return nil, fmt.Errorf("ByItem.Expr is not a ColumnNameExpr")
 	}
 
-	rule, need, err := NeedCreateColumnNameExprDecoratorInField(p.TableAliasStmtInfo, columnExpr)
+	rule, need, isAlias, err := NeedCreateColumnNameExprDecoratorInField(p.TableAliasStmtInfo, columnExpr)
 	if err != nil {
 		return nil, err
 	}
 
 	if need {
-		decorator := CreateColumnNameExprDecorator(columnExpr, rule, p.GetRouteResult())
+		decorator := CreateColumnNameExprDecorator(columnExpr, rule, isAlias, p.GetRouteResult())
 		item.Expr = decorator
 	}
 
@@ -504,12 +504,12 @@ func (s *ColumnNameRewriteVisitor) Leave(n ast.Node) (node ast.Node, ok bool) {
 	if !ok {
 		return n, true
 	}
-	rule, need, err := NeedCreateColumnNameExprDecoratorInField(s.info, field)
+	rule, need, isAlias, err := NeedCreateColumnNameExprDecoratorInField(s.info, field)
 	if err != nil {
 		panic(fmt.Errorf("check NeedCreateColumnNameExprDecoratorInField in ColumnNameExpr error: %v", err))
 	}
 	if need {
-		decorator := CreateColumnNameExprDecorator(field, rule, s.info.GetRouteResult())
+		decorator := CreateColumnNameExprDecorator(field, rule, isAlias, s.info.GetRouteResult())
 		return decorator, true
 	}
 
@@ -592,14 +592,14 @@ func handleComparisonExpr(p *TableAliasStmtInfo, comp ast.ExprNode) (bool, []int
 }
 
 func handlePatternInExpr(p *TableAliasStmtInfo, expr *ast.PatternInExpr) (bool, []int, ast.ExprNode, error) {
-	rule, need, err := NeedCreatePatternInExprDecorator(p, expr)
+	rule, need, isAlias, err := NeedCreatePatternInExprDecorator(p, expr)
 	if err != nil {
 		return false, nil, nil, fmt.Errorf("check PatternInExpr error: %v", err)
 	}
 	if !need {
 		return false, nil, expr, nil
 	}
-	decorator, err := CreatePatternInExprDecorator(expr, rule, p.GetRouteResult())
+	decorator, err := CreatePatternInExprDecorator(expr, rule, isAlias, p.GetRouteResult())
 	if err != nil {
 		return false, nil, nil, fmt.Errorf("create PatternInExprDecorator error: %v", err)
 	}
@@ -607,7 +607,7 @@ func handlePatternInExpr(p *TableAliasStmtInfo, expr *ast.PatternInExpr) (bool, 
 }
 
 func handleBetweenExpr(p *TableAliasStmtInfo, expr *ast.BetweenExpr) (bool, []int, ast.ExprNode, error) {
-	rule, need, err := NeedCreateBetweenExprDecorator(p, expr)
+	rule, need, isAlias, err := NeedCreateBetweenExprDecorator(p, expr)
 	if err != nil {
 		return false, nil, nil, fmt.Errorf("check BetweenExpr error: %v", err)
 	}
@@ -615,7 +615,7 @@ func handleBetweenExpr(p *TableAliasStmtInfo, expr *ast.BetweenExpr) (bool, []in
 		return false, nil, expr, nil
 	}
 
-	decorator, err := CreateBetweenExprDecorator(expr, rule, p.GetRouteResult())
+	decorator, err := CreateBetweenExprDecorator(expr, rule, isAlias, p.GetRouteResult())
 	if err != nil {
 		return false, nil, nil, fmt.Errorf("create CreateBetweenExprDecorator error: %v", err)
 	}
@@ -702,7 +702,7 @@ func handleBinaryOperationExprMathCompare(p *TableAliasStmtInfo, expr *ast.Binar
 			return handleBinaryOperationExprCompareLeftColumnRightValue(p, expr, getFindTableIndexesFunc(expr.Op))
 		}
 		column := expr.L.(*ast.ColumnNameExpr)
-		rule, need, err := NeedCreateColumnNameExprDecoratorInCondition(p, column)
+		rule, need, isAlias, err := NeedCreateColumnNameExprDecoratorInCondition(p, column)
 		if err != nil {
 			return false, nil, nil, fmt.Errorf("check ColumnNameExpr error in BinaryOperationExpr.L: %v", err)
 		}
@@ -710,7 +710,7 @@ func handleBinaryOperationExprMathCompare(p *TableAliasStmtInfo, expr *ast.Binar
 			return false, nil, expr, nil
 		}
 
-		decorator := CreateColumnNameExprDecorator(column, rule, p.GetRouteResult())
+		decorator := CreateColumnNameExprDecorator(column, rule, isAlias, p.GetRouteResult())
 		expr.L = decorator
 		return false, nil, expr, nil
 	}
@@ -720,7 +720,7 @@ func handleBinaryOperationExprMathCompare(p *TableAliasStmtInfo, expr *ast.Binar
 			return handleBinaryOperationExprCompareLeftValueRightColumn(p, expr, getFindTableIndexesFunc(inverseOperator(expr.Op)))
 		}
 		column := expr.R.(*ast.ColumnNameExpr)
-		rule, need, err := NeedCreateColumnNameExprDecoratorInCondition(p, column)
+		rule, need, isAlias, err := NeedCreateColumnNameExprDecoratorInCondition(p, column)
 		if err != nil {
 			return false, nil, nil, fmt.Errorf("check ColumnNameExpr error in BinaryOperationExpr.R: %v", err)
 		}
@@ -728,7 +728,7 @@ func handleBinaryOperationExprMathCompare(p *TableAliasStmtInfo, expr *ast.Binar
 			return false, nil, expr, nil
 		}
 
-		decorator := CreateColumnNameExprDecorator(column, rule, p.GetRouteResult())
+		decorator := CreateColumnNameExprDecorator(column, rule, isAlias, p.GetRouteResult())
 		expr.R = decorator
 		return false, nil, expr, nil
 	}
@@ -740,23 +740,23 @@ func handleBinaryOperationExprMathCompare(p *TableAliasStmtInfo, expr *ast.Binar
 // 如果出现分表列, 只创建一个替换表名的装饰器, 不计算路由. 因此返回结果前两个一定是false, nil
 func handleBinaryOperationExprOther(p *TableAliasStmtInfo, expr *ast.BinaryOperationExpr) (bool, []int, ast.ExprNode, error) {
 	if lColumn, ok := expr.L.(*ast.ColumnNameExpr); ok {
-		lRule, lNeed, lErr := NeedCreateColumnNameExprDecoratorInCondition(p, lColumn)
+		lRule, lNeed, lIsAlias, lErr := NeedCreateColumnNameExprDecoratorInCondition(p, lColumn)
 		if lErr != nil {
 			return false, nil, nil, fmt.Errorf("check ColumnNameExpr error in BinaryOperationExpr.L: %v", lErr)
 		}
 
 		if lNeed {
-			lDecorator := CreateColumnNameExprDecorator(lColumn, lRule, p.GetRouteResult())
+			lDecorator := CreateColumnNameExprDecorator(lColumn, lRule, lIsAlias, p.GetRouteResult())
 			expr.L = lDecorator
 		}
 	}
 	if rColumn, ok := expr.R.(*ast.ColumnNameExpr); ok {
-		rRule, rNeed, rErr := NeedCreateColumnNameExprDecoratorInCondition(p, rColumn)
+		rRule, rNeed, rIsAlias, rErr := NeedCreateColumnNameExprDecoratorInCondition(p, rColumn)
 		if rErr != nil {
 			return false, nil, nil, fmt.Errorf("check ColumnNameExpr error in BinaryOperationExpr.R: %v", rErr)
 		}
 		if rNeed {
-			rDecorator := CreateColumnNameExprDecorator(rColumn, rRule, p.GetRouteResult())
+			rDecorator := CreateColumnNameExprDecorator(rColumn, rRule, rIsAlias, p.GetRouteResult())
 			expr.R = rDecorator
 		}
 	}
@@ -849,22 +849,22 @@ func inverseOperator(op opcode.Op) opcode.Op {
 
 func handleBinaryOperationExprCompareLeftColumnRightColumn(p *TableAliasStmtInfo, expr *ast.BinaryOperationExpr) (bool, []int, ast.ExprNode, error) {
 	lColumn := expr.L.(*ast.ColumnNameExpr)
-	lRule, lNeed, lErr := NeedCreateColumnNameExprDecoratorInCondition(p, lColumn)
+	lRule, lNeed, lIsAlias, lErr := NeedCreateColumnNameExprDecoratorInCondition(p, lColumn)
 	if lErr != nil {
 		return false, nil, nil, fmt.Errorf("check ColumnNameExpr error in BinaryOperationExpr.L: %v", lErr)
 	}
 	rColumn := expr.R.(*ast.ColumnNameExpr)
-	rRule, rNeed, rErr := NeedCreateColumnNameExprDecoratorInCondition(p, rColumn)
+	rRule, rNeed, rIsAlias, rErr := NeedCreateColumnNameExprDecoratorInCondition(p, rColumn)
 	if rErr != nil {
 		return false, nil, nil, fmt.Errorf("check ColumnNameExpr error in BinaryOperationExpr.R: %v", rErr)
 	}
 
 	if lNeed {
-		lDecorator := CreateColumnNameExprDecorator(lColumn, lRule, p.GetRouteResult())
+		lDecorator := CreateColumnNameExprDecorator(lColumn, lRule, lIsAlias, p.GetRouteResult())
 		expr.L = lDecorator
 	}
 	if rNeed {
-		rDecorator := CreateColumnNameExprDecorator(rColumn, rRule, p.GetRouteResult())
+		rDecorator := CreateColumnNameExprDecorator(rColumn, rRule, rIsAlias, p.GetRouteResult())
 		expr.R = rDecorator
 	}
 	return false, nil, expr, nil
@@ -872,7 +872,7 @@ func handleBinaryOperationExprCompareLeftColumnRightColumn(p *TableAliasStmtInfo
 
 func handleBinaryOperationExprCompareLeftColumnRightValue(p *TableAliasStmtInfo, expr *ast.BinaryOperationExpr, findTableIndexes func(router.Rule, string, interface{}) ([]int, error)) (bool, []int, ast.ExprNode, error) {
 	column := expr.L.(*ast.ColumnNameExpr)
-	rule, need, err := NeedCreateColumnNameExprDecoratorInCondition(p, column)
+	rule, need, isAlias, err := NeedCreateColumnNameExprDecoratorInCondition(p, column)
 	if err != nil {
 		return false, nil, nil, fmt.Errorf("check ColumnNameExpr error in BinaryOperationExpr.L: %v", err)
 	}
@@ -880,7 +880,7 @@ func handleBinaryOperationExprCompareLeftColumnRightValue(p *TableAliasStmtInfo,
 		return false, nil, expr, nil
 	}
 
-	decorator := CreateColumnNameExprDecorator(column, rule, p.GetRouteResult())
+	decorator := CreateColumnNameExprDecorator(column, rule, isAlias, p.GetRouteResult())
 	expr.L = decorator
 
 	if rule.GetType() == router.GlobalTableRuleType {
@@ -903,7 +903,7 @@ func handleBinaryOperationExprCompareLeftColumnRightValue(p *TableAliasStmtInfo,
 
 func handleBinaryOperationExprCompareLeftValueRightColumn(p *TableAliasStmtInfo, expr *ast.BinaryOperationExpr, findTableIndexes func(router.Rule, string, interface{}) ([]int, error)) (bool, []int, ast.ExprNode, error) {
 	column := expr.R.(*ast.ColumnNameExpr)
-	rule, need, err := NeedCreateColumnNameExprDecoratorInCondition(p, column)
+	rule, need, isAlias, err := NeedCreateColumnNameExprDecoratorInCondition(p, column)
 	if err != nil {
 		return false, nil, nil, fmt.Errorf("check ColumnNameExpr error in BinaryOperationExpr.R: %v", err)
 	}
@@ -911,7 +911,7 @@ func handleBinaryOperationExprCompareLeftValueRightColumn(p *TableAliasStmtInfo,
 		return false, nil, expr, nil
 	}
 
-	decorator := CreateColumnNameExprDecorator(column, rule, p.GetRouteResult())
+	decorator := CreateColumnNameExprDecorator(column, rule, isAlias, p.GetRouteResult())
 	expr.R = decorator
 
 	if rule.GetType() == router.GlobalTableRuleType {
