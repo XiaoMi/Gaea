@@ -37,25 +37,25 @@ type BetweenExprDecorator struct {
 }
 
 // NeedCreateBetweenExprDecorator check if BetweenExpr needs decoration
-func NeedCreateBetweenExprDecorator(p *TableAliasStmtInfo, n *ast.BetweenExpr) (router.Rule, bool, error) {
+func NeedCreateBetweenExprDecorator(p *TableAliasStmtInfo, n *ast.BetweenExpr) (router.Rule, bool, bool, error) {
 	// 如果不是ColumnNameExpr, 则不做任何路由计算和装饰, 直接返回
 	columnNameExpr, ok := n.Expr.(*ast.ColumnNameExpr)
 	if !ok {
-		return nil, false, nil
+		return nil, false, false, nil
 	}
 
-	rule, need, err := NeedCreateColumnNameExprDecoratorInCondition(p, columnNameExpr)
+	rule, need, isAlias, err := NeedCreateColumnNameExprDecoratorInCondition(p, columnNameExpr)
 	if err != nil {
-		return nil, false, fmt.Errorf("check ColumnName error: %v", err)
+		return nil, false, false, fmt.Errorf("check ColumnName error: %v", err)
 	}
 
-	return rule, need, nil
+	return rule, need, isAlias, nil
 }
 
 // CreateBetweenExprDecorator create BetweenExprDecorator
-func CreateBetweenExprDecorator(n *ast.BetweenExpr, rule router.Rule, result *RouteResult) (*BetweenExprDecorator, error) {
+func CreateBetweenExprDecorator(n *ast.BetweenExpr, rule router.Rule, isAlias bool, result *RouteResult) (*BetweenExprDecorator, error) {
 	columnNameExpr := n.Expr.(*ast.ColumnNameExpr)
-	columnNameExprDecorator := CreateColumnNameExprDecorator(columnNameExpr, rule, result)
+	columnNameExprDecorator := CreateColumnNameExprDecorator(columnNameExpr, rule, isAlias, result)
 
 	tableIndexes, err := getBetweenExprRouteResult(rule, n)
 	if err != nil {

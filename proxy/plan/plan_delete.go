@@ -143,13 +143,13 @@ func handleDeleteOrderBy(p *DeletePlan) error {
 			return fmt.Errorf("ByItem.Expr is not a ColumnNameExpr")
 		}
 
-		rule, need, err := NeedCreateColumnNameExprDecoratorInField(p.TableAliasStmtInfo, columnExpr)
+		rule, need, isAlias, err := NeedCreateColumnNameExprDecoratorInField(p.TableAliasStmtInfo, columnExpr)
 		if err != nil {
 			return err
 		}
 
 		if need {
-			decorator := CreateColumnNameExprDecorator(columnExpr, rule, p.GetRouteResult())
+			decorator := CreateColumnNameExprDecorator(columnExpr, rule, isAlias, p.GetRouteResult())
 			item.Expr = decorator
 		}
 	}
