@@ -397,13 +397,14 @@ func (t *TableAliasStmtInfo) RecordSubqueryTableAlias(alias string) (router.Rule
 }
 
 // GetSettedRuleFromColumnInfo 用于WHERE条件或JOIN ON条件中, 查找列名对应的路由规则
-func (t *TableAliasStmtInfo) GetSettedRuleFromColumnInfo(db, table, column string) (router.Rule, bool, error) {
+func (t *TableAliasStmtInfo) GetSettedRuleFromColumnInfo(db, table, column string) (router.Rule, bool, bool, error) {
 	if db == "" && table == "" {
-		return t.getSettedRuleByColumnName(column)
+		rule, need, err := t.getSettedRuleByColumnName(column)
+		return rule, need, false, err
 	}
 
-	rule, err := t.getSettedRuleFromTable(db, table)
-	return rule, rule != nil, err
+	rule, isAlias, err := t.getSettedRuleFromTable(db, table)
+	return rule, rule != nil, isAlias, err
 }
 
 // 用于WHERE条件或JOIN ON条件中, 只存在列名时, 查找对应的路由规则
@@ -426,29 +427,29 @@ func (t *TableAliasStmtInfo) getSettedRuleByColumnName(column string) (router.Ru
 
 // 获取FROM TABLE列表中的表数据
 // 用于FieldList和Where条件中列名的判断
-func (t *TableAliasStmtInfo) getSettedRuleFromTable(db, table string) (router.Rule, error) {
+func (t *TableAliasStmtInfo) getSettedRuleFromTable(db, table string) (router.Rule, bool, error) {
 	_, err := t.checkAndGetDB(db)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if rule, ok := t.tableRules[table]; ok {
-		return rule, nil
+		return rule, false, nil
 	}
 
 	if rule, ok := t.globalTableRules[table]; ok {
-		return rule, nil
+		return rule, false, nil
 	}
 
 	if originTable, ok := t.getAliasTable(table); ok {
 		if rule, ok := t.tableRules[originTable]; ok {
-			return rule, nil
+			return rule, true, nil
 		}
 		if rule, ok := t.globalTableRules[originTable]; ok {
-			return rule, nil
+			return rule, true, nil
 		}
 	}
 
-	return nil, fmt.Errorf("rule not found")
+	return nil, false, fmt.Errorf("rule not found")
 }
 
 // RecordShardTable 将表信息记录到StmtInfo中, 并返回表信息对应的路由规则

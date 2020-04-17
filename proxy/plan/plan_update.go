@@ -146,13 +146,13 @@ func handleUpdateOrderBy(p *UpdatePlan) error {
 			return fmt.Errorf("ByItem.Expr is not a ColumnNameExpr")
 		}
 
-		rule, need, err := NeedCreateColumnNameExprDecoratorInField(p.TableAliasStmtInfo, columnExpr)
+		rule, need, isAlias, err := NeedCreateColumnNameExprDecoratorInField(p.TableAliasStmtInfo, columnExpr)
 		if err != nil {
 			return err
 		}
 
 		if need {
-			decorator := CreateColumnNameExprDecorator(columnExpr, rule, p.GetRouteResult())
+			decorator := CreateColumnNameExprDecorator(columnExpr, rule, isAlias, p.GetRouteResult())
 			item.Expr = decorator
 		}
 	}
@@ -164,7 +164,7 @@ func handleUpdateOrderBy(p *UpdatePlan) error {
 func handleUpdateAssignmentList(p *UpdatePlan) error {
 	l := p.stmt.List
 	for _, assignment := range l {
-		r, need, err := needCreateColumnNameDecorator(p.TableAliasStmtInfo, assignment.Column)
+		r, need, _, err := needCreateColumnNameDecorator(p.TableAliasStmtInfo, assignment.Column)
 		if err != nil {
 			return err
 		}
