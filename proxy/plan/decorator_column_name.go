@@ -30,18 +30,19 @@ type ColumnNameExprDecorator struct {
 
 // ColumnNameDecorator decorate ColumnName to rewrite table name
 type ColumnNameDecorator struct {
-	origin *ast.ColumnName
-	rule   router.Rule
-	result *RouteResult
+	origin  *ast.ColumnName
+	rule    router.Rule
+	result  *RouteResult
+	isAlias bool
 }
 
 // NeedCreateColumnNameExprDecoratorInField check if ColumnNameExpr in field needs decoration
 // 用于Field列表中判断列名是否需要装饰
 // 如果db名和表名都不存在, 则不需要装饰
-func NeedCreateColumnNameExprDecoratorInField(p *TableAliasStmtInfo, n *ast.ColumnNameExpr) (router.Rule, bool, error) {
+func NeedCreateColumnNameExprDecoratorInField(p *TableAliasStmtInfo, n *ast.ColumnNameExpr) (router.Rule, bool, bool, error) {
 	db, table, _ := getColumnInfoFromColumnName(n.Name)
 	if db == "" && table == "" {
-		return nil, false, nil
+		return nil, false, false, nil
 	}
 	return needCreateColumnNameDecorator(p, n.Name)
 }
@@ -49,41 +50,42 @@ func NeedCreateColumnNameExprDecoratorInField(p *TableAliasStmtInfo, n *ast.Colu
 // NeedCreateColumnNameExprDecoratorInCondition check if ColumnNameExpr in condition needs decoration
 // 用于JOIN ON条件或WHERE条件中判断列名是否需要装饰
 // 与上面的区别在于, 当只存在列名, 不存在db名和表名时, 还会根据列名去查找对应的条件 (因为装饰之后需要在比较条件中计算路由)
-func NeedCreateColumnNameExprDecoratorInCondition(p *TableAliasStmtInfo, n *ast.ColumnNameExpr) (router.Rule, bool, error) {
+func NeedCreateColumnNameExprDecoratorInCondition(p *TableAliasStmtInfo, n *ast.ColumnNameExpr) (router.Rule, bool, bool, error) {
 	return needCreateColumnNameDecorator(p, n.Name)
 }
 
 // 是否需要装饰ColumnName, 需要则返回ture
 // 在CreateColumnNameDecorator之前调用, 用来检查
 // 返回结果bool表示是否需要创建装饰器
-func needCreateColumnNameDecorator(p *TableAliasStmtInfo, n *ast.ColumnName) (router.Rule, bool, error) {
+func needCreateColumnNameDecorator(p *TableAliasStmtInfo, n *ast.ColumnName) (router.Rule, bool, bool, error) {
 	db, table, column := getColumnInfoFromColumnName(n)
 
-	rule, ok, err := p.GetSettedRuleFromColumnInfo(db, table, column)
+	rule, ok, isAlias, err := p.GetSettedRuleFromColumnInfo(db, table, column)
 	if err != nil {
-		return nil, false, err
+		return nil, false, false, err
 	}
 	if !ok {
-		return nil, false, nil
+		return nil, false, false, nil
 	}
 
-	return rule, true, nil
+	return rule, true, isAlias, nil
 }
 
 // CreateColumnNameExprDecorator create ColumnNameExprDecorator
-func CreateColumnNameExprDecorator(n *ast.ColumnNameExpr, rule router.Rule, result *RouteResult) *ColumnNameExprDecorator {
-	columnName := createColumnNameDecorator(n.Name, rule, result)
+func CreateColumnNameExprDecorator(n *ast.ColumnNameExpr, rule router.Rule, isAlias bool, result *RouteResult) *ColumnNameExprDecorator {
+	columnName := createColumnNameDecorator(n.Name, rule, isAlias, result)
 	return &ColumnNameExprDecorator{
 		ColumnNameExpr: n,
 		Name:           columnName,
 	}
 }
 
-func createColumnNameDecorator(n *ast.ColumnName, rule router.Rule, result *RouteResult) *ColumnNameDecorator {
+func createColumnNameDecorator(n *ast.ColumnName, rule router.Rule, isAlias bool, result *RouteResult) *ColumnNameDecorator {
 	ret := &ColumnNameDecorator{
-		origin: n,
-		rule:   rule,
-		result: result,
+		origin:  n,
+		rule:    rule,
+		result:  result,
+		isAlias: isAlias,
 	}
 	return ret
 }
@@ -133,8 +135,13 @@ func (c *ColumnNameDecorator) Restore(ctx *format.RestoreCtx) error {
 			ctx.WriteName(c.origin.Table.String())
 			ctx.WritePlain(".")
 		} else {
-			ctx.WriteName(fmt.Sprintf("%s_%04d", c.origin.Table.String(), tableIndex))
-			ctx.WritePlain(".")
+			if c.isAlias {
+				ctx.WriteName(c.origin.Table.String())
+				ctx.WritePlain(".")
+			} else {
+				ctx.WriteName(fmt.Sprintf("%s_%04d", c.origin.Table.String(), tableIndex))
+				ctx.WritePlain(".")
+			}
 		}
 	}
 

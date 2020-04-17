@@ -714,6 +714,64 @@ func TestMycatSelectMultiTablesAlias(t *testing.T) {
 	}
 }
 
+func TestKingshardSelectAlias(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_ks",
+			sql: "select a.ss, a from tbl_ks as a where a.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT `a`.`ss`,`a` FROM `tbl_ks_0001` AS `a` WHERE `a`.`id`=1",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+
+func TestKingshardSelectBetweenAlias(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_ks",
+			sql: "select  name from tbl_ks as a where a.id between 10 and 100",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT `name` FROM `tbl_ks_0000` AS `a` WHERE `a`.`id` BETWEEN 10 AND 100",
+						"SELECT `name` FROM `tbl_ks_0001` AS `a` WHERE `a`.`id` BETWEEN 10 AND 100",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT `name` FROM `tbl_ks_0002` AS `a` WHERE `a`.`id` BETWEEN 10 AND 100",
+						"SELECT `name` FROM `tbl_ks_0003` AS `a` WHERE `a`.`id` BETWEEN 10 AND 100",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
 // TODO: range shard
 func TestMycatSelectBinaryOperatorComparison(t *testing.T) {
 	ns, err := preparePlanInfo()
