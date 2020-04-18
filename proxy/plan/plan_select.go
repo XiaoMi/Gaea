@@ -893,7 +893,7 @@ func handleBinaryOperationExprCompareLeftColumnRightValue(p *TableAliasStmtInfo,
 		return false, nil, nil, fmt.Errorf("get ValueExpr value error: %v", err)
 	}
 
-	tableIndexes, err := findTableIndexes(rule, column.Name.Name.String(), v)
+	tableIndexes, err := findTableIndexes(rule, column.Name.Name.L, v)
 	if err != nil {
 		return false, nil, nil, fmt.Errorf("find table index error: %v", err)
 	}
@@ -924,7 +924,7 @@ func handleBinaryOperationExprCompareLeftValueRightColumn(p *TableAliasStmtInfo,
 		return false, nil, nil, fmt.Errorf("get ValueExpr value error: %v", err)
 	}
 
-	tableIndexes, err := findTableIndexes(rule, column.Name.Name.String(), v)
+	tableIndexes, err := findTableIndexes(rule, column.Name.Name.L, v)
 	if err != nil {
 		return false, nil, nil, fmt.Errorf("find table index error: %v", err)
 	}

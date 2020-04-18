@@ -739,7 +739,6 @@ func TestKingshardSelectAlias(t *testing.T) {
 	}
 }
 
-
 func TestKingshardSelectBetweenAlias(t *testing.T) {
 	ns, err := preparePlanInfo()
 	if err != nil {
@@ -761,6 +760,42 @@ func TestKingshardSelectBetweenAlias(t *testing.T) {
 					"db_ks": {
 						"SELECT `name` FROM `tbl_ks_0002` AS `a` WHERE `a`.`id` BETWEEN 10 AND 100",
 						"SELECT `name` FROM `tbl_ks_0003` AS `a` WHERE `a`.`id` BETWEEN 10 AND 100",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestKingshardSelectColumnCaseInsensitive(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_ks",
+			sql: "select a.ss, a from tbl_ks as a where a.ID = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT `a`.`ss`,`a` FROM `tbl_ks_0001` AS `a` WHERE `a`.`ID`=1",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select a.ss, a from tbl_ks as a where 1 = a.ID",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT `a`.`ss`,`a` FROM `tbl_ks_0001` AS `a` WHERE 1=`a`.`ID`",
 					},
 				},
 			},
