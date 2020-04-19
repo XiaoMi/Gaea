@@ -971,5 +971,5 @@ func getTableInfoFromTableName(t *ast.TableName) (string, string) {
 }
 
 func getColumnInfoFromColumnName(t *ast.ColumnName) (string, string, string) {
-	return t.Schema.O, t.Table.O, t.Name.O
+	return t.Schema.O, t.Table.O, t.Name.L
 }
