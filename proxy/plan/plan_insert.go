@@ -305,7 +305,7 @@ func handleInsertGlobalSequenceValue(p *InsertPlan) error {
 	// not assignment mode
 	var seqIndex = -1
 	for i, column := range p.stmt.Columns {
-		columnName := column.Name.String()
+		columnName := column.Name.L
 		if columnName == pkName {
 			seqIndex = i
 			break
