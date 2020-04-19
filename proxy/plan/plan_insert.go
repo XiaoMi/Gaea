@@ -176,7 +176,7 @@ func handleInsertColumnNames(p *InsertPlan) error {
 		for i, assignment := range p.stmt.Setlist {
 			col := assignment.Column
 			removeSchemaAndTableInfoInColumnName(col)
-			columnName := col.Name.String()
+			columnName := col.Name.L
 			rule := p.tableRules[p.table]
 			if columnName == rule.GetShardingColumn() {
 				p.shardingColumnIndex = i
@@ -186,7 +186,7 @@ func handleInsertColumnNames(p *InsertPlan) error {
 		// INSERT INTO tbl (col, ...) VALUES (val, ...)
 		for i, col := range p.stmt.Columns {
 			removeSchemaAndTableInfoInColumnName(col)
-			columnName := col.Name.String()
+			columnName := col.Name.L
 			rule := p.tableRules[p.table]
 			if columnName == rule.GetShardingColumn() {
 				p.shardingColumnIndex = i
@@ -265,7 +265,7 @@ func handleInsertOnDuplicate(p *InsertPlan) error {
 
 	shardingColumnName := p.tableRules[p.table].GetShardingColumn()
 	for _, a := range p.stmt.OnDuplicate {
-		if a.Column.Name.String() == shardingColumnName {
+		if a.Column.Name.L == shardingColumnName {
 			return errors.ErrUpdateKey
 		}
 		removeSchemaAndTableInfoInColumnName(a.Column)
