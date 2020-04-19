@@ -285,7 +285,7 @@ func handleInsertGlobalSequenceValue(p *InsertPlan) error {
 	// not assignment mode
 	if p.isAssignmentMode {
 		for _, assignment := range p.stmt.Setlist {
-			columnName := assignment.Column.Name.String()
+			columnName := assignment.Column.Name.L
 			if columnName == pkName {
 				if x, ok := assignment.Expr.(*ast.FuncCallExpr); ok {
 					if x.FnName.L == "nextval" {

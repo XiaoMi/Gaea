@@ -675,6 +675,15 @@ func TestMycatInsertSequenceShardKey(t *testing.T) {
 				},
 			},
 		},
+		{
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat set ID = nextval(), a = 'hi'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"INSERT INTO `tbl_mycat` SET `ID`=5,`a`='hi'"},
+				},
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.sql, getTestFunc(ns, test))
