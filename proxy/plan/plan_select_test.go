@@ -739,7 +739,6 @@ func TestKingshardSelectAlias(t *testing.T) {
 	}
 }
 
-
 func TestKingshardSelectBetweenAlias(t *testing.T) {
 	ns, err := preparePlanInfo()
 	if err != nil {
@@ -762,6 +761,70 @@ func TestKingshardSelectBetweenAlias(t *testing.T) {
 						"SELECT `name` FROM `tbl_ks_0002` AS `a` WHERE `a`.`id` BETWEEN 10 AND 100",
 						"SELECT `name` FROM `tbl_ks_0003` AS `a` WHERE `a`.`id` BETWEEN 10 AND 100",
 					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectColumnCaseInsensitive(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_ks",
+			sql: "select a.ss, a from tbl_ks as a where a.ID = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT `a`.`ss`,`a` FROM `tbl_ks_0001` AS `a` WHERE `a`.`ID`=1",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select a.ss, a from tbl_ks as a where 1 = a.ID",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT `a`.`ss`,`a` FROM `tbl_ks_0001` AS `a` WHERE 1=`a`.`ID`",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_day where CREATE_TIME between '2014-09-05 00:00:00' and '2014-09-07 00:00:00'", // 2014-09-01 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_day_20140905` WHERE `CREATE_TIME` BETWEEN '2014-09-05 00:00:00' AND '2014-09-07 00:00:00'",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_day_20140907` WHERE `CREATE_TIME` BETWEEN '2014-09-05 00:00:00' AND '2014-09-07 00:00:00'",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat where ID in (0,2)",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `ID` IN (0)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `ID` IN (2)"},
 				},
 			},
 		},
