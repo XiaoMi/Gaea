@@ -59,6 +59,15 @@ func TestMycatShardDeleteWithWhere(t *testing.T) {
 				},
 			},
 		},
+		{ // column should be case insensitive
+			db:  "db_mycat",
+			sql: "delete from tbl_mycat where ID = 0",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"DELETE FROM `tbl_mycat` WHERE `ID`=0"},
+				},
+			},
+		},
 		{
 			db:  "db_mycat",
 			sql: "delete from tbl_mycat where id = 1",
