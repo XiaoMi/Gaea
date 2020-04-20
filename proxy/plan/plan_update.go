@@ -169,7 +169,7 @@ func handleUpdateAssignmentList(p *UpdatePlan) error {
 			return err
 		}
 
-		if need && r.GetShardingColumn() == assignment.Column.Name.String() {
+		if need && r.GetShardingColumn() == assignment.Column.Name.L {
 			return fmt.Errorf("cannot update shard column value")
 		}
 		removeSchemaAndTableInfoInColumnName(assignment.Column)
