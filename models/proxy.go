@@ -15,8 +15,9 @@
 package models
 
 import (
-	"github.com/go-ini/ini"
 	"strings"
+
+	"github.com/go-ini/ini"
 )
 
 const (
