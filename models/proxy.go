@@ -16,6 +16,7 @@ package models
 
 import (
 	"github.com/go-ini/ini"
+	"strings"
 )
 
 const (
@@ -75,10 +76,12 @@ func ParseProxyConfigFromFile(cfgFile string) (*Proxy, error) {
 	if proxyConfig.ConfigType == "" {
 		proxyConfig.ConfigType = ConfigEtcd
 	}
-	if proxyConfig.Cluster != "" {
-		proxyConfig.CoordinatorRoot = "/" + proxyConfig.Cluster
-	} else {
+	if proxyConfig.Cluster == "" && proxyConfig.CoordinatorRoot == "" {
 		proxyConfig.Cluster = defaultGaeaCluster
+	} else if proxyConfig.Cluster == "" && proxyConfig.CoordinatorRoot != "" {
+		proxyConfig.Cluster = strings.TrimPrefix(proxyConfig.CoordinatorRoot, "/")
+	} else if proxyConfig.Cluster != "" {
+		proxyConfig.CoordinatorRoot = "/" + proxyConfig.Cluster
 	}
 	return proxyConfig, err
 }
