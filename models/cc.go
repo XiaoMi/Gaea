@@ -15,6 +15,8 @@
 package models
 
 import (
+	"strings"
+
 	"github.com/go-ini/ini"
 )
 
@@ -30,6 +32,8 @@ type CCConfig struct {
 	CoordinatorRoot string `ini:"coordinator_root"`
 	UserName        string `ini:"username"`
 	Password        string `ini:"password"`
+
+	DefaultCluster string `ini:"default_cluster"`
 
 	LogPath     string `ini:"log_path"`
 	LogLevel    string `ini:"log_level"`
@@ -49,6 +53,9 @@ func ParseCCConfig(cfgFile string) (*CCConfig, error) {
 
 	ccConfig := new(CCConfig)
 	err = cfg.MapTo(ccConfig)
+	if ccConfig.DefaultCluster == "" && ccConfig.CoordinatorRoot != "" {
+		ccConfig.DefaultCluster = strings.TrimPrefix(ccConfig.CoordinatorRoot, "/")
+	}
 	return ccConfig, err
 }
 
