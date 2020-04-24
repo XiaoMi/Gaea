@@ -23,17 +23,24 @@ import (
 	"github.com/XiaoMi/Gaea/models"
 )
 
+func getCoordinatorRoot(cluster string) string {
+	if cluster != "" {
+		return "/" + cluster
+	}
+	return cluster
+}
+
 // ListNamespace return names of all namespace
-func ListNamespace(cfg *models.CCConfig) ([]string, error) {
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, cfg.CoordinatorRoot)
+func ListNamespace(cfg *models.CCConfig, cluster string) ([]string, error) {
+	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	return mConn.ListNamespace()
 }
 
 // QueryNamespace return information of namespace specified by names
-func QueryNamespace(names []string, cfg *models.CCConfig) (data []*models.Namespace, err error) {
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, cfg.CoordinatorRoot)
+func QueryNamespace(names []string, cfg *models.CCConfig, cluster string) (data []*models.Namespace, err error) {
+	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	for _, v := range names {
@@ -53,7 +60,7 @@ func QueryNamespace(names []string, cfg *models.CCConfig) (data []*models.Namesp
 }
 
 // ModifyNamespace create or modify namespace
-func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig) (err error) {
+func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig, cluster string) (err error) {
 	if err = namespace.Verify(); err != nil {
 		return fmt.Errorf("verify namespace error: %v", err)
 	}
@@ -64,7 +71,7 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig) (err err
 	}
 
 	// sink namespace
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, cfg.CoordinatorRoot)
+	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
 	storeConn := models.NewStore(client)
 	defer storeConn.Close()
 
@@ -100,8 +107,8 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig) (err err
 }
 
 // DelNamespace delete namespace
-func DelNamespace(name string, cfg *models.CCConfig) error {
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, cfg.CoordinatorRoot)
+func DelNamespace(name string, cfg *models.CCConfig, cluster string) error {
+	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 
@@ -128,11 +135,11 @@ func DelNamespace(name string, cfg *models.CCConfig) error {
 }
 
 // SQLFingerprint return sql fingerprints of all proxy
-func SQLFingerprint(name string, cfg *models.CCConfig) (slowSQLs, errSQLs map[string]string, err error) {
+func SQLFingerprint(name string, cfg *models.CCConfig, cluster string) (slowSQLs, errSQLs map[string]string, err error) {
 	slowSQLs = make(map[string]string, 16)
 	errSQLs = make(map[string]string, 16)
 	// list proxy
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, cfg.CoordinatorRoot)
+	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	proxies, err := mConn.ListProxyMonitorMetrics()
@@ -174,9 +181,9 @@ func SQLFingerprint(name string, cfg *models.CCConfig) (slowSQLs, errSQLs map[st
 }
 
 // ProxyConfigFingerprint return fingerprints of all proxy
-func ProxyConfigFingerprint(cfg *models.CCConfig) (r map[string]string, err error) {
+func ProxyConfigFingerprint(cfg *models.CCConfig, cluster string) (r map[string]string, err error) {
 	// list proxy
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, cfg.CoordinatorRoot)
+	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	proxies, err := mConn.ListProxyMonitorMetrics()
