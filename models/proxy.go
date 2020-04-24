@@ -18,6 +18,10 @@ import (
 	"github.com/go-ini/ini"
 )
 
+const (
+	defaultGaeaCluster = "gaea"
+)
+
 // Proxy means proxy structure of proxy config
 type Proxy struct {
 	// config type
@@ -73,6 +77,8 @@ func ParseProxyConfigFromFile(cfgFile string) (*Proxy, error) {
 	}
 	if proxyConfig.Cluster != "" {
 		proxyConfig.CoordinatorRoot = "/" + proxyConfig.Cluster
+	} else {
+		proxyConfig.Cluster = defaultGaeaCluster
 	}
 	return proxyConfig, err
 }
