@@ -590,6 +590,7 @@ func getUserAndPasswordFromKey(key string) (username string, password string) {
 }
 
 const (
+	statsLabelCluster       = "Cluster"
 	statsLabelOperation     = "Operation"
 	statsLabelNamespace     = "Namespace"
 	statsLabelFingerprint   = "Fingerprint"
@@ -600,7 +601,8 @@ const (
 
 // StatisticManager statistics manager
 type StatisticManager struct {
-	manager *Manager
+	manager     *Manager
+	clusterName string
 
 	statsType string // 监控后端类型
 	handlers  map[string]http.Handler
@@ -634,6 +636,7 @@ func NewStatisticManager() *StatisticManager {
 func CreateStatisticManager(cfg *models.Proxy, manager *Manager) (*StatisticManager, error) {
 	mgr := NewStatisticManager()
 	mgr.manager = manager
+	mgr.clusterName = cfg.Cluster
 	if err := mgr.Init(cfg); err != nil {
 		return nil, err
 	}
@@ -673,22 +676,35 @@ func (s *StatisticManager) Init(cfg *models.Proxy) error {
 		return err
 	}
 
-	s.sqlTimings = stats.NewMultiTimings("SqlTimings", "gaea proxy sql sqlTimings", []string{statsLabelOperation, statsLabelNamespace})
-	s.sqlFingerprintSlowCounts = stats.NewCountersWithMultiLabels("SqlFingerprintSlowCounts", "gaea proxy sql fingerprint slow counts", []string{statsLabelFingerprint, statsLabelNamespace})
-	s.sqlErrorCounts = stats.NewCountersWithMultiLabels("SqlErrorCounts", "gaea proxy sql error counts per error type", []string{statsLabelOperation, statsLabelNamespace})
-	s.sqlFingerprintErrorCounts = stats.NewCountersWithMultiLabels("SqlFingerprintErrorCounts", "gaea proxy sql fingerprint error counts", []string{statsLabelFingerprint, statsLabelNamespace})
-	s.sqlForbidenCounts = stats.NewCountersWithMultiLabels("SqlForbiddenCounts", "gaea proxy sql error counts per error type", []string{statsLabelFingerprint, statsLabelNamespace})
-	s.flowCounts = stats.NewCountersWithMultiLabels("FlowCounts", "gaea proxy flow counts", []string{statsLabelNamespace, statsLabelFlowDirection})
-	s.sessionCounts = stats.NewGaugesWithMultiLabels("SessionCounts", "gaea proxy session counts", []string{statsLabelNamespace})
+	s.sqlTimings = stats.NewMultiTimings("SqlTimings",
+		"gaea proxy sql sqlTimings", []string{statsLabelCluster, statsLabelNamespace, statsLabelOperation})
+	s.sqlFingerprintSlowCounts = stats.NewCountersWithMultiLabels("SqlFingerprintSlowCounts",
+		"gaea proxy sql fingerprint slow counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelFingerprint})
+	s.sqlErrorCounts = stats.NewCountersWithMultiLabels("SqlErrorCounts",
+		"gaea proxy sql error counts per error type", []string{statsLabelCluster, statsLabelNamespace, statsLabelOperation})
+	s.sqlFingerprintErrorCounts = stats.NewCountersWithMultiLabels("SqlFingerprintErrorCounts",
+		"gaea proxy sql fingerprint error counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelFingerprint})
+	s.sqlForbidenCounts = stats.NewCountersWithMultiLabels("SqlForbiddenCounts",
+		"gaea proxy sql error counts per error type", []string{statsLabelCluster, statsLabelNamespace, statsLabelFingerprint})
+	s.flowCounts = stats.NewCountersWithMultiLabels("FlowCounts",
+		"gaea proxy flow counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelFlowDirection})
+	s.sessionCounts = stats.NewGaugesWithMultiLabels("SessionCounts",
+		"gaea proxy session counts", []string{statsLabelCluster, statsLabelNamespace})
 
-	s.backendSQLTimings = stats.NewMultiTimings("BackendSqlTimings", "gaea proxy backend sql sqlTimings", []string{statsLabelOperation, statsLabelNamespace})
-
-	s.backendSQLFingerprintSlowCounts = stats.NewCountersWithMultiLabels("BackendSqlFingerprintSlowCounts", "gaea proxy backend sql fingerprint slow counts", []string{statsLabelFingerprint, statsLabelNamespace})
-	s.backendSQLErrorCounts = stats.NewCountersWithMultiLabels("BackendSqlErrorCounts", "gaea proxy backend sql error counts per error type", []string{statsLabelOperation, statsLabelNamespace})
-	s.backendSQLFingerprintErrorCounts = stats.NewCountersWithMultiLabels("BackendSqlFingerprintErrorCounts", "gaea proxy backend sql fingerprint error counts", []string{statsLabelFingerprint, statsLabelNamespace})
-	s.backendConnectPoolIdleCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolIdleCounts", "gaea proxy backend idle connect counts", []string{statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
-	s.backendConnectPoolInUseCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolInUseCounts", "gaea proxy backend in-use connect counts", []string{statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
-	s.backendConnectPoolWaitCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolWaitCounts", "gaea proxy backend wait connect counts", []string{statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
+	s.backendSQLTimings = stats.NewMultiTimings("BackendSqlTimings",
+		"gaea proxy backend sql sqlTimings", []string{statsLabelCluster, statsLabelNamespace, statsLabelOperation})
+	s.backendSQLFingerprintSlowCounts = stats.NewCountersWithMultiLabels("BackendSqlFingerprintSlowCounts",
+		"gaea proxy backend sql fingerprint slow counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelFingerprint})
+	s.backendSQLErrorCounts = stats.NewCountersWithMultiLabels("BackendSqlErrorCounts",
+		"gaea proxy backend sql error counts per error type", []string{statsLabelCluster, statsLabelNamespace, statsLabelOperation})
+	s.backendSQLFingerprintErrorCounts = stats.NewCountersWithMultiLabels("BackendSqlFingerprintErrorCounts",
+		"gaea proxy backend sql fingerprint error counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelFingerprint})
+	s.backendConnectPoolIdleCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolIdleCounts",
+		"gaea proxy backend idle connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
+	s.backendConnectPoolInUseCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolInUseCounts",
+		"gaea proxy backend in-use connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
+	s.backendConnectPoolWaitCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolWaitCounts",
+		"gaea proxy backend wait connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
 
 	s.startClearTask()
 	return nil
@@ -736,19 +752,19 @@ func (s *StatisticManager) clearLargeCounters() {
 }
 
 func (s *StatisticManager) recordSessionSlowSQLFingerprint(namespace string, md5 string) {
-	fingerprintStatsKey := []string{md5, namespace}
+	fingerprintStatsKey := []string{s.clusterName, namespace, md5}
 	s.sqlFingerprintSlowCounts.Add(fingerprintStatsKey, 1)
 }
 
 func (s *StatisticManager) recordSessionErrorSQLFingerprint(namespace string, operation string, md5 string) {
-	fingerprintStatsKey := []string{md5, namespace}
-	operationStatsKey := []string{operation, namespace}
+	fingerprintStatsKey := []string{s.clusterName, namespace, md5}
+	operationStatsKey := []string{s.clusterName, namespace, operation}
 	s.sqlErrorCounts.Add(operationStatsKey, 1)
 	s.sqlFingerprintErrorCounts.Add(fingerprintStatsKey, 1)
 }
 
 func (s *StatisticManager) recordSessionSQLTiming(namespace string, operation string, startTime time.Time) {
-	operationStatsKey := []string{operation, namespace}
+	operationStatsKey := []string{s.clusterName, namespace, operation}
 	s.sqlTimings.Record(operationStatsKey, startTime)
 }
 
@@ -759,66 +775,66 @@ func (s *StatisticManager) isBackendSlowSQL(startTime time.Time) bool {
 }
 
 func (s *StatisticManager) recordBackendSlowSQLFingerprint(namespace string, md5 string) {
-	fingerprintStatsKey := []string{md5, namespace}
+	fingerprintStatsKey := []string{s.clusterName, namespace, md5}
 	s.backendSQLFingerprintSlowCounts.Add(fingerprintStatsKey, 1)
 }
 
 func (s *StatisticManager) recordBackendErrorSQLFingerprint(namespace string, operation string, md5 string) {
-	fingerprintStatsKey := []string{md5, namespace}
-	operationStatsKey := []string{operation, namespace}
+	fingerprintStatsKey := []string{s.clusterName, namespace, md5}
+	operationStatsKey := []string{s.clusterName, namespace, operation}
 	s.backendSQLErrorCounts.Add(operationStatsKey, 1)
 	s.backendSQLFingerprintErrorCounts.Add(fingerprintStatsKey, 1)
 }
 
 func (s *StatisticManager) recordBackendSQLTiming(namespace string, operation string, startTime time.Time) {
-	operationStatsKey := []string{operation, namespace}
+	operationStatsKey := []string{s.clusterName, namespace, operation}
 	s.backendSQLTimings.Record(operationStatsKey, startTime)
 }
 
 // RecordSQLForbidden record forbidden sql
 func (s *StatisticManager) RecordSQLForbidden(fingerprint, namespace string) {
 	md5 := mysql.GetMd5(fingerprint)
-	s.sqlForbidenCounts.Add([]string{md5, namespace}, 1)
+	s.sqlForbidenCounts.Add([]string{s.clusterName, namespace, md5}, 1)
 }
 
 // IncrSessionCount incr session count
 func (s *StatisticManager) IncrSessionCount(namespace string) {
-	statsKey := []string{namespace}
+	statsKey := []string{s.clusterName, namespace}
 	s.sessionCounts.Add(statsKey, 1)
 }
 
 // DescSessionCount decr session count
 func (s *StatisticManager) DescSessionCount(namespace string) {
-	statsKey := []string{namespace}
+	statsKey := []string{s.clusterName, namespace}
 	s.sessionCounts.Add(statsKey, -1)
 }
 
 // AddReadFlowCount add read flow count
 func (s *StatisticManager) AddReadFlowCount(namespace string, byteCount int) {
-	statsKey := []string{namespace, "read"}
+	statsKey := []string{s.clusterName, namespace, "read"}
 	s.flowCounts.Add(statsKey, int64(byteCount))
 }
 
 // AddWriteFlowCount add write flow count
 func (s *StatisticManager) AddWriteFlowCount(namespace string, byteCount int) {
-	statsKey := []string{namespace, "write"}
+	statsKey := []string{s.clusterName, namespace, "write"}
 	s.flowCounts.Add(statsKey, int64(byteCount))
 }
 
-//record idle connect count 
+//record idle connect count
 func (s *StatisticManager) recordConnectPoolIdleCount(namespace string, slice string, addr string, count int64) {
-	statsKey := []string{namespace, slice, addr}
+	statsKey := []string{s.clusterName, namespace, slice, addr}
 	s.backendConnectPoolIdleCounts.Set(statsKey, count)
 }
 
 //record in-use connect count
 func (s *StatisticManager) recordConnectPoolInuseCount(namespace string, slice string, addr string, count int64) {
-	statsKey := []string{namespace, slice, addr}
+	statsKey := []string{s.clusterName, namespace, slice, addr}
 	s.backendConnectPoolInUseCounts.Set(statsKey, count)
 }
 
 //record wait queue length
 func (s *StatisticManager) recordConnectPoolWaitCount(namespace string, slice string, addr string, count int64) {
-	statsKey := []string{namespace, slice, addr}
+	statsKey := []string{s.clusterName, namespace, slice, addr} 
 	s.backendConnectPoolWaitCounts.Set(statsKey, count)
 }

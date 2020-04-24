@@ -15,7 +15,13 @@
 package models
 
 import (
+	"strings"
+
 	"github.com/go-ini/ini"
+)
+
+const (
+	defaultGaeaCluster = "gaea"
 )
 
 // Proxy means proxy structure of proxy config
@@ -35,6 +41,7 @@ type Proxy struct {
 	// 服务相关信息
 	Environ string `ini:"environ"`
 	Service string `ini:"service_name"`
+	Cluster string `ini:"cluster_name"`
 
 	LogPath     string `ini:"log_path"`
 	LogLevel    string `ini:"log_level"`
@@ -69,6 +76,13 @@ func ParseProxyConfigFromFile(cfgFile string) (*Proxy, error) {
 	// default config type: etcd
 	if proxyConfig.ConfigType == "" {
 		proxyConfig.ConfigType = ConfigEtcd
+	}
+	if proxyConfig.Cluster == "" && proxyConfig.CoordinatorRoot == "" {
+		proxyConfig.Cluster = defaultGaeaCluster
+	} else if proxyConfig.Cluster == "" && proxyConfig.CoordinatorRoot != "" {
+		proxyConfig.Cluster = strings.TrimPrefix(proxyConfig.CoordinatorRoot, "/")
+	} else if proxyConfig.Cluster != "" {
+		proxyConfig.CoordinatorRoot = "/" + proxyConfig.Cluster
 	}
 	return proxyConfig, err
 }
