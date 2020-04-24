@@ -35,6 +35,7 @@ type Proxy struct {
 	// 服务相关信息
 	Environ string `ini:"environ"`
 	Service string `ini:"service_name"`
+	Cluster string `ini:"cluster_name"`
 
 	LogPath     string `ini:"log_path"`
 	LogLevel    string `ini:"log_level"`
@@ -69,6 +70,9 @@ func ParseProxyConfigFromFile(cfgFile string) (*Proxy, error) {
 	// default config type: etcd
 	if proxyConfig.ConfigType == "" {
 		proxyConfig.ConfigType = ConfigEtcd
+	}
+	if proxyConfig.Cluster != "" {
+		proxyConfig.CoordinatorRoot = "/" + proxyConfig.Cluster
 	}
 	return proxyConfig, err
 }
