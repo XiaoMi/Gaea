@@ -30,7 +30,6 @@ import (
 
 // Server admin server
 type Server struct {
-	cluster string //default cluster
 	cfg     *models.CCConfig
 
 	engine   *gin.Engine
@@ -53,9 +52,6 @@ func NewServer(addr string, cfg *models.CCConfig) (*Server, error) {
 	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
-	}
-	if cfg.CoordinatorRoot != "" {
-		srv.cluster = strings.TrimPrefix(cfg.CoordinatorRoot, "/")
 	}
 	srv.listener = l
 	srv.registerURL()
@@ -87,7 +83,7 @@ type ListNamespaceResp struct {
 func (s *Server) listNamespace(c *gin.Context) {
 	var err error
 	r := &ListNamespaceResp{RetHeader: &RetHeader{RetCode: -1, RetMessage: ""}}
-	cluster := c.DefaultQuery("cluster", s.cluster)
+	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
 	r.Data, err = service.ListNamespace(s.cfg, cluster)
 	if err != nil {
 		log.Warn("list names of all namespace failed, %v", err)
@@ -125,7 +121,7 @@ func (s *Server) queryNamespace(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, r)
 		return
 	}
-	cluster := c.DefaultQuery("cluster", s.cluster)
+	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
 	r.Data, err = service.QueryNamespace(req.Names, s.cfg, cluster)
 	if err != nil {
 		log.Warn("query namespace failed, %v", err)
@@ -150,7 +146,7 @@ func (s *Server) modifyNamespace(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, h)
 		return
 	}
-	cluster := c.DefaultQuery("cluster", s.cluster)
+	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
 	err = service.ModifyNamespace(&namespace, s.cfg, cluster)
 	if err != nil {
 		log.Warn("modifyNamespace failed, err: %v", err)
@@ -173,7 +169,7 @@ func (s *Server) delNamespace(c *gin.Context) {
 		c.JSON(http.StatusOK, h)
 		return
 	}
-	cluster := c.DefaultQuery("cluster", s.cluster)
+	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
 	err = service.DelNamespace(name, s.cfg, cluster)
 	if err != nil {
 		h.RetMessage = fmt.Sprintf("delete namespace faild, %v", err.Error())
@@ -202,7 +198,7 @@ func (s *Server) sqlFingerprint(c *gin.Context) {
 		c.JSON(http.StatusOK, r)
 		return
 	}
-	cluster := c.DefaultQuery("cluster", s.cluster)
+	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
 	r.SlowSQLs, r.ErrSQLs, err = service.SQLFingerprint(name, s.cfg, cluster)
 	if err != nil {
 		r.RetHeader.RetMessage = err.Error()
@@ -223,7 +219,7 @@ type proxyConfigFingerprintResp struct {
 func (s *Server) proxyConfigFingerprint(c *gin.Context) {
 	var err error
 	r := &proxyConfigFingerprintResp{RetHeader: &RetHeader{RetCode: -1, RetMessage: ""}}
-	cluster := c.DefaultQuery("cluster", s.cluster)
+	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
 	r.Data, err = service.ProxyConfigFingerprint(s.cfg, cluster)
 	if err != nil {
 		r.RetHeader.RetMessage = err.Error()
