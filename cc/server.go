@@ -30,7 +30,7 @@ import (
 
 // Server admin server
 type Server struct {
-	cfg     *models.CCConfig
+	cfg *models.CCConfig
 
 	engine   *gin.Engine
 	listener net.Listener
