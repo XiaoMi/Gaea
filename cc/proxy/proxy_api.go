@@ -58,7 +58,9 @@ func (c *APIClient) GetNamespaceSQLFingerprint(name string) (*SQLFingerprint, er
 	if err != nil {
 		return nil, err
 	}
-	json.Unmarshal(resp.Body, &reply)
+	if resp != nil && resp.Body != nil {
+		json.Unmarshal(resp.Body, &reply)
+	}
 	return &reply, err
 }
 
@@ -69,7 +71,9 @@ func (c *APIClient) proxyConfigFingerprint() (string, error) {
 	if err != nil {
 		return r, err
 	}
-	json.Unmarshal(resp.Body, &r)
+	if resp != nil && resp.Body != nil {
+		json.Unmarshal(resp.Body, &r)
+	}
 	return r, err
 }
 
