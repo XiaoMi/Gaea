@@ -87,6 +87,10 @@ type BaseRule struct {
 	table          string
 	shardingColumn string
 
+	isSnowflakeShardingColumn bool   // 是否snowflake字段
+	snowflakeEpoch            uint64 // snowflake起始时间戳（豪秒）
+	snowflakeTimeShift        uint8  // 时间戳偏移量
+
 	ruleType        string
 	slices          []string    // not the namespace slices
 	subTableIndexes []int       //subTableIndexes store all the index of sharding sub-table
@@ -96,6 +100,17 @@ type BaseRule struct {
 	// TODO: 目前全局表也借用这两个field存放默认分片的物理DB名
 	mycatDatabases               []string
 	mycatDatabaseToTableIndexMap map[string]int // key: phy db name, value: table index
+}
+
+// snowflake格式ID转时间戳（秒）
+func (r *BaseRule) snowflakeId2Timestamp(id interface{}) (int, error) {
+	switch val := id.(type) {
+	case uint64:
+	case int64:
+		return int((uint64(val>>r.snowflakeTimeShift) + r.snowflakeEpoch) / 1000), nil
+	}
+
+	return -1, NewKeyError("Illegal snowflake column")
 }
 
 type LinkedRule struct {
@@ -137,6 +152,14 @@ func (r *BaseRule) GetShard() Shard {
 }
 
 func (r *BaseRule) FindTableIndex(key interface{}) (int, error) {
+	// 如果是时间分片规则且是snowflake分片字段，获取key值对应的时间戳
+	if r.isSnowflakeShardingColumn && (r.ruleType == DateYearRuleType || r.ruleType == DateMonthRuleType || r.ruleType == DateDayRuleType) {
+		timestamp, err := r.snowflakeId2Timestamp(key)
+		if err != nil {
+			return -1, err
+		}
+		key = timestamp
+	}
 	return r.shard.FindForKey(key)
 }
 
@@ -302,6 +325,13 @@ func parseRule(cfg *models.Shard) (*BaseRule, error) {
 	r.db = cfg.DB
 	r.table = cfg.Table
 	r.shardingColumn = strings.ToLower(cfg.Key) //ignore case
+	r.isSnowflakeShardingColumn = cfg.IsSnowflakeKey
+	r.snowflakeEpoch = cfg.SnowflakeEpoch
+	r.snowflakeTimeShift = cfg.SnowflakeTimeShift
+	if r.snowflakeTimeShift == 0 && r.isSnowflakeShardingColumn == true {
+		r.snowflakeTimeShift = 22
+	}
+
 	r.ruleType = cfg.Type
 	r.slices = cfg.Slices //将rule model中的slices赋值给rule
 	r.mycatDatabaseToTableIndexMap = make(map[string]int)

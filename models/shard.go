@@ -59,6 +59,11 @@ type Shard struct {
 	ParentTable   string   `json:"parent_table"`
 	Type          string   `json:"type"` // 表类型: 包括分表如hash/range/data,关联表如: linked 全局表如: global等
 	Key           string   `json:"key"`
+
+	IsSnowflakeKey     bool   `json:"is_snowflake_key"`     // 是否是snowflake格式字段
+	SnowflakeEpoch     uint64 `json:"snowflake_epoch"`      // snowflake起始时间戳（豪秒）
+	SnowflakeTimeShift uint8   `json:"snowflake_time_shift"` // 时间戳偏移量
+
 	Locations     []int    `json:"locations"`
 	Slices        []string `json:"slices"`
 	DateRange     []string `json:"date_range"`
