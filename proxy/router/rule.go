@@ -300,7 +300,7 @@ func createLinkedRule(rules map[string]map[string]Rule, shard *models.Shard) (*L
 func parseRule(cfg *models.Shard) (*BaseRule, error) {
 	r := new(BaseRule)
 	r.db = cfg.DB
-	r.table = cfg.Table
+	r.table = strings.ToLower(cfg.Table)
 	r.shardingColumn = strings.ToLower(cfg.Key) //ignore case
 	r.ruleType = cfg.Type
 	r.slices = cfg.Slices //将rule model中的slices赋值给rule

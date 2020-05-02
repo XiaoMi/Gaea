@@ -305,7 +305,21 @@ func preparePlanInfo() (*PlanInfo, error) {
 				"20140901-20140905",
 				"20140907-20140908"
 			]
-		},
+        },
+        {
+            "db": "db_ks",
+            "table": "TBL_KS_UPPERCASE",
+            "type": "mod",
+            "key": "id",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ]
+        },
         {
             "db": "db_mycat",
             "table": "tbl_mycat",
