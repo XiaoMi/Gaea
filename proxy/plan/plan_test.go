@@ -321,6 +321,13 @@ func preparePlanInfo() (*PlanInfo, error) {
             ]
         },
         {
+            "db": "db_ks",
+            "table": "TBL_KS_UPPERCASE_CHILD",
+            "type": "linked",
+            "key": "ID",
+            "parent_table": "TBL_KS_UPPERCASE"
+        },
+        {
             "db": "db_mycat",
             "table": "tbl_mycat",
             "type": "mycat_mod",

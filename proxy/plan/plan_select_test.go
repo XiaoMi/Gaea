@@ -876,6 +876,17 @@ func TestSelectTableNameCaseInsensitive(t *testing.T) {
 			},
 		},
 		{
+			db:  "db_ks",
+			sql: "select a.ss, a from tbl_ks_uppercase_child as a where a.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT `a`.`ss`,`a` FROM `tbl_ks_uppercase_child_0001` AS `a` WHERE `a`.`id`=1",
+					},
+				},
+			},
+		},
+		{
 			db:  "db_mycat",
 			sql: "select * from TBL_MYCAT where TBL_MYCAT.ID in (0,2)",
 			sqls: map[string]map[string][]string{

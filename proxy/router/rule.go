@@ -275,7 +275,7 @@ func createLinkedRule(rules map[string]map[string]Rule, shard *models.Shard) (*L
 	if !ok {
 		return nil, fmt.Errorf("db of LinkedRule is not found in parent rules")
 	}
-	dbRule, ok := tableRules[shard.ParentTable]
+	dbRule, ok := tableRules[strings.ToLower(shard.ParentTable)]
 	if !ok {
 		return nil, fmt.Errorf("parent table of LinkedRule is not found in parent rules")
 	}
@@ -289,8 +289,8 @@ func createLinkedRule(rules map[string]map[string]Rule, shard *models.Shard) (*L
 
 	linkedRule := &LinkedRule{
 		db:             shard.DB,
-		table:          shard.Table,
-		shardingColumn: shard.Key,
+		table:          strings.ToLower(shard.Table),
+		shardingColumn: strings.ToLower(shard.Key),
 		linkToRule:     linkToRule,
 	}
 
