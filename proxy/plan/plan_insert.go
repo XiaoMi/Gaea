@@ -135,7 +135,7 @@ func handleInsertTableRefs(p *InsertPlan) (fastReturn bool, err error) {
 		return false, fmt.Errorf("not a table source")
 	}
 	tableName := tableSource.Source.(*ast.TableName)
-	p.table = tableName.Name.String()
+	p.table = tableName.Name.L
 
 	rule, need, err := NeedCreateTableNameDecoratorWithoutAlias(p.StmtInfo, tableName)
 	if err != nil {
