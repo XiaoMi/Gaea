@@ -302,7 +302,7 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, namespace
 	// record slow sql
 	duration := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
 	if duration > ns.getSessionSlowSQLTime() || ns.getSessionSlowSQLTime() == 0 {
-		log.Warn("session slow SQL, namespace: %s, sql: %s, cost %d ms", namespace, sql, duration)
+		log.Warn("session slow SQL, namespace: %s, sql: %s, cost: %d ms", namespace, sql, duration)
 		fingerprint := mysql.GetFingerprint(sql)
 		md5 := mysql.GetMd5(fingerprint)
 		ns.SetSlowSQLFingerprint(md5, fingerprint)
@@ -311,7 +311,7 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, namespace
 
 	// record error sql
 	if err != nil {
-		log.Warn("session error SQL, namespace: %s, sql: %s, cost %d ms, err: %v", namespace, sql, duration, err)
+		log.Warn("session error SQL, namespace: %s, sql: %s, cost: %d ms, err: %v", namespace, sql, duration, err)
 		fingerprint := mysql.GetFingerprint(sql)
 		md5 := mysql.GetMd5(fingerprint)
 		ns.SetErrorSQLFingerprint(md5, fingerprint)
@@ -339,7 +339,9 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace
 	m.statistics.recordBackendSQLTiming(namespace, operation, startTime)
 
 	// record slow sql
+	duration := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
 	if m.statistics.isBackendSlowSQL(startTime) {
+		log.Warn("backend slow SQL, namespace: %s, addr: %s, sql: %s, cost: %d ms", namespace, backendAddr, sql, duration, err)
 		fingerprint := mysql.GetFingerprint(sql)
 		md5 := mysql.GetMd5(fingerprint)
 		ns.SetBackendSlowSQLFingerprint(md5, fingerprint)
@@ -348,8 +350,7 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace
 
 	// record error sql
 	if err != nil {
-		duration := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
-		log.Warn("backend error SQL, namespace: %s, sql: %s, cost %d ms, err: %v", namespace, sql, duration, err)
+		log.Warn("backend error SQL, namespace: %s, addr: %s, sql: %s, cost %d ms, err: %v", namespace, backendAddr, sql, duration, err)
 		fingerprint := mysql.GetFingerprint(sql)
 		md5 := mysql.GetMd5(fingerprint)
 		ns.SetBackendErrorSQLFingerprint(md5, fingerprint)
