@@ -402,7 +402,7 @@ func rewriteTableSource(p *TableAliasStmtInfo, tableSource *ast.TableSource) err
 		if err := handleSubquerySelectStmt(p, ss); err != nil {
 			return fmt.Errorf("handleSubquerySelectStmt error: %v", err)
 		}
-		alias := tableSource.AsName.String()
+		alias := tableSource.AsName.L
 		if alias != "" {
 			if _, err := p.RecordSubqueryTableAlias(alias); err != nil {
 				return fmt.Errorf("record subquery alias error: %v", err)
@@ -419,7 +419,7 @@ func rewriteTableNameInTableSource(p *TableAliasStmtInfo, tableSource *ast.Table
 	if !ok {
 		return fmt.Errorf("field Source is not type of TableName, type: %T", tableSource.Source)
 	}
-	alias := tableSource.AsName.String()
+	alias := tableSource.AsName.L
 
 	rule, need, err := NeedCreateTableNameDecorator(p, tableName, alias)
 	if err != nil {
@@ -967,9 +967,9 @@ func handleLimit(p *SelectPlan, stmt *ast.SelectStmt) error {
 }
 
 func getTableInfoFromTableName(t *ast.TableName) (string, string) {
-	return t.Schema.O, t.Name.O
+	return t.Schema.O, t.Name.L
 }
 
 func getColumnInfoFromColumnName(t *ast.ColumnName) (string, string, string) {
-	return t.Schema.O, t.Table.O, t.Name.L
+	return t.Schema.O, t.Table.L, t.Name.L
 }

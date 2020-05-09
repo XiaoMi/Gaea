@@ -835,6 +835,100 @@ func TestSelectColumnCaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestSelectTableNameCaseInsensitive(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_ks",
+			sql: "select a.ss, a from TBL_KS_UPPERCASE as a where a.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT `a`.`ss`,`a` FROM `TBL_KS_UPPERCASE_0001` AS `a` WHERE `a`.`id`=1",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select ss, a from TBL_KS_UPPERCASE where id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT `ss`,`a` FROM `TBL_KS_UPPERCASE_0001` WHERE `id`=1",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select a.ss, a from tbl_ks_uppercase as a where a.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT `a`.`ss`,`a` FROM `tbl_ks_uppercase_0001` AS `a` WHERE `a`.`id`=1",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select a.ss, a from tbl_ks_uppercase_child as a where a.id = 1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT `a`.`ss`,`a` FROM `tbl_ks_uppercase_child_0001` AS `a` WHERE `a`.`id`=1",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from TBL_MYCAT where TBL_MYCAT.ID in (0,2)",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `TBL_MYCAT` WHERE `TBL_MYCAT`.`ID` IN (0)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `TBL_MYCAT` WHERE `TBL_MYCAT`.`ID` IN (2)"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat as A where A.ID in (0,2)",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` AS `A` WHERE `A`.`ID` IN (0)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` AS `A` WHERE `A`.`ID` IN (2)"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from (select id, ss from tbl_mycat) A where A.ID in (0,2)",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM (SELECT `id`,`ss` FROM (`tbl_mycat`)) AS `A` WHERE `A`.`ID` IN (0)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM (SELECT `id`,`ss` FROM (`tbl_mycat`)) AS `A` WHERE `A`.`ID` IN (2)"},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
 // TODO: range shard
 func TestMycatSelectBinaryOperatorComparison(t *testing.T) {
 	ns, err := preparePlanInfo()
