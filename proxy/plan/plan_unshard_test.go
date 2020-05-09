@@ -52,6 +52,25 @@ func TestUnshardPlan(t *testing.T) {
 	}
 }
 
+
+func TestUnshardPlanWithoutDB(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+	tests := []UnshardSQLTestcase{
+		{
+			db:        "db_mycat",
+			sql:       `select * from tbl_unshard_a`,
+			expectSQL: "SELECT * FROM `tbl_unshard_a`",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.sql, getUnshardTestFunc(ns, test))
+	}
+}
+
+
 // 获取使用TiDB parser测试SQL改写结果的测试函数
 func getUnshardTestFunc(info *PlanInfo, test UnshardSQLTestcase) func(t *testing.T) {
 	return func(t *testing.T) {
