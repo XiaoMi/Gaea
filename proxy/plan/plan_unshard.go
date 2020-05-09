@@ -16,10 +16,12 @@ package plan
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/ast"
+	"github.com/XiaoMi/Gaea/parser/format"
 	"github.com/XiaoMi/Gaea/util"
 )
 
@@ -27,9 +29,10 @@ import (
 type UnshardPlan struct {
 	basePlan
 
-	db   string
-	sql  string
-	stmt ast.StmtNode
+	db     string
+	phyDBs map[string]string
+	sql    string
+	stmt   ast.StmtNode
 }
 
 // SelectLastInsertIDPlan is the plan for SELECT LAST_INSERT_ID()
@@ -65,14 +68,28 @@ func IsSelectLastInsertIDStmt(stmt ast.StmtNode) bool {
 }
 
 // CreateUnshardPlan constructor of UnshardPlan
-func CreateUnshardPlan(stmt ast.StmtNode, db, sql string) *UnshardPlan {
+func CreateUnshardPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string) (*UnshardPlan, error) {
 	p := &UnshardPlan{
-		db:   db,
-		sql:  sql,
-		stmt: stmt,
+		db:     db,
+		sql:    sql,
+		phyDBs: phyDBs,
+		stmt:   stmt,
 	}
+	v := NewUnshardTableRewriteVisitor(phyDBs)
+	stmt.Accept(v)
+	rsql, err := generateUnShardingSQL(stmt)
+	if err != nil {
+		return nil, fmt.Errorf("generate unshardPlan SQL error: %v", err)
+	}
+	p.sql = rsql
+	return p, nil
+}
 
-	return p
+func generateUnShardingSQL(stmt ast.StmtNode) (string, error) {
+	s := &strings.Builder{}
+	ctx := format.NewRestoreCtx(format.EscapeRestoreFlags, s)
+	_ = stmt.Restore(ctx)
+	return s.String(), nil
 }
 
 // CreateSelectLastInsertIDPlan constructor of SelectLastInsertIDPlan
@@ -130,4 +147,37 @@ func createLastInsertIDResult(lastInsertID uint64) *mysql.Result {
 	}
 
 	return ret
+}
+
+// UnshardTableRewriteVisitor visit TableName, check if need decorate, and then decorate it.
+type UnshardTableRewriteVisitor struct {
+	PhyDBs map[string]string
+}
+
+// UnshardTableRewriteVisitor consturctor of SubqueryColumnNameRewriteVisitor
+func NewUnshardTableRewriteVisitor(phyDbs map[string]string) *UnshardTableRewriteVisitor {
+	return &UnshardTableRewriteVisitor{
+		PhyDBs: phyDbs,
+	}
+}
+
+// Enter implement ast.Visitor
+func (s *UnshardTableRewriteVisitor) Enter(n ast.Node) (node ast.Node, skipChildren bool) {
+	return n, false
+}
+
+// Leave implement ast.Visitor
+func (s *UnshardTableRewriteVisitor) Leave(n ast.Node) (node ast.Node, ok bool) {
+	table, ok := n.(*ast.TableName)
+	if !ok {
+		return n, true
+	}
+
+	if table.Schema.String() == "" {
+		return n, true
+	}
+	if phyDB, ok := s.PhyDBs[table.Schema.O]; ok {
+		return CreateUnshardTableNameDecorator(table, phyDB), true
+	}
+	return n, true
 }

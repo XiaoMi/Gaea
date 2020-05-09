@@ -163,13 +163,13 @@ type TableAliasStmtInfo struct {
 }
 
 // BuildPlan build plan for ast
-func BuildPlan(stmt ast.StmtNode, db string, sql string, router *router.Router, seq *sequence.SequenceManager) (Plan, error) {
+func BuildPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string, router *router.Router, seq *sequence.SequenceManager) (Plan, error) {
 	if IsSelectLastInsertIDStmt(stmt) {
 		return CreateSelectLastInsertIDPlan(), nil
 	}
 
 	if estmt, ok := stmt.(*ast.ExplainStmt); ok {
-		return buildExplainPlan(estmt, db, sql, router, seq)
+		return buildExplainPlan(estmt, phyDBs, db, sql, router, seq)
 	}
 
 	checker := NewChecker(db, router)
@@ -182,7 +182,7 @@ func BuildPlan(stmt ast.StmtNode, db string, sql string, router *router.Router, 
 	if checker.IsShard() {
 		return buildShardPlan(stmt, db, sql, router, seq)
 	}
-	return CreateUnshardPlan(stmt, db, sql), nil
+	return CreateUnshardPlan(stmt, phyDBs, db, sql)
 }
 
 func buildShardPlan(stmt ast.StmtNode, db string, sql string, router *router.Router, seq *sequence.SequenceManager) (Plan, error) {
