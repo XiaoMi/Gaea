@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/parser"
 	"github.com/XiaoMi/Gaea/proxy/router"
@@ -96,11 +97,13 @@ func getTestFunc(info *PlanInfo, test SQLTestcase) func(t *testing.T) {
 		case *ExplainPlan:
 			actualSQLs = plan.sqls
 		case *UnshardPlan:
-			if test.hasErr {
-				t.Logf("find unshard plan in shard testing")
-				return
+			actualSQLs = make(map[string]map[string][]string)
+			dbSQLs := make(map[string][]string)
+			if db, ok := info.phyDBs[plan.db]; ok {
+				plan.db = db
 			}
-			t.Fatalf("find unshard plan in shard testing")
+			dbSQLs[plan.db] = []string{plan.sql}
+			actualSQLs[backend.DefaultSlice] = dbSQLs
 		}
 
 		if actualSQLs == nil {
