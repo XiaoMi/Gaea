@@ -77,7 +77,7 @@ func CreateUnshardPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql stri
 	}
 	v := NewUnshardTableRewriteVisitor(phyDBs)
 	stmt.Accept(v)
-	rsql, err := generateUnShardingSQL(stmt)
+	rsql, err := generateUnshardingSQL(stmt)
 	if err != nil {
 		return nil, fmt.Errorf("generate unshardPlan SQL error: %v", err)
 	}
@@ -85,7 +85,7 @@ func CreateUnshardPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql stri
 	return p, nil
 }
 
-func generateUnShardingSQL(stmt ast.StmtNode) (string, error) {
+func generateUnshardingSQL(stmt ast.StmtNode) (string, error) {
 	s := &strings.Builder{}
 	ctx := format.NewRestoreCtx(format.EscapeRestoreFlags, s)
 	_ = stmt.Restore(ctx)
