@@ -188,7 +188,7 @@ func BuildPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string, rout
 	if checker.IsShard() {
 		return buildShardPlan(stmt, db, sql, router, seq)
 	}
-	return CreateUnshardPlan(stmt, phyDBs, db, sql, checker.GetUnshardTableName())
+	return CreateUnshardPlan(stmt, phyDBs, db, checker.GetUnshardTableName())
 }
 
 func buildShardPlan(stmt ast.StmtNode, db string, sql string, router *router.Router, seq *sequence.SequenceManager) (Plan, error) {

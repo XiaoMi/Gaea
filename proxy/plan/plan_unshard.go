@@ -68,10 +68,9 @@ func IsSelectLastInsertIDStmt(stmt ast.StmtNode) bool {
 }
 
 // CreateUnshardPlan constructor of UnshardPlan
-func CreateUnshardPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string, tableNames []*ast.TableName) (*UnshardPlan, error) {
+func CreateUnshardPlan(stmt ast.StmtNode, phyDBs map[string]string, db string, tableNames []*ast.TableName) (*UnshardPlan, error) {
 	p := &UnshardPlan{
 		db:     db,
-		sql:    sql,
 		phyDBs: phyDBs,
 		stmt:   stmt,
 	}
