@@ -1499,9 +1499,13 @@ func TestMycatSelectSubqueryInTableRefs(t *testing.T) {
 			},
 		},
 		{
-			db:     "db_mycat",
-			sql:    "select id from (select user from tbl_mycat_unknown) as a", // find unshard plan in shard testing
-			hasErr: true,
+			db:  "db_mycat",
+			sql: "select id from (select user from tbl_mycat_unknown) as a", //unshard plan 
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `id` FROM (SELECT `user` FROM (`tbl_mycat_unknown`)) AS `a`"},
+				},
+			},
 		},
 		{
 			db:     "db_mycat",

@@ -16,10 +16,12 @@ package plan
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/ast"
+	"github.com/XiaoMi/Gaea/parser/format"
 	"github.com/XiaoMi/Gaea/util"
 )
 
@@ -27,9 +29,10 @@ import (
 type UnshardPlan struct {
 	basePlan
 
-	db   string
-	sql  string
-	stmt ast.StmtNode
+	db     string
+	phyDBs map[string]string
+	sql    string
+	stmt   ast.StmtNode
 }
 
 // SelectLastInsertIDPlan is the plan for SELECT LAST_INSERT_ID()
@@ -65,14 +68,35 @@ func IsSelectLastInsertIDStmt(stmt ast.StmtNode) bool {
 }
 
 // CreateUnshardPlan constructor of UnshardPlan
-func CreateUnshardPlan(stmt ast.StmtNode, db, sql string) *UnshardPlan {
+func CreateUnshardPlan(stmt ast.StmtNode, phyDBs map[string]string, db string, tableNames []*ast.TableName) (*UnshardPlan, error) {
 	p := &UnshardPlan{
-		db:   db,
-		sql:  sql,
-		stmt: stmt,
+		db:     db,
+		phyDBs: phyDBs,
+		stmt:   stmt,
 	}
+	rewriteUnshardTableName(phyDBs, tableNames)
+	rsql, err := generateUnshardingSQL(stmt)
+	if err != nil {
+		return nil, fmt.Errorf("generate unshardPlan SQL error: %v", err)
+	}
+	p.sql = rsql
+	return p, nil
+}
 
-	return p
+func rewriteUnshardTableName(phyDBs map[string]string, tableNames []*ast.TableName) {
+	for _, tableName := range tableNames {
+		if phyDB, ok := phyDBs[tableName.Schema.String()]; ok {
+			tableName.Schema.O = phyDB
+			tableName.Schema.L = strings.ToLower(phyDB)
+		}
+	}
+}
+
+func generateUnshardingSQL(stmt ast.StmtNode) (string, error) {
+	s := &strings.Builder{}
+	ctx := format.NewRestoreCtx(format.EscapeRestoreFlags, s)
+	_ = stmt.Restore(ctx)
+	return s.String(), nil
 }
 
 // CreateSelectLastInsertIDPlan constructor of SelectLastInsertIDPlan

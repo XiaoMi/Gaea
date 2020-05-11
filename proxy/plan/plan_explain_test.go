@@ -198,3 +198,25 @@ func TestExplainUnshardInsert(t *testing.T) {
 		t.Run(test.sql, getTestFunc(ns, test))
 	}
 }
+
+func TestExplainUnshardInsertWithDb(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "explain insert into db_mycat.tbl_unshard (id, a) values (0, 'hi')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat": {"INSERT INTO `db_mycat_0`.`tbl_unshard` (`id`,`a`) VALUES (0,'hi')"}, // 注意这里的db名没有被改写
+				},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}

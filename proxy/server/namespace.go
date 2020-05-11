@@ -269,6 +269,10 @@ func (n *Namespace) GetDefaultPhyDB(dbname string) (string, error) {
 	return phyDB, nil
 }
 
+func (n *Namespace) GetPhysicalDBs() map[string]string {
+	return n.defaultPhyDBs
+}
+
 // GetDefaultCharset return default charset
 func (n *Namespace) GetDefaultCharset() string {
 	return n.defaultCharset
