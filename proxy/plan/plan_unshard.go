@@ -68,21 +68,29 @@ func IsSelectLastInsertIDStmt(stmt ast.StmtNode) bool {
 }
 
 // CreateUnshardPlan constructor of UnshardPlan
-func CreateUnshardPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string) (*UnshardPlan, error) {
+func CreateUnshardPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string, tableNames []*ast.TableName) (*UnshardPlan, error) {
 	p := &UnshardPlan{
 		db:     db,
 		sql:    sql,
 		phyDBs: phyDBs,
 		stmt:   stmt,
 	}
-	v := NewUnshardTableRewriteVisitor(phyDBs)
-	stmt.Accept(v)
+	rewriteUnshardTableName(phyDBs, tableNames)
 	rsql, err := generateUnshardingSQL(stmt)
 	if err != nil {
 		return nil, fmt.Errorf("generate unshardPlan SQL error: %v", err)
 	}
 	p.sql = rsql
 	return p, nil
+}
+
+func rewriteUnshardTableName(phyDBs map[string]string, tableNames []*ast.TableName) {
+	for _, tableName := range tableNames {
+		if phyDB, ok := phyDBs[tableName.Schema.String()]; ok {
+			tableName.Schema.O = phyDB
+			tableName.Schema.L = strings.ToLower(phyDB)
+		}
+	}
 }
 
 func generateUnshardingSQL(stmt ast.StmtNode) (string, error) {
@@ -147,37 +155,4 @@ func createLastInsertIDResult(lastInsertID uint64) *mysql.Result {
 	}
 
 	return ret
-}
-
-// UnshardTableRewriteVisitor visit TableName, check if need decorate, and then decorate it.
-type UnshardTableRewriteVisitor struct {
-	PhyDBs map[string]string
-}
-
-// UnshardTableRewriteVisitor consturctor of SubqueryColumnNameRewriteVisitor
-func NewUnshardTableRewriteVisitor(phyDbs map[string]string) *UnshardTableRewriteVisitor {
-	return &UnshardTableRewriteVisitor{
-		PhyDBs: phyDbs,
-	}
-}
-
-// Enter implement ast.Visitor
-func (s *UnshardTableRewriteVisitor) Enter(n ast.Node) (node ast.Node, skipChildren bool) {
-	return n, false
-}
-
-// Leave implement ast.Visitor
-func (s *UnshardTableRewriteVisitor) Leave(n ast.Node) (node ast.Node, ok bool) {
-	table, ok := n.(*ast.TableName)
-	if !ok {
-		return n, true
-	}
-
-	if table.Schema.String() == "" {
-		return n, true
-	}
-	if phyDB, ok := s.PhyDBs[table.Schema.O]; ok {
-		return CreateUnshardTableNameDecorator(table, phyDB), true
-	}
-	return n, true
 }
