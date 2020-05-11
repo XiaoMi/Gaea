@@ -75,7 +75,6 @@ func NewChecker(db string, router *router.Router) *Checker {
 		router:        router,
 		hasShardTable: false,
 		dbInvalid:     false,
-		tableNames:    make([]*ast.TableName, 0),
 	}
 }
 
