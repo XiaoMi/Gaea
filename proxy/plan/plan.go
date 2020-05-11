@@ -78,7 +78,7 @@ func NewChecker(db string, router *router.Router) *Checker {
 	}
 }
 
-func (s *Checker) GetUnshardTableName() []*ast.TableName {
+func (s *Checker) GetUnshardTableNames() []*ast.TableName {
 	return s.tableNames
 }
 
@@ -188,7 +188,7 @@ func BuildPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string, rout
 	if checker.IsShard() {
 		return buildShardPlan(stmt, db, sql, router, seq)
 	}
-	return CreateUnshardPlan(stmt, phyDBs, db, checker.GetUnshardTableName())
+	return CreateUnshardPlan(stmt, phyDBs, db, checker.GetUnshardTableNames())
 }
 
 func buildShardPlan(stmt ast.StmtNode, db string, sql string, router *router.Router, seq *sequence.SequenceManager) (Plan, error) {
