@@ -16,12 +16,9 @@ package plan
 
 import (
 	"fmt"
-	"strings"
-
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/ast"
-	"github.com/XiaoMi/Gaea/parser/format"
 	"github.com/XiaoMi/Gaea/proxy/router"
 	"github.com/XiaoMi/Gaea/proxy/sequence"
 	"github.com/XiaoMi/Gaea/util"
@@ -39,13 +36,13 @@ type ExplainPlan struct {
 	sqls      map[string]map[string][]string
 }
 
-func buildExplainPlan(stmt *ast.ExplainStmt, db, sql string, r *router.Router, seq *sequence.SequenceManager) (*ExplainPlan, error) {
+func buildExplainPlan(stmt *ast.ExplainStmt, phyDBs map[string]string, db, sql string, r *router.Router, seq *sequence.SequenceManager) (*ExplainPlan, error) {
 	stmtToExplain := stmt.Stmt
 	if _, ok := stmtToExplain.(*ast.ExplainStmt); ok {
 		return nil, fmt.Errorf("nested explain")
 	}
 
-	p, err := BuildPlan(stmtToExplain, db, sql, r, seq)
+	p, err := BuildPlan(stmtToExplain, phyDBs, db, sql, r, seq)
 	if err != nil {
 		return nil, fmt.Errorf("build plan to explain error: %v", err)
 	}
@@ -71,13 +68,9 @@ func buildExplainPlan(stmt *ast.ExplainStmt, db, sql string, r *router.Router, s
 		return ep, nil
 	case *UnshardPlan:
 		ep.shardType = ShardTypeUnshard
-		// 非分片SQL要用Restore从ast还原, 因为原SQL含有EXPLAIN
 		ep.sqls = make(map[string]map[string][]string)
 		dbSQLs := make(map[string][]string)
-		s := &strings.Builder{}
-		ctx := format.NewRestoreCtx(format.EscapeRestoreFlags, s)
-		_ = pl.stmt.Restore(ctx)
-		dbSQLs[pl.db] = []string{s.String()}
+		dbSQLs[pl.db] = []string{pl.sql}
 		ep.sqls[backend.DefaultSlice] = dbSQLs
 		return ep, nil
 	default:

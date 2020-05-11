@@ -65,6 +65,7 @@ type Checker struct {
 	router        *router.Router
 	hasShardTable bool // 是否包含分片表
 	dbInvalid     bool // SQL是否No database selected
+	tableNames    []*ast.TableName
 }
 
 // NewChecker db为USE db中设置的DB名. 如果没有执行USE db, 则为空字符串
@@ -75,6 +76,10 @@ func NewChecker(db string, router *router.Router) *Checker {
 		hasShardTable: false,
 		dbInvalid:     false,
 	}
+}
+
+func (s *Checker) GetUnshardTableNames() []*ast.TableName {
+	return s.tableNames
 }
 
 // IsDatabaseInvalid 判断执行计划中是否包含db信息, 如果不包含, 且又含有表名, 则是一个错的执行计划, 应该返回以下错误:
@@ -104,6 +109,7 @@ func (s *Checker) Enter(n ast.Node) (node ast.Node, skipChildren bool) {
 			s.hasShardTable = true
 			return n, true
 		}
+		s.tableNames = append(s.tableNames, nn)
 	}
 	return n, false
 }
@@ -163,13 +169,13 @@ type TableAliasStmtInfo struct {
 }
 
 // BuildPlan build plan for ast
-func BuildPlan(stmt ast.StmtNode, db string, sql string, router *router.Router, seq *sequence.SequenceManager) (Plan, error) {
+func BuildPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string, router *router.Router, seq *sequence.SequenceManager) (Plan, error) {
 	if IsSelectLastInsertIDStmt(stmt) {
 		return CreateSelectLastInsertIDPlan(), nil
 	}
 
 	if estmt, ok := stmt.(*ast.ExplainStmt); ok {
-		return buildExplainPlan(estmt, db, sql, router, seq)
+		return buildExplainPlan(estmt, phyDBs, db, sql, router, seq)
 	}
 
 	checker := NewChecker(db, router)
@@ -182,7 +188,7 @@ func BuildPlan(stmt ast.StmtNode, db string, sql string, router *router.Router, 
 	if checker.IsShard() {
 		return buildShardPlan(stmt, db, sql, router, seq)
 	}
-	return CreateUnshardPlan(stmt, db, sql), nil
+	return CreateUnshardPlan(stmt, phyDBs, db, checker.GetUnshardTableNames())
 }
 
 func buildShardPlan(stmt ast.StmtNode, db string, sql string, router *router.Router, seq *sequence.SequenceManager) (Plan, error) {
