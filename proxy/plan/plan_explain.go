@@ -70,6 +70,9 @@ func buildExplainPlan(stmt *ast.ExplainStmt, phyDBs map[string]string, db, sql s
 		ep.shardType = ShardTypeUnshard
 		ep.sqls = make(map[string]map[string][]string)
 		dbSQLs := make(map[string][]string)
+		if phyDB, ok := phyDBs[pl.db]; ok {
+			pl.db = phyDB
+		}
 		dbSQLs[pl.db] = []string{pl.sql}
 		ep.sqls[backend.DefaultSlice] = dbSQLs
 		return ep, nil
