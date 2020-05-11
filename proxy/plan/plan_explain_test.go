@@ -189,7 +189,7 @@ func TestExplainUnshardInsert(t *testing.T) {
 			sql: "explain insert into tbl_unshard (id, a) values (0, 'hi')",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_mycat": {"INSERT INTO `tbl_unshard` (`id`,`a`) VALUES (0,'hi')"}, // 注意这里的db名没有被改写
+					"db_mycat_0": {"INSERT INTO `tbl_unshard` (`id`,`a`) VALUES (0,'hi')"},
 				},
 			},
 		},
@@ -211,7 +211,7 @@ func TestExplainUnshardInsertWithDb(t *testing.T) {
 			sql: "explain insert into db_mycat.tbl_unshard (id, a) values (0, 'hi')",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_mycat": {"INSERT INTO `db_mycat_0`.`tbl_unshard` (`id`,`a`) VALUES (0,'hi')"}, // 注意这里的db名没有被改写
+					"db_mycat_0": {"INSERT INTO `db_mycat_0`.`tbl_unshard` (`id`,`a`) VALUES (0,'hi')"},
 				},
 			},
 		},
