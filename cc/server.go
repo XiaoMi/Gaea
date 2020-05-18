@@ -149,9 +149,9 @@ func (s *Server) detailNamespace(c *gin.Context) {
 		return
 	}
 
-	names = append(names,name)
-
-	r.Data, err = service.QueryNamespace(names, s.cfg)
+	names = append(names, name)
+	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
+	r.Data, err = service.QueryNamespace(names, s.cfg, cluster)
 	if err != nil {
 		log.Warn("query namespace failed, %v", err)
 		c.JSON(http.StatusOK, r)
