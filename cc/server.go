@@ -67,6 +67,7 @@ func (s *Server) registerURL() {
 	})
 	api.GET("/namespace/list", s.listNamespace)
 	api.GET("/namespace", s.queryNamespace)
+	api.GET("/namespace/detail/:name", s.detailNamespace)
 	api.PUT("/namespace/modify", s.modifyNamespace)
 	api.PUT("/namespace/delete/:name", s.delNamespace)
 	api.GET("/namespace/sqlfingerprint/:name", s.sqlFingerprint)
@@ -122,6 +123,34 @@ func (s *Server) queryNamespace(c *gin.Context) {
 	}
 
 	r.Data, err = service.QueryNamespace(req.Names, s.cfg)
+	if err != nil {
+		log.Warn("query namespace failed, %v", err)
+		c.JSON(http.StatusOK, r)
+		return
+	}
+
+	h.RetCode = 0
+	h.RetMessage = "SUCC"
+	c.JSON(http.StatusOK, r)
+	return
+}
+//获取namespace 详情
+func (s *Server) detailNamespace(c *gin.Context) {
+	var err error
+	var names []string
+	h := &RetHeader{RetCode: -1, RetMessage: ""}
+	r := &QueryNamespaceResp{RetHeader: h}
+
+	name := strings.TrimSpace(c.Param("name"))
+	if name == "" {
+		h.RetMessage = "input name is empty"
+		c.JSON(http.StatusOK, h)
+		return
+	}
+
+	names = append(names,name)
+
+	r.Data, err = service.QueryNamespace(names, s.cfg)
 	if err != nil {
 		log.Warn("query namespace failed, %v", err)
 		c.JSON(http.StatusOK, r)
