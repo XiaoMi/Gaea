@@ -34,6 +34,7 @@ require (
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/smartystreets/goconvey v0.0.0-20190222223459-a17d461953aa // indirect
 	github.com/soheilhy/cmux v0.1.4 // indirect
+	github.com/stretchr/testify v1.2.2
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20170815181823-89b8d40f7ca8 // indirect
 	github.com/xiang90/probing v0.0.0-20190116061207-43a291ad63a2 // indirect
 	go.etcd.io/bbolt v1.3.2 // indirect
