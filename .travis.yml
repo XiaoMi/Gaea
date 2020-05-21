@@ -1,3 +1,4 @@
+os: linux
 env:
   - TZ=Asia/Shanghai
 
@@ -6,8 +7,19 @@ sudo: required
 language: go
 
 go:
-  - 1.12.x
+  - 1.13.4
 
 script:
-  - export GO111MODULE=on
+  - export GO111MODULE=on 
   - make
+
+deploy:
+  provider: releases
+  file:
+  - bin/gaea
+  - bin/gaea-cc
+  overwrite: true
+  skip_cleanup: true 
+  api_key: $GITHUB_TOKEN
+  on: 
+    tags: true    #发布tag时才进行发包   
