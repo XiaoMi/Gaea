@@ -5,7 +5,8 @@ gaea proxy基于prometheus做统计数据的存储，使用grafana实现数据�
 ## 监控说明
 
 ### gaea proxy监控
-[proxy grafana配置模板](docs/template/gaea_proxy.json)  
+
+[proxy grafana配置模板](template/gaea_proxy.json)  
 
 proxy监控概览这部分主要展示gaea proxy的整体运行情况，主要包含以下几个监控项:
 
@@ -24,7 +25,8 @@ proxy监控概览这部分主要展示gaea proxy的整体运行情况，主要�
    
 
 ### 租户各指标监控
-[namespace grafana配置模板](docs/template/gaea_namespace.json)
+
+[namespace grafana配置模板](template/gaea_namespace.json)
 
 导入模板之前需要把模板里的gaea_test_namespace 替换为实际使用的namespace
 
