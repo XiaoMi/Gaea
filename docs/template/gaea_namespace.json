@@ -57,7 +57,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(avg(rate(gaea_proxy_sql_timings_count{namespace=\"gaea_test_namepsace\"}[10s])) without (slave)) by (namespace)",
+          "expr": "sum(avg(rate(gaea_proxy_sql_timings_count{namespace=\"gaea_test_namespace\"}[10s])) without (slave)) by (namespace)",
           "format": "time_series",
           "intervalFactor": 2,
           "legendFormat": "total",
@@ -66,7 +66,7 @@
           "target": ""
         },
         {
-          "expr": "sum(avg(rate(gaea_proxy_sql_timings_count{namespace=\"gaea_test_namepsace\"}[10s])) without (slave)) by (namespace,operation)",
+          "expr": "sum(avg(rate(gaea_proxy_sql_timings_count{namespace=\"gaea_test_namespace\"}[10s])) without (slave)) by (namespace,operation)",
           "format": "time_series",
           "intervalFactor": 2,
           "legendFormat": "{{operation}}",
@@ -153,7 +153,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(avg(rate(gaea_proxy_flow_counts{namespace=\"gaea_test_namepsace\"}[10s])) without (slave)) by (namespace, flowdirection)",
+          "expr": "sum(avg(rate(gaea_proxy_flow_counts{namespace=\"gaea_test_namespace\"}[10s])) without (slave)) by (namespace, flowdirection)",
           "format": "time_series",
           "intervalFactor": 2,
           "legendFormat": "{{flowdirection}}",
@@ -241,7 +241,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(avg(delta(gaea_proxy_sql_timings_sum{namespace=\"gaea_test_namepsace\"}[10s])) without (slave) / avg(delta(gaea_proxy_sql_timings_count{namespace=\"gaea_test_namepsace\"}[10s])) without (slave)) by (namespace, operation)",
+          "expr": "sum(avg(delta(gaea_proxy_sql_timings_sum{namespace=\"gaea_test_namespace\"}[10s])) without (slave) / avg(delta(gaea_proxy_sql_timings_count{namespace=\"gaea_test_namespace\"}[10s])) without (slave)) by (namespace, operation)",
           "format": "time_series",
           "intervalFactor": 2,
           "legendFormat": "{{operation}}",
@@ -329,7 +329,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(avg(delta(gaea_proxy_sql_error_counts{namespace=\"gaea_test_namepsace\"}[10s])) without (instance)) by (namespace, operation)",
+          "expr": "sum(avg(delta(gaea_proxy_sql_error_counts{namespace=\"gaea_test_namespace\"}[10s])) without (instance)) by (namespace, operation)",
           "format": "time_series",
           "intervalFactor": 2,
           "legendFormat": "{{operation}}",
@@ -417,7 +417,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(avg(delta(gaea_proxy_sql_fingerprint_slow_counts{namespace=\"gaea_test_namepsace\"}[10s])) without (instance)) by (namespace, fingerprint)",
+          "expr": "sum(avg(delta(gaea_proxy_sql_fingerprint_slow_counts{namespace=\"gaea_test_namespace\"}[10s])) without (instance)) by (namespace, fingerprint)",
           "format": "time_series",
           "intervalFactor": 2,
           "legendFormat": "{{fingerprint}}",
@@ -505,7 +505,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(avg(delta(gaea_proxy_sql_fingerprint_error_counts{namespace=\"gaea_test_namepsace\"}[10s])) without (instance)) by (namespace, fingerprint)",
+          "expr": "sum(avg(delta(gaea_proxy_sql_fingerprint_error_counts{namespace=\"gaea_test_namespace\"}[10s])) without (instance)) by (namespace, fingerprint)",
           "format": "time_series",
           "intervalFactor": 2,
           "legendFormat": "{{fingerprint}}",
@@ -593,7 +593,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(gaea_proxy_backend_connect_pool_in_use_counts{namespace=\"cn_mishop_pulse\"})  ",
+          "expr": "sum(gaea_proxy_backend_connect_pool_in_use_counts{namespace=\"gaea_test_namespace\"})  ",
           "format": "time_series",
           "hide": false,
           "interval": "",
@@ -603,7 +603,7 @@
           "target": ""
         },
         {
-          "expr": "sum(gaea_proxy_backend_connect_pool_in_use_counts{namespace=\"cn_mishop_pulse\"}) by (slice, ip_addr)  ",
+          "expr": "sum(gaea_proxy_backend_connect_pool_in_use_counts{namespace=\"gaea_test_namespace\"}) by (slice, ip_addr)  ",
           "format": "time_series",
           "hide": false,
           "interval": "",
@@ -692,7 +692,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(gaea_proxy_backend_connect_pool_idle_counts{namespace=\"cn_mishop_cn_mishop_xm_shop_online_test\"})  ",
+          "expr": "sum(gaea_proxy_backend_connect_pool_idle_counts{namespace=\"gaea_test_namespace\"})  ",
           "format": "time_series",
           "hide": false,
           "interval": "",
@@ -702,7 +702,7 @@
           "target": ""
         },
         {
-          "expr": "sum(gaea_proxy_backend_connect_pool_idle_counts{namespace=\"cn_mishop_cn_mishop_xm_shop_online_test\"}) by (slice, ip_addr)  ",
+          "expr": "sum(gaea_proxy_backend_connect_pool_idle_counts{namespace=\"gaea_test_namespace\"}) by (slice, ip_addr)  ",
           "format": "time_series",
           "hide": false,
           "interval": "",
@@ -791,7 +791,7 @@
       "steppedLine": false,
       "targets": [
         {
-          "expr": "sum(gaea_proxy_backend_connect_pool_wait_counts{namespace=\"cn_mishop_cn_mishop_xm_shop_online_test\"})  ",
+          "expr": "sum(gaea_proxy_backend_connect_pool_wait_counts{namespace=\"gaea_test_namespace\"})  ",
           "format": "time_series",
           "hide": false,
           "interval": "",
@@ -801,7 +801,7 @@
           "target": ""
         },
         {
-          "expr": "sum(gaea_proxy_backend_connect_pool_wait_counts{namespace=\"cn_mishop_cn_mishop_xm_shop_online_test\"}) by (slice, ip_addr) !=0   ",
+          "expr": "sum(gaea_proxy_backend_connect_pool_wait_counts{namespace=\"gaea_test_namespace\"}) by (slice, ip_addr) !=0   ",
           "format": "time_series",
           "hide": false,
           "interval": "",
