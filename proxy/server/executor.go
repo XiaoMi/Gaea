@@ -54,6 +54,7 @@ type SessionExecutor struct {
 	sessionVariables *mysql.SessionVariables
 
 	txConns map[string]*backend.PooledConnection
+	txLock  sync.Mutex
 
 	stmtID uint32
 	stmts  map[uint32]*Stmt //prepare相关,client端到proxy的stmt
@@ -346,6 +347,9 @@ func (se *SessionExecutor) getBackendConn(sliceName string, fromSlave bool) (pc 
 }
 
 func (se *SessionExecutor) getTransactionConn(sliceName string) (pc *backend.PooledConnection, err error) {
+	se.txLock.Lock()
+	defer se.txLock.Unlock()
+
 	var ok bool
 	pc, ok = se.txConns[sliceName]
 
@@ -610,6 +614,9 @@ func (se *SessionExecutor) isAutoCommit() bool {
 }
 
 func (se *SessionExecutor) handleBegin() error {
+	se.txLock.Lock()
+	defer se.txLock.Unlock()
+
 	for _, co := range se.txConns {
 		if err := co.Begin(); err != nil {
 			return err
@@ -633,6 +640,9 @@ func (se *SessionExecutor) handleRollback() (err error) {
 }
 
 func (se *SessionExecutor) commit() (err error) {
+	se.txLock.Lock()
+	defer se.txLock.Unlock()
+
 	se.status &= ^mysql.ServerStatusInTrans
 
 	for _, pc := range se.txConns {
@@ -647,6 +657,9 @@ func (se *SessionExecutor) commit() (err error) {
 }
 
 func (se *SessionExecutor) rollback() (err error) {
+	se.txLock.Lock()
+	defer se.txLock.Unlock()
+
 	se.status &= ^mysql.ServerStatusInTrans
 
 	for _, pc := range se.txConns {
