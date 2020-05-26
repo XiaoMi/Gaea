@@ -38,6 +38,7 @@ Gaea是小米中国区电商研发部研发的基于mysql协议的数据库中�
 
 - [快速入门](docs/quickstart.md)
 - [配置说明](docs/configuration.md)
+- [监控配置说明](docs/grafana.md)
 - [基本概念](docs/concepts.md)
 - [SQL兼容性](docs/compatibility.md)
 - [FAQ](docs/faq.md)
@@ -83,5 +84,5 @@ Gaea是小米中国区电商研发部研发的基于mysql协议的数据库中�
 ### gitter
 [![Gitter](https://badges.gitter.im/xiaomi-b2c/Gaea.svg)](https://gitter.im/xiaomi-b2c/Gaea?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
-### 微信群
-![微信](docs/assets/gaea_weixin.png)
+### 钉钉
+![钉钉](docs/assets/gaea_dingtalk.png)
