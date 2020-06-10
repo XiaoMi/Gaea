@@ -291,6 +291,9 @@ func (se *SessionExecutor) handleSetVariable(v *ast.VariableAssignment) error {
 }
 
 func (se *SessionExecutor) handleSetAutoCommit(autocommit bool) error {
+	se.txLock.Lock()
+	defer se.txLock.Unlock()
+
 	if autocommit {
 		se.status |= mysql.ServerStatusAutocommit
 		if se.status&mysql.ServerStatusInTrans > 0 {
