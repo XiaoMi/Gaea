@@ -59,7 +59,6 @@ func (s *MySQLSequence) NextSeq() (int64, error) {
 		if err != nil {
 			return 0, err
 		}
-		return s.curr, nil
 	}
 	s.curr++
 	return s.curr, nil
