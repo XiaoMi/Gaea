@@ -13,7 +13,15 @@ Sequence获取步骤：
 gaea只会修改和查询这张表，使用前需要按照下文中配置table的步骤在这张表中插入一条记录。   
 若某次读取的sequence没有用完，系统就停掉了，则这次读取的sequence剩余值不会再使用。
 
-##配置 
+##如何使用
+
+如：tbl_user_info的id列使用全局自增序列号
+``` 
+insert into gaea_test.tbl_user_info set name="zhangsan", age=15, id = nextval();
+```
+
+##如何配置 
+在指定的slice的master上操作，完成以下配置。
 ###配置db
 db: mycat
 ```
