@@ -97,9 +97,9 @@ func (s *MySQLSequence) getSeqFromDB() error {
 		return errors.New(fmt.Sprintf("invalid mycat sequence value %s %s", s.seqName, ret))
 	}
 
-	curr ,_:=strconv.ParseInt(ns[0], 10,64)
- 	incr , _:= strconv.ParseInt(ns[1], 10, 64 )
-	s.max = curr+incr
+	curr, _ := strconv.ParseInt(ns[0], 10, 64)
+	incr, _ := strconv.ParseInt(ns[1], 10, 64)
+	s.max = curr + incr
 	s.curr = curr
 	return nil
 }
