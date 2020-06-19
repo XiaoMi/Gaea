@@ -121,11 +121,11 @@ namespace的配置格式为json，包含分表、非分表、实例等配置信�
 
 | 字段名称        | 字段类型  | 字段含义                                        |
 | -------------- | -------- | -----------------------------------------------|
-| db             | string   | 使用全局序列号的表所在的逻辑db名                   |
+| db             | string   | 使用全局序列号的表所在的db的逻辑db名                   |
 | table          | string   | 使用全局序列号的表的逻辑表名                      |
 | type           | string   | 目前只支持mycat方式                              |
 | pk_name        | string   | 使用全局序列号的列名，单表只允许一个列使用全局序列号  |
-| slice_name     | string   | 用来记录全局序列号的表所在分片                     | 
+| slice_name     | string   | mycat_sequence表所在分片                     | 
 
 
 ## 配置示例
