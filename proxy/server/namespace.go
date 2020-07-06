@@ -321,6 +321,11 @@ func (n *Namespace) GetSlowSQLFingerprints() map[string]string {
 	return ret
 }
 
+// ClearSlowSQLFingerprints clear all slow sql fingerprints
+func (n *Namespace) ClearSlowSQLFingerprints() {
+	n.slowSQLCache.Clear()
+}
+
 // SetErrorSQLFingerprint store error sql fingerprint
 func (n *Namespace) SetErrorSQLFingerprint(md5, fingerprint string) {
 	n.errorSQLCache.Set(md5, cache.CachedString(fingerprint))
@@ -343,6 +348,11 @@ func (n *Namespace) GetErrorSQLFingerprints() map[string]string {
 		ret[item.Key] = string(item.Value.(cache.CachedString))
 	}
 	return ret
+}
+
+// ClearErrorSQLFingerprints clear all error sql fingerprints
+func (n *Namespace) ClearErrorSQLFingerprints() {
+	n.errorSQLCache.Clear()
 }
 
 // SetBackendSlowSQLFingerprint store backend slow sql fingerprint
@@ -369,6 +379,11 @@ func (n *Namespace) GetBackendSlowSQLFingerprints() map[string]string {
 	return ret
 }
 
+// ClearBackendSlowSQLFingerprints clear all backend slow sql fingerprints
+func (n *Namespace) ClearBackendSlowSQLFingerprints() {
+	n.backendSlowSQLCache.Clear()
+}
+
 // SetBackendErrorSQLFingerprint store backend error sql fingerprint
 func (n *Namespace) SetBackendErrorSQLFingerprint(md5, fingerprint string) {
 	n.backendErrorSQLCache.Set(md5, cache.CachedString(fingerprint))
@@ -391,6 +406,11 @@ func (n *Namespace) GetBackendErrorSQLFingerprints() map[string]string {
 		ret[item.Key] = string(item.Value.(cache.CachedString))
 	}
 	return ret
+}
+
+// ClearBackendErrorSQLFingerprints clear all backend error sql fingerprints
+func (n *Namespace) ClearBackendErrorSQLFingerprints() {
+	n.backendErrorSQLCache.Clear()
 }
 
 // Close recycle resources of namespace
