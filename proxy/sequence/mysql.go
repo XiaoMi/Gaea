@@ -15,6 +15,10 @@
 package sequence
 
 import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/XiaoMi/Gaea/backend"
@@ -50,16 +54,14 @@ func NewMySQLSequence(slice *backend.Slice, seqName, pkName string) *MySQLSequen
 func (s *MySQLSequence) NextSeq() (int64, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
-	s.curr++
-	if s.curr > s.max {
+	if s.curr >= s.max {
 		err := s.getSeqFromDB()
 		if err != nil {
 			return 0, err
 		}
 	}
-	t := s.curr
 	s.curr++
-	return t, nil
+	return s.curr, nil
 }
 
 // GetPKName return sequence column
@@ -83,16 +85,20 @@ func (s *MySQLSequence) getSeqFromDB() error {
 	if err != nil {
 		return err
 	}
-	curr, err := r.Resultset.GetInt(0, 0)
+
+	ret, err := r.Resultset.GetString(0, 0)
 	if err != nil {
-		return nil
+		return err
 	}
 
-	incr, err := r.Resultset.GetInt(0, 1)
-	if err != nil {
-		return nil
+	ns := strings.Split(ret, ",")
+	if len(ns) != 2 {
+		return errors.New(fmt.Sprintf("invalid mycat sequence value %s %s", s.seqName, ret))
 	}
+
+	curr, _ := strconv.ParseInt(ns[0], 10, 64)
+	incr, _ := strconv.ParseInt(ns[1], 10, 64)
 	s.max = curr + incr
-
+	s.curr = curr
 	return nil
 }
