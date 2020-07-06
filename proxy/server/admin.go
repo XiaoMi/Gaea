@@ -151,6 +151,8 @@ func (s *AdminServer) registerURL() {
 
 	adminGroup.GET("/stats/sessionsqlfingerprint/:namespace", s.getNamespaceSessionSQLFingerprint)
 	adminGroup.GET("/stats/backendsqlfingerprint/:namespace", s.getNamespaceBackendSQLFingerprint)
+	adminGroup.DELETE("/stats/sessionsqlfingerprint/:namespace", s.clearNamespaceSessionSQLFingerprint)
+	adminGroup.DELETE("/stats/backendsqlfingerprint/:namespace", s.clearNamespaceBackendSQLFingerprint)
 
 	adminGroup.Use(gzip.Gzip(gzip.DefaultCompression))
 	adminGroup.Use(gin.Recovery())
@@ -335,4 +337,32 @@ func (s *AdminServer) getNamespaceBackendSQLFingerprint(c *gin.Context) {
 	ret := &SQLFingerprint{SlowSQL: slowSQLFingerprints, ErrorSQL: errSQLFingerprints}
 
 	c.JSON(http.StatusOK, ret)
+}
+
+func (s *AdminServer) clearNamespaceSessionSQLFingerprint(c *gin.Context) {
+	ns := strings.TrimSpace(c.Param("namespace"))
+	namespace := s.proxy.manager.GetNamespace(ns)
+	if namespace == nil {
+		c.JSON(selfDefinedInternalError, "namespace not found")
+		return
+	}
+
+	namespace.ClearSlowSQLFingerprints()
+	namespace.ClearErrorSQLFingerprints()
+
+	c.JSON(http.StatusOK, "OK")
+}
+
+func (s *AdminServer) clearNamespaceBackendSQLFingerprint(c *gin.Context) {
+	ns := strings.TrimSpace(c.Param("namespace"))
+	namespace := s.proxy.manager.GetNamespace(ns)
+	if namespace == nil {
+		c.JSON(selfDefinedInternalError, "namespace not found")
+		return
+	}
+
+	namespace.ClearBackendSlowSQLFingerprints()
+	namespace.ClearBackendErrorSQLFingerprints()
+
+	c.JSON(http.StatusOK, "OK")
 }
