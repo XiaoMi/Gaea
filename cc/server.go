@@ -67,6 +67,7 @@ func (s *Server) registerURL() {
 	})
 	api.GET("/namespace/list", s.listNamespace)
 	api.GET("/namespace", s.queryNamespace)
+	api.GET("/namespace/detail/:name", s.detailNamespace)
 	api.PUT("/namespace/modify", s.modifyNamespace)
 	api.PUT("/namespace/delete/:name", s.delNamespace)
 	api.GET("/namespace/sqlfingerprint/:name", s.sqlFingerprint)
@@ -123,6 +124,34 @@ func (s *Server) queryNamespace(c *gin.Context) {
 	}
 	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
 	r.Data, err = service.QueryNamespace(req.Names, s.cfg, cluster)
+	if err != nil {
+		log.Warn("query namespace failed, %v", err)
+		c.JSON(http.StatusOK, r)
+		return
+	}
+
+	h.RetCode = 0
+	h.RetMessage = "SUCC"
+	c.JSON(http.StatusOK, r)
+	return
+}
+
+func (s *Server) detailNamespace(c *gin.Context) {
+	var err error
+	var names []string
+	h := &RetHeader{RetCode: -1, RetMessage: ""}
+	r := &QueryNamespaceResp{RetHeader: h}
+
+	name := strings.TrimSpace(c.Param("name"))
+	if name == "" {
+		h.RetMessage = "input name is empty"
+		c.JSON(http.StatusOK, h)
+		return
+	}
+
+	names = append(names, name)
+	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
+	r.Data, err = service.QueryNamespace(names, s.cfg, cluster)
 	if err != nil {
 		log.Warn("query namespace failed, %v", err)
 		c.JSON(http.StatusOK, r)
