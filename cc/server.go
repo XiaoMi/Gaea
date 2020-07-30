@@ -179,6 +179,7 @@ func (s *Server) modifyNamespace(c *gin.Context) {
 	err = service.ModifyNamespace(&namespace, s.cfg, cluster)
 	if err != nil {
 		log.Warn("modifyNamespace failed, err: %v", err)
+		h.RetMessage = err.Error()
 		c.JSON(http.StatusOK, h)
 		return
 	}
