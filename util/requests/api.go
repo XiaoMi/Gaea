@@ -16,6 +16,7 @@ package requests
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -174,8 +175,15 @@ func Send(request *Request) (*Response, error) {
 func SendPut(url, user, password string) error {
 	req := NewRequest(url, Put, nil, nil, nil)
 	req.SetBasicAuth(user, password)
-	_, err := Send(req)
-	return err
+
+	resp, err := Send(req)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return errors.New(string(resp.Body))
+	}
+	return nil
 }
 
 // SendGet send get http request
