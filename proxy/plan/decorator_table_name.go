@@ -17,6 +17,8 @@ package plan
 import (
 	"fmt"
 
+	"github.com/pingcap/errors"
+
 	"github.com/XiaoMi/Gaea/parser/ast"
 	"github.com/XiaoMi/Gaea/parser/format"
 	"github.com/XiaoMi/Gaea/proxy/router"
@@ -111,13 +113,11 @@ func (t *TableNameDecorator) Restore(ctx *format.RestoreCtx) error {
 		ctx.WriteName(fmt.Sprintf("%s_%04d", t.origin.Name.String(), tableIndex))
 	}
 
-	if len(t.origin.IndexHints) == 0 {
-		return nil
-	}
-
-	ctx.WritePlain(" ")
-	for i := 0; i < len(t.origin.IndexHints); i++ {
-		t.origin.IndexHints[i].Restore(ctx)
+	for _, value := range t.origin.IndexHints {
+		ctx.WritePlain(" ")
+		if err := value.Restore(ctx); err != nil {
+			return errors.Annotate(err, "An error occurred while splicing IndexHints")
+		}
 	}
 	return nil
 }
