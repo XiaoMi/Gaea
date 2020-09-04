@@ -62,10 +62,6 @@ func CreateTableNameDecorator(n *ast.TableName, rule router.Rule, result *RouteR
 		return nil, fmt.Errorf("TableName does not support PartitionNames in sharding")
 	}
 
-	if len(n.IndexHints) != 0 {
-		return nil, fmt.Errorf("TableName does not support IndexHints in sharding")
-	}
-
 	ret := &TableNameDecorator{
 		origin: n,
 		rule:   rule,
@@ -115,6 +111,14 @@ func (t *TableNameDecorator) Restore(ctx *format.RestoreCtx) error {
 		ctx.WriteName(fmt.Sprintf("%s_%04d", t.origin.Name.String(), tableIndex))
 	}
 
+	if len(t.origin.IndexHints) <= 0 {
+		return nil
+	}
+
+	ctx.WritePlain(" ")
+	for i := 0; i < len(t.origin.IndexHints); i++ {
+		t.origin.IndexHints[i].Restore(ctx)
+	}
 	return nil
 }
 
