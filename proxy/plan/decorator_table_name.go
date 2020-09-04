@@ -111,7 +111,7 @@ func (t *TableNameDecorator) Restore(ctx *format.RestoreCtx) error {
 		ctx.WriteName(fmt.Sprintf("%s_%04d", t.origin.Name.String(), tableIndex))
 	}
 
-	if len(t.origin.IndexHints) <= 0 {
+	if len(t.origin.IndexHints) == 0 {
 		return nil
 	}
 
