@@ -20,6 +20,7 @@ import (
 	"github.com/XiaoMi/Gaea/parser/ast"
 	"github.com/XiaoMi/Gaea/parser/format"
 	"github.com/XiaoMi/Gaea/proxy/router"
+	"github.com/pingcap/errors"
 )
 
 // TableNameDecorator decorate TableName
@@ -60,10 +61,6 @@ func NeedCreateTableNameDecorator(p *TableAliasStmtInfo, n *ast.TableName, alias
 func CreateTableNameDecorator(n *ast.TableName, rule router.Rule, result *RouteResult) (*TableNameDecorator, error) {
 	if len(n.PartitionNames) != 0 {
 		return nil, fmt.Errorf("TableName does not support PartitionNames in sharding")
-	}
-
-	if len(n.IndexHints) != 0 {
-		return nil, fmt.Errorf("TableName does not support IndexHints in sharding")
 	}
 
 	ret := &TableNameDecorator{
@@ -115,6 +112,12 @@ func (t *TableNameDecorator) Restore(ctx *format.RestoreCtx) error {
 		ctx.WriteName(fmt.Sprintf("%s_%04d", t.origin.Name.String(), tableIndex))
 	}
 
+	for _, value := range t.origin.IndexHints {
+		ctx.WritePlain(" ")
+		if err := value.Restore(ctx); err != nil {
+			return errors.Annotate(err, "An error occurred while splicing IndexHints")
+		}
+	}
 	return nil
 }
 

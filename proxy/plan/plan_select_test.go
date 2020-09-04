@@ -1500,7 +1500,7 @@ func TestMycatSelectSubqueryInTableRefs(t *testing.T) {
 		},
 		{
 			db:  "db_mycat",
-			sql: "select id from (select user from tbl_mycat_unknown) as a", //unshard plan 
+			sql: "select id from (select user from tbl_mycat_unknown) as a", //unshard plan
 			sqls: map[string]map[string][]string{
 				"slice-0": {
 					"db_mycat_0": {"SELECT `id` FROM (SELECT `user` FROM (`tbl_mycat_unknown`)) AS `a`"},
@@ -3396,6 +3396,42 @@ func TestSelectMycatOrderByDatabase(t *testing.T) {
 					},
 					"db_mycat_3": {
 						"SELECT DATABASE(),COUNT(`id`),DATABASE(),DATABASE() FROM `tbl_mycat` WHERE DATABASE() IN ('db_mycat_1','db_mycat_2') GROUP BY DATABASE() ORDER BY DATABASE()",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectForceIndexDatabase(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat force index(id, name) where id > 100 and name = `zhangsan`",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {
+						"SELECT * FROM `tbl_mycat` FORCE INDEX (`id`, `name`) WHERE `id`>100 AND `name`=`zhangsan`",
+					},
+					"db_mycat_1": {
+						"SELECT * FROM `tbl_mycat` FORCE INDEX (`id`, `name`) WHERE `id`>100 AND `name`=`zhangsan`",
+					},
+				},
+				"slice-1": {
+					"db_mycat_2": {
+						"SELECT * FROM `tbl_mycat` FORCE INDEX (`id`, `name`) WHERE `id`>100 AND `name`=`zhangsan`",
+					},
+					"db_mycat_3": {
+						"SELECT * FROM `tbl_mycat` FORCE INDEX (`id`, `name`) WHERE `id`>100 AND `name`=`zhangsan`",
 					},
 				},
 			},
