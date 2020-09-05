@@ -93,4 +93,7 @@ var (
 	ErrInternalServer = errors.New("internal server error")
 	// ErrUserIsReadOnly user is readonly
 	ErrUserIsReadOnly = errors.New("user is readonly")
+
+	// ErrNamespaceNotPrepared commit namespace config without prepare
+	ErrNamespaceNotPrepared = errors.New("namespace is not prepared")
 )
