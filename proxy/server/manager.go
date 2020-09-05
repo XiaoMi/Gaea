@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/mysql"
@@ -32,6 +33,7 @@ import (
 	"github.com/XiaoMi/Gaea/stats"
 	"github.com/XiaoMi/Gaea/stats/prometheus"
 	"github.com/XiaoMi/Gaea/util"
+	"github.com/XiaoMi/Gaea/util/sync2"
 )
 
 // LoadAndCreateManager load namespace config, and create manager
@@ -126,10 +128,11 @@ func loadAllNamespace(cfg *models.Proxy) (map[string]*models.Namespace, error) {
 
 // Manager contains namespace manager and user manager
 type Manager struct {
-	switchIndex util.BoolIndex
-	namespaces  [2]*NamespaceManager
-	users       [2]*UserManager
-	statistics  *StatisticManager
+	reloadPrepared sync2.AtomicBool
+	switchIndex    util.BoolIndex
+	namespaces     [2]*NamespaceManager
+	users          [2]*UserManager
+	statistics     *StatisticManager
 }
 
 // NewManager return empty Manager
@@ -196,12 +199,19 @@ func (m *Manager) ReloadNamespacePrepare(namespaceConfig *models.Namespace) erro
 	newUserManager := CloneUserManager(currentUserManager)
 	newUserManager.RebuildNamespaceUsers(namespaceConfig)
 	m.users[other] = newUserManager
+	m.reloadPrepared.Set(true)
 
 	return nil
 }
 
 // ReloadNamespaceCommit commit config
 func (m *Manager) ReloadNamespaceCommit(name string) error {
+	if !m.reloadPrepared.CompareAndSwap(true, false) {
+		err := errors.ErrNamespaceNotPrepared
+		log.Warn("commit namespace error, namespace: %s, err: %v", err)
+		return err
+	}
+
 	current, _, index := m.switchIndex.Get()
 
 	currentNamespace := m.namespaces[current].GetNamespace(name)
@@ -836,6 +846,6 @@ func (s *StatisticManager) recordConnectPoolInuseCount(namespace string, slice s
 
 //record wait queue length
 func (s *StatisticManager) recordConnectPoolWaitCount(namespace string, slice string, addr string, count int64) {
-	statsKey := []string{s.clusterName, namespace, slice, addr} 
+	statsKey := []string{s.clusterName, namespace, slice, addr}
 	s.backendConnectPoolWaitCounts.Set(statsKey, count)
 }
