@@ -208,7 +208,7 @@ func (m *Manager) ReloadNamespacePrepare(namespaceConfig *models.Namespace) erro
 func (m *Manager) ReloadNamespaceCommit(name string) error {
 	if !m.reloadPrepared.CompareAndSwap(true, false) {
 		err := errors.ErrNamespaceNotPrepared
-		log.Warn("commit namespace error, namespace: %s, err: %v", err)
+		log.Warn("commit namespace error, namespace: %s, err: %v", name, err)
 		return err
 	}
 
