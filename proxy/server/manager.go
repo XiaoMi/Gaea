@@ -25,10 +25,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/XiaoMi/Gaea/log/xlog"
-
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
+	"github.com/XiaoMi/Gaea/log/xlog"
 	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser"
