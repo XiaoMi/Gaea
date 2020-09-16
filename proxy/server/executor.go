@@ -361,10 +361,14 @@ func (se *SessionExecutor) getTransactionConn(sliceName string) (pc *backend.Poo
 
 		if !se.isAutoCommit() {
 			if err = pc.SetAutoCommit(0); err != nil {
+				pc.Close()
+				pc.Recycle()
 				return
 			}
 		} else {
 			if err = pc.Begin(); err != nil {
+				pc.Close()
+				pc.Recycle()
 				return
 			}
 		}
