@@ -65,6 +65,7 @@ type Namespace struct {
 	userProperties     map[string]*UserProperty  // key: user name ,value: user's properties
 	defaultCharset     string
 	defaultCollationID mysql.CollationID
+	openGeneralLog     bool
 
 	slowSQLCache         *cache.LRUCache
 	errorSQLCache        *cache.LRUCache
@@ -85,6 +86,7 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 		name:                 namespaceConfig.Name,
 		sqls:                 make(map[string]string, 16),
 		userProperties:       make(map[string]*UserProperty, 2),
+		openGeneralLog:       namespaceConfig.OpenGeneralLog,
 		slowSQLCache:         cache.NewLRUCache(defaultSQLCacheCapacity),
 		errorSQLCache:        cache.NewLRUCache(defaultSQLCacheCapacity),
 		backendSlowSQLCache:  cache.NewLRUCache(defaultSQLCacheCapacity),

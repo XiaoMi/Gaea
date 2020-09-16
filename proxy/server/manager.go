@@ -25,6 +25,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/XiaoMi/Gaea/log/xlog"
+
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/models"
@@ -291,7 +293,8 @@ func (m *Manager) ConfigFingerprint() string {
 }
 
 // RecordSessionSQLMetrics record session SQL metrics, like response time, error
-func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, namespace string, sql string, startTime time.Time, err error) {
+func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *SessionExecutor, sql string, startTime time.Time, err error) {
+	namespace := se.namespace
 	ns := m.GetNamespace(namespace)
 	if ns == nil {
 		log.Warn("record session SQL metrics error, namespace: %s, sql: %s, err: %s", namespace, sql, "namespace not found")
@@ -326,6 +329,12 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, namespace
 		md5 := mysql.GetMd5(fingerprint)
 		ns.SetErrorSQLFingerprint(md5, fingerprint)
 		m.statistics.recordSessionErrorSQLFingerprint(namespace, operation, md5)
+	}
+
+	if OpenProcessGeneralQueryLog() && ns.openGeneralLog {
+		m.statistics.generalLogger.Notice("client: %s, namespace: %s, db: %s, user: %s, cmd: %s, sql: %s, cost: %d ms, succ: %t",
+			se.clientIP, namespace, se.db, se.user, operation,
+			strings.ReplaceAll(sql, "\n", " "), duration, err == nil)
 	}
 }
 
@@ -615,8 +624,9 @@ type StatisticManager struct {
 	manager     *Manager
 	clusterName string
 
-	statsType string // 监控后端类型
-	handlers  map[string]http.Handler
+	statsType     string // 监控后端类型
+	handlers      map[string]http.Handler
+	generalLogger log.Logger
 
 	sqlTimings                *stats.MultiTimings            // SQL耗时统计
 	sqlFingerprintSlowCounts  *stats.CountersWithMultiLabels // 慢SQL指纹数量统计
@@ -648,16 +658,30 @@ func CreateStatisticManager(cfg *models.Proxy, manager *Manager) (*StatisticMana
 	mgr := NewStatisticManager()
 	mgr.manager = manager
 	mgr.clusterName = cfg.Cluster
-	if err := mgr.Init(cfg); err != nil {
+
+	var err error
+	if err = mgr.Init(cfg); err != nil {
 		return nil, err
 	}
-
+	if mgr.generalLogger, err = initGeneralLogger(cfg); err != nil {
+		return nil, err
+	}
 	return mgr, nil
 }
 
 type proxyStatsConfig struct {
 	Service      string
 	StatsEnabled bool
+}
+
+func initGeneralLogger(cfg *models.Proxy) (log.Logger, error) {
+	c := make(map[string]string, 4)
+	c["path"] = cfg.LogPath
+	c["filename"] = cfg.LogFileName + "_sql"
+	c["level"] = cfg.LogLevel
+	c["service"] = cfg.Service
+	c["runtime"] = "false"
+	return xlog.CreateLogManager(cfg.LogOutput, c)
 }
 
 func parseProxyStatsConfig(cfg *models.Proxy) (*proxyStatsConfig, error) {
