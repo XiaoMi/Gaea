@@ -45,10 +45,10 @@ const (
 type SessionExecutor struct {
 	manager *Manager
 
-	namespace string
-	user      string
-	db        string
-	clientIP  string
+	namespace  string
+	user       string
+	db         string
+	clientAddr string
 
 	status       uint16
 	lastInsertID uint64
