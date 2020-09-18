@@ -70,9 +70,8 @@ func newSession(s *Server, co net.Conn) *Session {
 	cc.c.SetConnectionID(atomic.AddUint32(&baseConnID, 1))
 
 	cc.executor = newSessionExecutor(s.manager)
-
+	cc.executor.clientAddr = co.RemoteAddr().String()
 	cc.closed.Store(false)
-
 	return cc
 }
 

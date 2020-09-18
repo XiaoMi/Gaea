@@ -28,6 +28,7 @@ import (
 
 // Namespace means namespace model stored in etcd
 type Namespace struct {
+	OpenGeneralLog   bool              `json:"open_general_log"`
 	IsEncrypt        bool              `json:"is_encrypt"` // true: 加密存储 false: 非加密存储，目前加密Slice、User中的用户名、密码
 	Name             string            `json:"name"`
 	Online           bool              `json:"online"`

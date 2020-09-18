@@ -30,6 +30,7 @@ type XFileLog struct {
 	level    int
 
 	skip     int
+	runtime  bool
 	file     *os.File
 	errFile  *os.File
 	hostname string
@@ -79,6 +80,14 @@ func (p *XFileLog) Init(config map[string]string) (err error) {
 	if len(service) > 0 {
 		p.service = service
 	}
+
+	runtime, ok := config["runtime"]
+	if !ok || runtime == "true" || runtime == "TRUE" {
+		p.runtime = true
+	} else {
+		p.runtime = false
+	}
+
 	skip, _ := config["skip"]
 	if len(skip) > 0 {
 		skipNum, err := strconv.Atoi(skip)
@@ -264,7 +273,7 @@ func (p *XFileLog) Warnx(logID, format string, a ...interface{}) error {
 func (p *XFileLog) warnx(logID, format string, a ...interface{}) error {
 	logText := formatValue(format, a...)
 	fun, filename, lineno := getRuntimeInfo(p.skip)
-	logText = formatLineInfo(fun, filepath.Base(filename), logText, lineno)
+	logText = formatLineInfo(p.runtime, fun, filepath.Base(filename), logText, lineno)
 	//logText = fmt.Sprintf("[%s:%s:%d] %s", fun, filepath.Base(filename), lineno, logText)
 
 	return p.write(WarnLevel, &logText, logID)
@@ -291,7 +300,7 @@ func (p *XFileLog) Fatalx(logID, format string, a ...interface{}) error {
 func (p *XFileLog) fatalx(logID, format string, a ...interface{}) error {
 	logText := formatValue(format, a...)
 	fun, filename, lineno := getRuntimeInfo(p.skip)
-	logText = formatLineInfo(fun, filepath.Base(filename), logText, lineno)
+	logText = formatLineInfo(p.runtime, fun, filepath.Base(filename), logText, lineno)
 	//logText = fmt.Sprintf("[%s:%s:%d] %s", fun, filepath.Base(filename), lineno, logText)
 
 	return p.write(FatalLevel, &logText, logID)
@@ -316,7 +325,7 @@ func (p *XFileLog) Noticex(logID, format string, a ...interface{}) error {
 func (p *XFileLog) noticex(logID, format string, a ...interface{}) error {
 	logText := formatValue(format, a...)
 	fun, filename, lineno := getRuntimeInfo(p.skip)
-	logText = formatLineInfo(fun, filepath.Base(filename), logText, lineno)
+	logText = formatLineInfo(p.runtime, fun, filepath.Base(filename), logText, lineno)
 
 	return p.write(NoticeLevel, &logText, logID)
 }
@@ -338,7 +347,7 @@ func (p *XFileLog) tracex(logID, format string, a ...interface{}) error {
 
 	logText := formatValue(format, a...)
 	fun, filename, lineno := getRuntimeInfo(p.skip)
-	logText = formatLineInfo(fun, filepath.Base(filename), logText, lineno)
+	logText = formatLineInfo(p.runtime, fun, filepath.Base(filename), logText, lineno)
 	//logText = fmt.Sprintf("[%s:%s:%d] %s", fun, filepath.Base(filename), lineno, logText)
 
 	return p.write(TraceLevel, &logText, logID)
@@ -356,7 +365,7 @@ func (p *XFileLog) debugx(logID, format string, a ...interface{}) error {
 
 	logText := formatValue(format, a...)
 	fun, filename, lineno := getRuntimeInfo(p.skip)
-	logText = formatLineInfo(fun, filepath.Base(filename), logText, lineno)
+	logText = formatLineInfo(p.runtime, fun, filepath.Base(filename), logText, lineno)
 
 	return p.write(DebugLevel, &logText, logID)
 }
