@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/XiaoMi/Gaea/backend"
@@ -36,15 +37,18 @@ import (
 const (
 	// master comments
 	masterComment = "/*master*/"
+	// general query log variable
+	gaeaGeneralLogVariable = "gaea_general_log"
 )
 
 // SessionExecutor is bound to a session, so requests are serializable
 type SessionExecutor struct {
 	manager *Manager
 
-	namespace string
-	user      string
-	db        string
+	namespace  string
+	user       string
+	db         string
+	clientAddr string
 
 	status       uint16
 	lastInsertID uint64
@@ -190,6 +194,15 @@ func (se *SessionExecutor) setStringSessionVariable(name string, valueStr string
 	}
 
 	return se.sessionVariables.Set(name, valueStr)
+}
+
+func (se *SessionExecutor) setGeneralLogVariable(valueStr string) error {
+	v, err := strconv.Atoi(valueStr)
+	if err != nil {
+		return errors.ErrInvalidArgument
+	}
+	atomic.StoreUint32(&ProcessGeneralLog, uint32(v))
+	return nil
 }
 
 // GetLastInsertID return last_inert_id
@@ -595,7 +608,29 @@ func createShowDatabaseResult(dbs []string) *mysql.Result {
 	}
 
 	plan.GenerateSelectResultRowData(result)
+	return result
+}
 
+func createShowGeneralLogResult() *mysql.Result {
+	r := new(mysql.Resultset)
+
+	field := &mysql.Field{}
+	field.Name = hack.Slice(gaeaGeneralLogVariable)
+	r.Fields = append(r.Fields, field)
+
+	var value string
+	if OpenProcessGeneralQueryLog() {
+		value = "ON"
+	} else {
+		value = "OFF"
+	}
+	r.Values = append(r.Values, []interface{}{value})
+	result := &mysql.Result{
+		AffectedRows: 1,
+		Resultset:    r,
+	}
+
+	plan.GenerateSelectResultRowData(result)
 	return result
 }
 

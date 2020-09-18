@@ -78,7 +78,6 @@ func getRuntimeInfo(skip int) (function, filename string, lineno int) {
 	if ok {
 		function = runtime.FuncForPC(pc).Name()
 	}
-
 	return
 }
 
@@ -106,17 +105,19 @@ func formatValue(format string, a ...interface{}) (result string) {
 	return
 }
 
-func formatLineInfo(functionName, filename, logText string, lineno int) string {
+func formatLineInfo(runtime bool, functionName, filename, logText string, lineno int) string {
 	var buffer bytes.Buffer
-	buffer.WriteString("[")
-	buffer.WriteString(functionName)
-	buffer.WriteString(":")
+	if runtime {
+		buffer.WriteString("[")
+		buffer.WriteString(functionName)
+		buffer.WriteString(":")
 
-	buffer.WriteString(filename)
-	buffer.WriteString(":")
+		buffer.WriteString(filename)
+		buffer.WriteString(":")
 
-	buffer.WriteString(strconv.FormatInt(int64(lineno), 10))
-	buffer.WriteString("] ")
+		buffer.WriteString(strconv.FormatInt(int64(lineno), 10))
+		buffer.WriteString("] ")
+	}
 	buffer.WriteString(logText)
 
 	return buffer.String()
