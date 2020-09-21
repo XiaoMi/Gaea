@@ -359,7 +359,7 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace
 	// record slow sql
 	duration := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
 	if m.statistics.isBackendSlowSQL(startTime) {
-		log.Warn("backend slow SQL, namespace: %s, addr: %s, sql: %s, cost: %d ms", namespace, backendAddr, sql, duration, err)
+		log.Warn("backend slow SQL, namespace: %s, addr: %s, sql: %s, cost: %d ms", namespace, backendAddr, sql, duration)
 		fingerprint := mysql.GetFingerprint(sql)
 		md5 := mysql.GetMd5(fingerprint)
 		ns.SetBackendSlowSQLFingerprint(md5, fingerprint)
