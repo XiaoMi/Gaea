@@ -156,7 +156,6 @@ func (dc *DirectConnection) IsClosed() bool {
 func (dc *DirectConnection) readPacket() ([]byte, error) {
 	data, err := dc.conn.ReadPacket()
 	dc.pkgErr = err
-
 	return data, err
 }
 
@@ -750,6 +749,7 @@ func (dc *DirectConnection) readResult(binary bool) (*mysql.Result, error) {
 	} else if data[0] == mysql.LocalInFileHeader {
 		return nil, mysql.ErrMalformPacket
 	}
+
 	return dc.readResultset(data, binary)
 }
 
