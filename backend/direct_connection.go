@@ -551,6 +551,10 @@ func (dc *DirectConnection) FieldList(table string, wildcard string) ([]*mysql.F
 			return fs, nil
 		}
 
+		if data[0] == mysql.ErrHeader {
+			return nil, dc.handleErrorPacket(data)
+		}
+
 		if f, err = mysql.FieldData(data).Parse(); err != nil {
 			return nil, err
 		}
@@ -626,6 +630,10 @@ func (dc *DirectConnection) readResultColumns(result *mysql.Result) (err error) 
 			return
 		}
 
+		if data[0] == mysql.ErrHeader {
+			return dc.handleErrorPacket(data)
+		}
+
 		result.Fields[i], err = mysql.FieldData(data).Parse()
 		if err != nil {
 			return
@@ -643,7 +651,6 @@ func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool) 
 
 	for {
 		data, err = dc.readPacket()
-
 		if err != nil {
 			return
 		}
@@ -658,6 +665,10 @@ func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool) 
 			}
 
 			break
+		}
+
+		if data[0] == mysql.ErrHeader {
+			return dc.handleErrorPacket(data)
 		}
 
 		result.RowDatas = append(result.RowDatas, data)
