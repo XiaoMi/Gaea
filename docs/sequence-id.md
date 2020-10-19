@@ -1,6 +1,6 @@
-#全局序列号说明
+# 全局序列号说明
 
-##原理
+## 原理
 
 参考mycat生成全局唯一序列号的设计，在数据库中建立一张表，存放sequence名称(name)，sequence当前值(current_value)，步长(increment int类型每次读取多少个sequence，假设为K)等信息；
 
@@ -13,28 +13,28 @@ Sequence获取步骤：
 gaea只会修改和查询这张表，使用前需要按照下文中配置table的步骤在这张表中插入一条记录。   
 若某次读取的sequence没有用完，系统就停掉了，则这次读取的sequence剩余值不会再使用。
 
-##如何使用
+## 如何使用
 
 如：tbl_user_info的id列使用全局自增序列号
 ``` 
 insert into gaea_test.tbl_user_info set name="zhangsan", age=15, id = nextval();
 ```
 
-##如何配置 
+## 如何配置 
 在指定的slice的master上操作，完成以下配置。
-###配置db
+### 配置db
 db: mycat
 ```
 create database mycat;
 ```
-###配置table
+### 配置table
 table: mycat_sequence
 ``` 
 DROP TABLE IF EXISTS MYCAT_SEQUENCE;
 CREATE TABLE MYCAT_SEQUENCE (name VARCHAR(50) NOT NULL,current_value INT NOT NULL,increment INT NOT NULL DEFAULT 100, PRIMARY KEY(name)) ENGINE=InnoDB;
 ```
 
-###初始化table
+### 初始化table
 ``` 
 INSERT INTO MYCAT_SEQUENCE(name,current_value,increment) VALUES ('GAEA_TEST.TBL_USER_INFO', -99, 100);
 ```
@@ -52,7 +52,7 @@ mysql> select * from mycat_sequence;
 +-------------------------+---------------+-----------+
 ```
 
-###配置函数
+### 配置函数
 - 获取当前sequence的值： 
 ``` 
 DROP FUNCTION IF EXISTS mycat_seq_currval;
