@@ -529,20 +529,11 @@ func (dc *DirectConnection) FieldList(table string, wildcard string) ([]*mysql.F
 	if err := dc.writeComFieldList(table, wildcard); err != nil {
 		return nil, err
 	}
-
-	data, err := dc.readPacket()
-	if err != nil {
-		return nil, err
-	}
-
 	fs := make([]*mysql.Field, 0, 4)
 	var f *mysql.Field
-	if data[0] == mysql.ErrHeader {
-		return nil, dc.handleErrorPacket(data)
-	}
-
 	for {
-		if data, err = dc.readPacket(); err != nil {
+		data, err := dc.readPacket()
+		if err != nil {
 			return nil, err
 		}
 
