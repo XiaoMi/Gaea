@@ -112,7 +112,7 @@ func (s *Slice) initStatisticSlaveBalancer() {
 }
 
 // getNextSlave return connection pool of calculated ip
-func (s *Slice) getNextSlave() (*ConnectionPool, error) {
+func (s *Slice) getNextSlave() (ConnectionPool, error) {
 	var index int
 	queueLen := len(s.RoundRobinQ)
 	if queueLen == 0 {
@@ -135,7 +135,7 @@ func (s *Slice) getNextSlave() (*ConnectionPool, error) {
 }
 
 // getNextStatisticSlave return connection pool of calculated ip
-func (s *Slice) getNextStatisticSlave() (*ConnectionPool, error) {
+func (s *Slice) getNextStatisticSlave() (ConnectionPool, error) {
 	var index int
 	queueLen := len(s.StatisticSlaveRoundRobinQ)
 	if queueLen == 0 {
