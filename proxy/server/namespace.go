@@ -41,7 +41,8 @@ const (
 	defaultSQLCacheCapacity  = 64
 	defaultPlanCacheCapacity = 128
 
-	defaultSlowSQLTime = 1000 // millisecond
+	defaultSlowSQLTime       = 1000 // millisecond
+	defaultMaxSqlExecuteTime = 0
 )
 
 // UserProperty means runtime user properties
@@ -66,6 +67,7 @@ type Namespace struct {
 	defaultCharset     string
 	defaultCollationID mysql.CollationID
 	openGeneralLog     bool
+	maxSqlExecuteTime  int64 // session slow sql fuse time,millisecond
 
 	slowSQLCache         *cache.LRUCache
 	errorSQLCache        *cache.LRUCache
@@ -104,9 +106,15 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 	namespace.sqls = parseBlackSqls(namespaceConfig.BlackSQL)
 
 	// init session slow sql time
-	namespace.slowSQLTime, err = parseSlowSQLTime(namespaceConfig.SlowSQLTime)
+	namespace.slowSQLTime, err = parseTime(namespaceConfig.SlowSQLTime, defaultSlowSQLTime)
 	if err != nil {
 		return nil, fmt.Errorf("parse slowSQLTime error: %v", err)
+	}
+
+	// init session slow sql fuse time
+	namespace.maxSqlExecuteTime, err = parseTime(namespaceConfig.MaxSqlExecuteTime, defaultMaxSqlExecuteTime)
+	if err != nil {
+		return nil, fmt.Errorf("parse maxSqlExecuteTime error: %v", err)
 	}
 
 	allowDBs := make(map[string]bool, len(namespaceConfig.AllowedDBS))
@@ -511,9 +519,9 @@ func parseBlackSqls(sqls []string) map[string]string {
 	return sqlMap
 }
 
-func parseSlowSQLTime(str string) (int64, error) {
+func parseTime(str string, defaultTime int64) (int64, error) {
 	if str == "" {
-		return defaultSlowSQLTime, nil
+		return defaultTime, nil
 	}
 	t, err := strconv.ParseInt(str, 10, 64)
 	if err != nil {
