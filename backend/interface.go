@@ -7,8 +7,6 @@ import (
 	"github.com/XiaoMi/Gaea/mysql"
 )
 
-//go:generate mockgen -destination  mock_user.go -package github.com/XiaoMi/Gaea/backend ConnectionPool,PooledConnect
-
 type PooledConnect interface {
 	Recycle()
 	Reconnect() error
