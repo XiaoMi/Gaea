@@ -96,7 +96,4 @@ var (
 
 	// ErrNamespaceNotPrepared commit namespace config without prepare
 	ErrNamespaceNotPrepared = errors.New("namespace is not prepared")
-
-	// ErrOutOfMaxSqlExecuteTime out of max sql execute time
-	ErrOutOfMaxSqlExecuteTime = errors.New("out of max sql execute time")
 )
