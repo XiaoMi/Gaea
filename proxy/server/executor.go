@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -393,15 +394,53 @@ func (se *SessionExecutor) getTransactionConn(sliceName string) (pc *backend.Poo
 }
 
 func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc *backend.PooledConnection, sql string) ([]*mysql.Result, error) {
-	startTime := time.Now()
-	r, err := pc.Execute(sql)
-	se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, sql, pc.GetAddr(), startTime, err)
-
-	if err != nil {
-		return nil, err
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if se.manager.GetNamespace(se.namespace).maxSqlExecuteTime <= 0 {
+		ctx = context.TODO()
+	} else {
+		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(se.manager.GetNamespace(se.namespace).maxSqlExecuteTime)*time.Millisecond)
+		defer cancel()
 	}
 
-	return []*mysql.Result{r}, err
+	ret := make(chan interface{}, 0)
+	r := make([]*mysql.Result, 0)
+
+	go func(reqCtx *util.RequestContext, pc *backend.PooledConnection, sql string) {
+		defer func() {
+			se.recycleBackendConn(pc, false)
+		}()
+		startTime := time.Now()
+		r, err := pc.Execute(sql)
+		se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, sql, pc.GetAddr(), startTime, err)
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			if err != nil {
+				ret <- err
+			} else {
+				ret <- r
+			}
+		}
+	}(reqCtx, pc, sql)
+
+	select {
+	case <-ctx.Done():
+		return nil, errors.ErrOutOfMaxSqlExecuteTime
+	case v := <-ret:
+		if v == nil {
+			return nil, fmt.Errorf("result of sql execute return nil err")
+		}
+		if e, ok := v.(error); ok {
+			return nil, fmt.Errorf("sql of slice execute err:%s", e.Error())
+		}
+		if resultSet, ok := v.(*mysql.Result); ok {
+			r = append(r, resultSet)
+		}
+	}
+
+	return r, nil
 }
 
 func (se *SessionExecutor) recycleBackendConn(pc *backend.PooledConnection, rollback bool) {
@@ -468,28 +507,33 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 		return nil, errors.ErrConnNotEqual
 	}
 
-	var wg sync.WaitGroup
-
 	if len(pcs) == 0 {
 		return nil, errors.ErrNoPlan
 	}
 
-	wg.Add(len(pcs))
+	ret := make(chan interface{}, 0)
+	r := make([]*mysql.Result, 0)
 
-	resultCount := 0
-	for _, sqlSlice := range sqls {
-		for _, sqlDB := range sqlSlice {
-			resultCount += len(sqlDB)
-		}
+	var ctx context.Context
+	var cancel context.CancelFunc
+
+	if se.manager.GetNamespace(se.namespace).maxSqlExecuteTime <= 0 {
+		ctx = context.TODO()
+	} else {
+		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(se.manager.GetNamespace(se.namespace).maxSqlExecuteTime)*time.Millisecond)
+		defer cancel()
 	}
 
-	rs := make([]interface{}, resultCount)
-
-	f := func(reqCtx *util.RequestContext, rs []interface{}, i int, execSqls map[string][]string, pc *backend.PooledConnection) {
+	f := func(reqCtx *util.RequestContext, execSqls map[string][]string, pc *backend.PooledConnection) {
+		defer func() {
+			se.recycleBackendConn(pc, false)
+		}()
+		sliceResultSet := make([]*mysql.Result, 0)
+		var err error
+	loop:
 		for db, sqls := range execSqls {
-			err := initBackendConn(pc, db, se.GetCharset(), se.GetCollationID(), se.GetVariables())
+			err = initBackendConn(pc, db, se.GetCharset(), se.GetCollationID(), se.GetVariables())
 			if err != nil {
-				rs[i] = err
 				break
 			}
 			for _, v := range sqls {
@@ -497,40 +541,47 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 				r, err := pc.Execute(v)
 				se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, v, pc.GetAddr(), startTime, err)
 				if err != nil {
-					rs[i] = err
+					break loop
 				} else {
-					rs[i] = r
+					sliceResultSet = append(sliceResultSet, r)
 				}
-				i++
 			}
 		}
-		wg.Done()
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			if err != nil {
+				ret <- err
+			} else {
+				ret <- sliceResultSet
+			}
+		}
 	}
 
-	offset := 0
 	for sliceName, pc := range pcs {
 		s := sqls[sliceName] //map[string][]string
-		go f(reqCtx, rs, offset, s, pc)
-		for _, sqlDB := range sqls[sliceName] {
-			offset += len(sqlDB)
+		go f(reqCtx, s, pc)
+	}
+
+	for i := 0; i < len(pcs); i++ {
+		select {
+		case <-ctx.Done():
+			return nil, errors.ErrOutOfMaxSqlExecuteTime
+		case v := <-ret:
+			if v == nil {
+				return nil, fmt.Errorf("resultSet of slice return nil err")
+			}
+			if e, ok := v.(error); ok {
+				return nil, fmt.Errorf("sql of slice execute err:%s", e.Error())
+			}
+			if resultSetArray, ok := v.([]*mysql.Result); ok {
+				r = append(r, resultSetArray...) // 多个分片结果统一返回
+			}
 		}
 	}
 
-	wg.Wait()
-
-	var err error
-	r := make([]*mysql.Result, resultCount)
-	for i, v := range rs {
-		if e, ok := v.(error); ok {
-			err = e
-			break
-		}
-		if rs[i] != nil {
-			r[i] = rs[i].(*mysql.Result)
-		}
-	}
-
-	return r, err
+	return r, nil
 }
 
 func canHandleWithoutPlan(stmtType int) bool {
@@ -715,7 +766,6 @@ func (se *SessionExecutor) rollback() (err error) {
 // ExecuteSQL execute sql
 func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sql string) (*mysql.Result, error) {
 	pc, err := se.getBackendConn("slice-0", getFromSlave(reqCtx))
-	defer se.recycleBackendConn(pc, false)
 	if err != nil {
 		return nil, err
 	}
@@ -750,7 +800,6 @@ func (se *SessionExecutor) ExecuteSQLs(reqCtx *util.RequestContext, sqls map[str
 	}
 
 	pcs, err := se.getBackendConns(sqls, getFromSlave(reqCtx))
-	defer se.recycleBackendConns(pcs, false)
 	if err != nil {
 		log.Warn("getShardConns failed: %v", err)
 		return nil, err
