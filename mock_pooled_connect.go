@@ -2,7 +2,7 @@
 // Source: github.com/XiaoMi/Gaea/backend (interfaces: PooledConnect)
 
 // Package mock_backend is a generated GoMock package.
-package backend
+package Gaea
 
 import (
 	reflect "reflect"

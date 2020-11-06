@@ -2,10 +2,11 @@
 // Source: github.com/XiaoMi/Gaea/backend (interfaces: ConnectionPool)
 
 // Package backend is a generated GoMock package.
-package backend
+package Gaea
 
 import (
 	context "context"
+	"github.com/XiaoMi/Gaea/backend"
 	reflect "reflect"
 	time "time"
 
@@ -104,10 +105,10 @@ func (mr *MockConnectionPoolMockRecorder) Close() *gomock.Call {
 }
 
 // Get mocks base method
-func (m *MockConnectionPool) Get(arg0 context.Context) (PooledConnect, error) {
+func (m *MockConnectionPool) Get(arg0 context.Context) (backend.PooledConnect, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Get", arg0)
-	ret0, _ := ret[0].(PooledConnect)
+	ret0, _ := ret[0].(backend.PooledConnect)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -187,7 +188,7 @@ func (mr *MockConnectionPoolMockRecorder) Open() *gomock.Call {
 }
 
 // Put mocks base method
-func (m *MockConnectionPool) Put(arg0 PooledConnect) {
+func (m *MockConnectionPool) Put(arg0 backend.PooledConnect) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Put", arg0)
 }

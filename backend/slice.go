@@ -85,6 +85,7 @@ func (s *Slice) GetConn(fromSlave bool, userType int) (pc PooledConnect, err err
 		} else {
 			pc, err = s.GetSlaveConn()
 			if err != nil {
+				pc.Recycle()
 				log.Warn("get connection from slave failed, try to get from master, error: %s", err.Error())
 				pc, err = s.GetMasterConn()
 			}

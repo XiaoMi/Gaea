@@ -18,6 +18,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/XiaoMi/Gaea"
+
 	"github.com/stretchr/testify/assert"
 
 	"github.com/XiaoMi/Gaea/mysql"
@@ -95,34 +97,42 @@ func TestExecute(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	slice0MasterPool := backend.NewMockConnectionPool(mockCtrl)
-	slice0SlavePool := backend.NewMockConnectionPool(mockCtrl)
-	slice1MasterPool := backend.NewMockConnectionPool(mockCtrl)
-	slice1SlavePool := backend.NewMockConnectionPool(mockCtrl)
+	slice0MasterPool := Gaea.NewMockConnectionPool(mockCtrl)
+	slice0SlavePool := Gaea.NewMockConnectionPool(mockCtrl)
+	slice1MasterPool := Gaea.NewMockConnectionPool(mockCtrl)
+	slice1SlavePool := Gaea.NewMockConnectionPool(mockCtrl)
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Master = slice0MasterPool
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Slave = []backend.ConnectionPool{slice0SlavePool}
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Master = slice1MasterPool
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Slave = []backend.ConnectionPool{slice1SlavePool}
 
-	slice0slaveConn := backend.NewMockPooledConnect(mockCtrl)
-	//	slice1slaveConn := backend.NewMockPooledConnect(mockCtrl)
-	//slice0slaveConn.EXPECT().Execute("SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(nil, nil).Times(2)
+	ctx := context.Background()
+	slice0MasterConn := Gaea.NewMockPooledConnect(mockCtrl)
+	slice0MasterConn.EXPECT().Execute("INSERT into `tbl_mycat` set `k`=0").Return(nil, nil)
+
+	slice0slaveConn := Gaea.NewMockPooledConnect(mockCtrl)
+	//slice1slaveConn := backend.NewMockPooledConnect(mockCtrl)
+	slice0slaveConn.EXPECT().Execute("SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(nil, nil).Times(2)
 	//slice1slaveConn.EXPECT().Execute("SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(nil, nil).Times(2)
 
-	slice0SlavePool.EXPECT().Get(context.TODO()).Return(slice0slaveConn, nil)
+	slice0MasterPool.EXPECT().Get(ctx).Return(slice0MasterConn, nil)
+	slice0MasterPool.EXPECT().Put(slice0MasterConn).Return()
+	slice0SlavePool.EXPECT().Get(ctx).Return(slice0slaveConn, nil)
+	slice0SlavePool.EXPECT().Put(slice0slaveConn).Return()
+
 	//slice1SlavePool.EXPECT().Get(context.TODO()).Return(slice1slaveConn, nil)
-	//slice0SlavePool.EXPECT().Put(slice0slaveConn).Return()
+
 	//slice1SlavePool.EXPECT().Put(slice1slaveConn).Return()
 
 	sqls := map[string]map[string][]string{
 		"slice-0": {
-			"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `k`=0"},
-			"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `k`=0"},
+			"db_mycat_0": {"INSERT into `tbl_mycat` set `k`=0"},
+			//"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `k`=0"},
 		},
-		"slice-1": {
-			"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `k`=0"},
-			"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `k`=0"},
-		},
+		//"slice-1": {
+		//	"db_mycat_2": {"SELECT * FROM `tbl_mycat` WHERE `k`=0"},
+		//	"db_mycat_3": {"SELECT * FROM `tbl_mycat` WHERE `k`=0"},
+		//},
 	}
 	expectResult := &mockmysql.Result{}
 	//ns := m.GetNamespace(namespaceName)
@@ -130,7 +140,7 @@ func TestExecute(t *testing.T) {
 	//se.ExecuteCommand(mysql.ComQuery, []byte(sql))
 
 	reqCtx := util.NewRequestContext()
-	reqCtx.Set(util.StmtType, parser.StmtSelect)
+	reqCtx.Set(util.StmtType, parser.StmtInsert)
 
 	//se.isAutoCommit()
 	rs, err := se.ExecuteSQLs(reqCtx, sqls)

@@ -130,6 +130,7 @@ func (cp *connectionPoolImpl) Get(ctx context.Context) (PooledConnect, error) {
 	err = cp.tryReuse(r.(*pooledConnectImpl))
 	if err != nil {
 		r.Close()
+		cp.Put(nil)
 		return nil, err
 	}
 
