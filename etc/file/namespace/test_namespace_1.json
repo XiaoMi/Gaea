@@ -3,19 +3,31 @@
     "online": true,
     "read_only": false,
     "allowed_dbs": {
-        "sbtest1": true
+        "gaea": true
+    },
+    "default_phy_dbs": {
+        "gaea": "gaea_0"
     },
     "slow_sql_time": "1000",
-    "black_sql": [
-        ""
-    ],
+    "black_sql": [],
     "allowed_ip": null,
     "slices": [
         {
             "name": "slice-0",
-            "user_name": "test1",
-            "password": "test1",
-            "master": "127.0.0.1:3308",
+            "user_name": "root",
+            "password": "1234",
+            "master": "127.0.0.1:3306",
+            "slaves": null,
+            "statistic_slaves": null,
+            "capacity": 12,
+            "max_capacity": 24,
+            "idle_timeout": 60
+        },
+        {
+            "name": "slice-1",
+            "user_name": "root",
+            "password": "1234",
+            "master": "127.0.0.1:3306",
             "slaves": null,
             "statistic_slaves": null,
             "capacity": 12,
@@ -23,17 +35,37 @@
             "idle_timeout": 60
         }
     ],
-    "shard_rules": null,
+    "shard_rules": [
+        {
+            "db": "gaea",
+            "table": "user_list",
+            "type": "mycat_mod",
+            "key": "real_id",
+            "locations": [
+                1,
+                1
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "gaea_[0-1]"
+            ]
+        }
+    ],
     "users": [
         {
-            "user_name": "front_user1",
-            "password": "front_password1",
+            "user_name": "ual",
+            "password": "1234",
             "namespace": "test_namespace_1",
             "rw_flag": 2,
-            "rw_split": 1,
+            "rw_split": 0,
             "other_property": 0
         }
     ],
     "default_slice": "slice-0",
-    "global_sequences": null
+    "global_sequences": null,
+    "max_sql_execute_time": "0",
+    "max_select_result_set": "1000"
 }

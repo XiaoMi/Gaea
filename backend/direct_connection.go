@@ -16,6 +16,7 @@ package backend
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -408,6 +409,11 @@ func (dc *DirectConnection) Execute(sql string) (*mysql.Result, error) {
 	return dc.exec(sql)
 }
 
+// Execute send ComQuery or ComStmtPrepare/ComStmtExecute/ComStmtClose to backend mysql
+func (dc *DirectConnection) ExecuteWithCtx(sql string, ctx context.Context, cancel context.CancelFunc, maxSelectResultSet int64) (*mysql.Result, error) {
+	return dc.execWithCtx(sql, ctx, cancel, maxSelectResultSet)
+}
+
 // Begin send ComQuery with 'begin' to backend mysql to start transaction
 func (dc *DirectConnection) Begin() error {
 	_, err := dc.exec("begin")
@@ -562,6 +568,14 @@ func (dc *DirectConnection) exec(query string) (*mysql.Result, error) {
 	return dc.readResult(false)
 }
 
+func (dc *DirectConnection) execWithCtx(query string, ctx context.Context, cancel context.CancelFunc, maxSelectResultSet int64) (*mysql.Result, error) {
+	if err := dc.writeComQuery(query); err != nil {
+		return nil, err
+	}
+
+	return dc.readResultWithCtx(false, ctx, cancel, maxSelectResultSet)
+}
+
 // read resultset from mysql
 func (dc *DirectConnection) readResultset(data []byte, binary bool) (*mysql.Result, error) {
 	result := &mysql.Result{
@@ -588,6 +602,38 @@ func (dc *DirectConnection) readResultset(data []byte, binary bool) (*mysql.Resu
 	}
 
 	if err := dc.readResultRows(result, binary); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// read resultset from mysql
+func (dc *DirectConnection) readResultsetWithCtx(data []byte, binary bool, ctx context.Context, cancel context.CancelFunc, maxSelectResultSet int64) (*mysql.Result, error) {
+	result := &mysql.Result{
+		Status:       0,
+		InsertID:     0,
+		AffectedRows: 0,
+
+		Resultset: &mysql.Resultset{},
+	}
+
+	// column count
+	pos := 0
+	count, pos, _, _ := mysql.ReadLenEncInt(data, pos)
+
+	if pos-len(data) != 0 {
+		return nil, mysql.ErrMalformPacket
+	}
+
+	result.Fields = make([]*mysql.Field, count)
+	result.FieldNames = make(map[string]int, count)
+
+	if err := dc.readResultColumns(result); err != nil {
+		return nil, err
+	}
+
+	if err := dc.readResultRowsWithCtx(result, binary, ctx, cancel, maxSelectResultSet); err != nil {
 		return nil, err
 	}
 
@@ -678,6 +724,55 @@ func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool) 
 	return nil
 }
 
+// readResultRows read result rows
+func (dc *DirectConnection) readResultRowsWithCtx(result *mysql.Result, isBinary bool, ctx context.Context, cancel context.CancelFunc, maxSelectResultSet int64) (err error) {
+	var data []byte
+
+	for {
+		data, err = dc.readPacket()
+		if err != nil {
+			return
+		}
+		// EOF Packet
+		if dc.isEOFPacket(data) {
+			if dc.capability&mysql.ClientProtocol41 > 0 {
+				//result.Warnings = binary.LittleEndian.Uint16(data[1:])
+				//todo add strict_mode, warning will be treat as error
+				result.Status = binary.LittleEndian.Uint16(data[3:])
+				dc.status = result.Status
+			}
+
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("out of max sql execute time or max select result set")
+		default:
+			if data[0] == mysql.ErrHeader {
+				return dc.handleErrorPacket(data)
+			}
+			result.RowDatas = append(result.RowDatas, data)
+			if len(result.RowDatas) > int(maxSelectResultSet) { // 超过最大行数限制
+				cancel()
+				return fmt.Errorf("out of max select result set")
+			}
+		}
+	}
+
+	result.Values = make([][]interface{}, len(result.RowDatas))
+
+	for i := range result.Values {
+		result.Values[i], err = result.RowDatas[i].Parse(result.Fields, isBinary)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (dc *DirectConnection) isEOFPacket(data []byte) bool {
 	return data[0] == mysql.EOFHeader && len(data) <= 5
 }
@@ -742,6 +837,22 @@ func (dc *DirectConnection) readResult(binary bool) (*mysql.Result, error) {
 	}
 
 	return dc.readResultset(data, binary)
+}
+
+func (dc *DirectConnection) readResultWithCtx(binary bool, ctx context.Context, cancel context.CancelFunc, maxSelectResultSet int64) (*mysql.Result, error) {
+	data, err := dc.readPacket()
+	if err != nil {
+		return nil, err
+	}
+	if data[0] == mysql.OKHeader {
+		return dc.handleOKPacket(data)
+	} else if data[0] == mysql.ErrHeader {
+		return nil, dc.handleErrorPacket(data)
+	} else if data[0] == mysql.LocalInFileHeader {
+		return nil, mysql.ErrMalformPacket
+	}
+
+	return dc.readResultsetWithCtx(data, binary, ctx, cancel, maxSelectResultSet)
 }
 
 // IsAutoCommit check if autocommit

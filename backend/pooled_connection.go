@@ -15,6 +15,8 @@
 package backend
 
 import (
+	"context"
+
 	"github.com/XiaoMi/Gaea/mysql"
 )
 
@@ -66,6 +68,10 @@ func (pc *PooledConnection) UseDB(db string) error {
 // Execute wrapper of direct connection, execute sql
 func (pc *PooledConnection) Execute(sql string) (*mysql.Result, error) {
 	return pc.directConnection.Execute(sql)
+}
+
+func (pc *PooledConnection) ExecuteWithCtx(sql string, ctx context.Context, cancel context.CancelFunc, maxSelectResultSet int64) (*mysql.Result, error) {
+	return pc.directConnection.ExecuteWithCtx(sql, ctx, cancel, maxSelectResultSet)
 }
 
 // SetAutoCommit wrapper of direct connection, set autocommit

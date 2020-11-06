@@ -171,7 +171,7 @@ func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string, s
 	switch stmt.Tp {
 	case ast.ShowDatabases:
 		dbs := se.GetNamespace().GetAllowedDBs()
-		return  createShowDatabaseResult(dbs), nil
+		return createShowDatabaseResult(dbs), nil
 	case ast.ShowVariables:
 		if strings.Contains(sql, gaeaGeneralLogVariable) {
 			return createShowGeneralLogResult(), nil
