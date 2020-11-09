@@ -19,8 +19,8 @@
             "master": "127.0.0.1:3306",
             "slaves": null,
             "statistic_slaves": null,
-            "capacity": 12,
-            "max_capacity": 24,
+            "capacity": 64,
+            "max_capacity": 64,
             "idle_timeout": 60
         },
         {
@@ -30,8 +30,8 @@
             "master": "127.0.0.1:3306",
             "slaves": null,
             "statistic_slaves": null,
-            "capacity": 12,
-            "max_capacity": 24,
+            "capacity": 64,
+            "max_capacity": 64,
             "idle_timeout": 60
         }
     ],
@@ -66,6 +66,6 @@
     ],
     "default_slice": "slice-0",
     "global_sequences": null,
-    "max_sql_execute_time": "0",
-    "max_select_result_set": "1000"
+    "max_sql_execute_time": "10000",
+    "max_select_result_set": "5"
 }

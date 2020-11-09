@@ -407,24 +407,27 @@ func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc *backe
 	r := make([]*mysql.Result, 0)
 	maxSelectResultSet := se.manager.GetNamespace(se.namespace).maxSelectResultSet
 
-	go func(reqCtx *util.RequestContext, pc *backend.PooledConnection, sql string, ctx context.Context, cancel context.CancelFunc, maxSelectResultSet int64) {
+	go func(reqCtx *util.RequestContext, pc *backend.PooledConnection, sql string, ctx context.Context, maxSelectResultSet int64) {
 		defer func() {
 			se.recycleBackendConn(pc, false)
 		}()
 		startTime := time.Now()
-		r, err := pc.ExecuteWithCtx(sql, ctx, cancel, maxSelectResultSet)
+		r, err := pc.ExecuteWithCtx(sql, ctx, maxSelectResultSet)
 		se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, sql, pc.GetAddr(), startTime, err)
 		select {
 		case <-ctx.Done():
 			return
 		default:
 			if err != nil {
+				if err == errors.ErrOutOfMaxResultSetLimit {
+					cancel()
+				}
 				ret <- err
 			} else {
 				ret <- r
 			}
 		}
-	}(reqCtx, pc, sql, ctx, cancel, maxSelectResultSet)
+	}(reqCtx, pc, sql, ctx, maxSelectResultSet)
 
 	select {
 	case <-ctx.Done():
@@ -526,7 +529,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 	}
 	defer cancel()
 
-	f := func(reqCtx *util.RequestContext, execSqls map[string][]string, pc *backend.PooledConnection, ctx context.Context, cancel context.CancelFunc, maxSelectResultSet int64) {
+	f := func(reqCtx *util.RequestContext, execSqls map[string][]string, pc *backend.PooledConnection, ctx context.Context, maxSelectResultSet int64) {
 		defer func() {
 			se.recycleBackendConn(pc, false)
 		}()
@@ -540,9 +543,12 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			}
 			for _, v := range sqls {
 				startTime := time.Now()
-				r, err := pc.ExecuteWithCtx(v, ctx, cancel, maxSelectResultSet)
+				r, err := pc.ExecuteWithCtx(v, ctx, maxSelectResultSet)
 				se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, v, pc.GetAddr(), startTime, err)
 				if err != nil {
+					if err == errors.ErrOutOfMaxResultSetLimit {
+						cancel()
+					}
 					break loop
 				}
 				//限制多分片返回的结果集记录数量
@@ -563,7 +569,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 
 	for sliceName, pc := range pcs {
 		s := sqls[sliceName] //map[string][]string
-		go f(reqCtx, s, pc, ctx, cancel, maxSelectResultSet)
+		go f(reqCtx, s, pc, ctx, maxSelectResultSet)
 	}
 
 	for i := 0; i < len(pcs); i++ {
