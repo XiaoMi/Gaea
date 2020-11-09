@@ -35,8 +35,8 @@ var (
 	DefaultCapacity = 64
 )
 
-// ConnectionPool means connection pool with specific addr
-type ConnectionPool struct {
+// connectionPoolImpl means connection pool with specific addr
+type connectionPoolImpl struct {
 	mu          sync.RWMutex
 	connections *util.ResourcePool
 
@@ -54,12 +54,12 @@ type ConnectionPool struct {
 }
 
 // NewConnectionPool create connection pool
-func NewConnectionPool(addr, user, password, db string, capacity, maxCapacity int, idleTimeout time.Duration, charset string, collationID mysql.CollationID) *ConnectionPool {
-	cp := &ConnectionPool{addr: addr, user: user, password: password, db: db, capacity: capacity, maxCapacity: maxCapacity, idleTimeout: idleTimeout, charset: charset, collationID: collationID}
+func NewConnectionPool(addr, user, password, db string, capacity, maxCapacity int, idleTimeout time.Duration, charset string, collationID mysql.CollationID) ConnectionPool {
+	cp := &connectionPoolImpl{addr: addr, user: user, password: password, db: db, capacity: capacity, maxCapacity: maxCapacity, idleTimeout: idleTimeout, charset: charset, collationID: collationID}
 	return cp
 }
 
-func (cp *ConnectionPool) pool() (p *util.ResourcePool) {
+func (cp *connectionPoolImpl) pool() (p *util.ResourcePool) {
 	cp.mu.Lock()
 	p = cp.connections
 	cp.mu.Unlock()
@@ -67,7 +67,7 @@ func (cp *ConnectionPool) pool() (p *util.ResourcePool) {
 }
 
 // Open open connection pool without error, should be called before use the pool
-func (cp *ConnectionPool) Open() {
+func (cp *connectionPoolImpl) Open() {
 	if cp.capacity == 0 {
 		cp.capacity = DefaultCapacity
 	}
@@ -82,21 +82,21 @@ func (cp *ConnectionPool) Open() {
 }
 
 // connect is used by the resource pool to create new resource.It's factory method
-func (cp *ConnectionPool) connect() (util.Resource, error) {
+func (cp *connectionPoolImpl) connect() (util.Resource, error) {
 	c, err := NewDirectConnection(cp.addr, cp.user, cp.password, cp.db, cp.charset, cp.collationID)
 	if err != nil {
 		return nil, err
 	}
-	return &PooledConnection{directConnection: c, pool: cp}, nil
+	return &pooledConnectImpl{directConnection: c, pool: cp}, nil
 }
 
 // Addr return addr of connection pool
-func (cp *ConnectionPool) Addr() string {
+func (cp *connectionPoolImpl) Addr() string {
 	return cp.addr
 }
 
 // Close close connection pool
-func (cp *ConnectionPool) Close() {
+func (cp *connectionPoolImpl) Close() {
 	p := cp.pool()
 	if p == nil {
 		return
@@ -109,12 +109,12 @@ func (cp *ConnectionPool) Close() {
 }
 
 // tryReuse reset params of connection before reuse
-func (cp *ConnectionPool) tryReuse(pc *PooledConnection) error {
+func (cp *connectionPoolImpl) tryReuse(pc *pooledConnectImpl) error {
 	return pc.directConnection.ResetConnection()
 }
 
-// Get return a connection, you should call PooledConnection's Recycle once done
-func (cp *ConnectionPool) Get(ctx context.Context) (*PooledConnection, error) {
+// Get return a connection, you should call PooledConnect's Recycle once done
+func (cp *connectionPoolImpl) Get(ctx context.Context) (PooledConnect, error) {
 	p := cp.pool()
 	if p == nil {
 		return nil, ErrConnectionPoolClosed
@@ -126,11 +126,11 @@ func (cp *ConnectionPool) Get(ctx context.Context) (*PooledConnection, error) {
 	if err != nil {
 		return nil, err
 	}
-	return r.(*PooledConnection), nil
+	return r.(*pooledConnectImpl), nil
 }
 
 // Put recycle a connection into the pool
-func (cp *ConnectionPool) Put(pc *PooledConnection) {
+func (cp *connectionPoolImpl) Put(pc PooledConnect) {
 	p := cp.pool()
 	if p == nil {
 		panic(ErrConnectionPoolClosed)
@@ -138,7 +138,7 @@ func (cp *ConnectionPool) Put(pc *PooledConnection) {
 
 	if pc == nil {
 		p.Put(nil)
-	} else if err := cp.tryReuse(pc); err != nil {
+	} else if err := cp.tryReuse(pc.(*pooledConnectImpl)); err != nil {
 		pc.Close()
 		p.Put(nil)
 	} else {
@@ -147,7 +147,7 @@ func (cp *ConnectionPool) Put(pc *PooledConnection) {
 }
 
 // SetCapacity alert the size of the pool at runtime
-func (cp *ConnectionPool) SetCapacity(capacity int) (err error) {
+func (cp *connectionPoolImpl) SetCapacity(capacity int) (err error) {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
 	if cp.connections != nil {
@@ -161,7 +161,7 @@ func (cp *ConnectionPool) SetCapacity(capacity int) (err error) {
 }
 
 // SetIdleTimeout set the idleTimeout of the pool
-func (cp *ConnectionPool) SetIdleTimeout(idleTimeout time.Duration) {
+func (cp *connectionPoolImpl) SetIdleTimeout(idleTimeout time.Duration) {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
 	if cp.connections != nil {
@@ -171,7 +171,7 @@ func (cp *ConnectionPool) SetIdleTimeout(idleTimeout time.Duration) {
 }
 
 // StatsJSON return the pool stats as JSON object.
-func (cp *ConnectionPool) StatsJSON() string {
+func (cp *connectionPoolImpl) StatsJSON() string {
 	p := cp.pool()
 	if p == nil {
 		return "{}"
@@ -180,7 +180,7 @@ func (cp *ConnectionPool) StatsJSON() string {
 }
 
 // Capacity return the pool capacity
-func (cp *ConnectionPool) Capacity() int64 {
+func (cp *connectionPoolImpl) Capacity() int64 {
 	p := cp.pool()
 	if p == nil {
 		return 0
@@ -189,7 +189,7 @@ func (cp *ConnectionPool) Capacity() int64 {
 }
 
 // Available returns the number of available connections in the pool
-func (cp *ConnectionPool) Available() int64 {
+func (cp *connectionPoolImpl) Available() int64 {
 	p := cp.pool()
 	if p == nil {
 		return 0
@@ -198,7 +198,7 @@ func (cp *ConnectionPool) Available() int64 {
 }
 
 // Active returns the number of active connections in the pool
-func (cp *ConnectionPool) Active() int64 {
+func (cp *connectionPoolImpl) Active() int64 {
 	p := cp.pool()
 	if p == nil {
 		return 0
@@ -207,7 +207,7 @@ func (cp *ConnectionPool) Active() int64 {
 }
 
 // InUse returns the number of in-use connections in the pool
-func (cp *ConnectionPool) InUse() int64 {
+func (cp *connectionPoolImpl) InUse() int64 {
 	p := cp.pool()
 	if p == nil {
 		return 0
@@ -216,7 +216,7 @@ func (cp *ConnectionPool) InUse() int64 {
 }
 
 // MaxCap returns the maximum size of the pool
-func (cp *ConnectionPool) MaxCap() int64 {
+func (cp *connectionPoolImpl) MaxCap() int64 {
 	p := cp.pool()
 	if p == nil {
 		return 0
@@ -225,7 +225,7 @@ func (cp *ConnectionPool) MaxCap() int64 {
 }
 
 // WaitCount returns how many clients are waitting for a connection
-func (cp *ConnectionPool) WaitCount() int64 {
+func (cp *connectionPoolImpl) WaitCount() int64 {
 	p := cp.pool()
 	if p == nil {
 		return 0
@@ -234,7 +234,7 @@ func (cp *ConnectionPool) WaitCount() int64 {
 }
 
 // WaitTime returns the time wait for a connection
-func (cp *ConnectionPool) WaitTime() time.Duration {
+func (cp *connectionPoolImpl) WaitTime() time.Duration {
 	p := cp.pool()
 	if p == nil {
 		return 0
@@ -243,7 +243,7 @@ func (cp *ConnectionPool) WaitTime() time.Duration {
 }
 
 // IdleTimeout returns the idle timeout for the pool
-func (cp *ConnectionPool) IdleTimeout() time.Duration {
+func (cp *connectionPoolImpl) IdleTimeout() time.Duration {
 	p := cp.pool()
 	if p == nil {
 		return 0
@@ -252,7 +252,7 @@ func (cp *ConnectionPool) IdleTimeout() time.Duration {
 }
 
 // IdleClosed return the number of closed connections for the pool
-func (cp *ConnectionPool) IdleClosed() int64 {
+func (cp *connectionPoolImpl) IdleClosed() int64 {
 	p := cp.pool()
 	if p == nil {
 		return 0
