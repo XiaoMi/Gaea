@@ -171,7 +171,7 @@ func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string, s
 	switch stmt.Tp {
 	case ast.ShowDatabases:
 		dbs := se.GetNamespace().GetAllowedDBs()
-		return  createShowDatabaseResult(dbs), nil
+		return createShowDatabaseResult(dbs), nil
 	case ast.ShowVariables:
 		if strings.Contains(sql, gaeaGeneralLogVariable) {
 			return createShowGeneralLogResult(), nil
@@ -303,6 +303,7 @@ func (se *SessionExecutor) handleSetAutoCommit(autocommit bool) error {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 
+	var err error
 	if autocommit {
 		se.status |= mysql.ServerStatusAutocommit
 		if se.status&mysql.ServerStatusInTrans > 0 {
@@ -310,14 +311,12 @@ func (se *SessionExecutor) handleSetAutoCommit(autocommit bool) error {
 		}
 		for _, pc := range se.txConns {
 			if e := pc.SetAutoCommit(1); e != nil {
-				pc.Recycle()
-				se.txConns = make(map[string]*backend.PooledConnection)
-				return fmt.Errorf("set autocommit error, %v", e)
+				err = fmt.Errorf("set autocommit error, %v", e)
 			}
 			pc.Recycle()
 		}
-		se.txConns = make(map[string]*backend.PooledConnection)
-		return nil
+		se.txConns = make(map[string]backend.PooledConnect)
+		return err
 	}
 
 	se.status &= ^mysql.ServerStatusAutocommit
