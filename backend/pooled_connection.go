@@ -70,8 +70,8 @@ func (pc *pooledConnectImpl) Execute(sql string) (*mysql.Result, error) {
 	return pc.directConnection.Execute(sql)
 }
 
-func (pc *PooledConnection) ExecuteWithCtx(sql string, ctx context.Context, maxSelectResultSet int64) (*mysql.Result, error) {
-	return pc.directConnection.ExecuteWithCtx(sql, ctx, maxSelectResultSet)
+func (pc *pooledConnectImpl) ExecuteWithCtx(sql string, ctx context.Context) (*mysql.Result, error) {
+	return pc.directConnection.ExecuteWithCtx(sql, ctx)
 }
 
 // SetAutoCommit wrapper of direct connection, set autocommit

@@ -67,5 +67,5 @@
     "default_slice": "slice-0",
     "global_sequences": null,
     "max_sql_execute_time": "10000",
-    "max_select_result_set": "5"
+    "max_select_result_set": "100"
 }

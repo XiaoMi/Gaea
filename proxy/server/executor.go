@@ -393,41 +393,40 @@ func (se *SessionExecutor) getTransactionConn(sliceName string) (pc backend.Pool
 	return
 }
 
-func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc *backend.PooledConnect, sql string) ([]*mysql.Result, error) {
+func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backend.PooledConnect, sql string) ([]*mysql.Result, error) {
 	var ctx context.Context
 	var cancel context.CancelFunc
+	maxSelectResultSet := se.manager.GetNamespace(se.namespace).maxSelectResultSet
+
 	if se.manager.GetNamespace(se.namespace).maxSqlExecuteTime <= 0 { //未开启sql执行超时限制
 		ctx, cancel = context.WithCancel(context.Background())
 	} else {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(se.manager.GetNamespace(se.namespace).maxSqlExecuteTime)*time.Millisecond)
 	}
+	ctx = context.WithValue(ctx, "maxSelectResultSet", maxSelectResultSet)
 	defer cancel()
 
 	ret := make(chan interface{}, 0)
 	r := make([]*mysql.Result, 0)
-	maxSelectResultSet := se.manager.GetNamespace(se.namespace).maxSelectResultSet
 
-	go func(reqCtx *util.RequestContext, pc *backend.PooledConnection, sql string, ctx context.Context, maxSelectResultSet int64) {
+	go func(reqCtx *util.RequestContext, pc backend.PooledConnect, sql string, ctx context.Context) {
 		defer func() {
 			se.recycleBackendConn(pc, false)
 		}()
 		startTime := time.Now()
-		r, err := pc.ExecuteWithCtx(sql, ctx, maxSelectResultSet)
+		r, err := pc.ExecuteWithCtx(sql, ctx)
 		se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, sql, pc.GetAddr(), startTime, err)
 		select {
 		case <-ctx.Done():
 			return
 		default:
 			if err != nil {
-				if err == errors.ErrOutOfMaxResultSetLimit {
-					cancel()
-				}
 				ret <- err
 			} else {
 				ret <- r
 			}
 		}
-	}(reqCtx, pc, sql, ctx, maxSelectResultSet)
+	}(reqCtx, pc, sql, ctx)
 
 	select {
 	case <-ctx.Done():
@@ -527,9 +526,10 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 	} else {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(se.manager.GetNamespace(se.namespace).maxSqlExecuteTime)*time.Millisecond)
 	}
+	ctx = context.WithValue(ctx, "maxSelectResultSet", maxSelectResultSet)
 	defer cancel()
 
-	f := func(reqCtx *util.RequestContext, execSqls map[string][]string, pc *backend.PooledConnect, ctx context.Context, maxSelectResultSet int64) {
+	f := func(reqCtx *util.RequestContext, execSqls map[string][]string, pc backend.PooledConnect, ctx context.Context) {
 		defer func() {
 			se.recycleBackendConn(pc, false)
 		}()
@@ -543,12 +543,10 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			}
 			for _, v := range sqls {
 				startTime := time.Now()
-				r, err := pc.ExecuteWithCtx(v, ctx, maxSelectResultSet)
+				var r *mysql.Result
+				r, err = pc.ExecuteWithCtx(v, ctx)
 				se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, v, pc.GetAddr(), startTime, err)
 				if err != nil {
-					if err == errors.ErrOutOfMaxResultSetLimit {
-						cancel()
-					}
 					break loop
 				}
 				//限制多分片返回的结果集记录数量
@@ -569,7 +567,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 
 	for sliceName, pc := range pcs {
 		s := sqls[sliceName] //map[string][]string
-		go f(reqCtx, s, pc, ctx, maxSelectResultSet)
+		go f(reqCtx, s, pc, ctx)
 	}
 
 	for i := 0; i < len(pcs); i++ {
