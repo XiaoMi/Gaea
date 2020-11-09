@@ -18,14 +18,14 @@ import (
 	"github.com/XiaoMi/Gaea/mysql"
 )
 
-// PooledConnection app use this object to exec sql
-type PooledConnection struct {
+// PooledConnect app use this object to exec sql
+type pooledConnectImpl struct {
 	directConnection *DirectConnection
-	pool             *ConnectionPool
+	pool             *connectionPoolImpl
 }
 
-// Recycle return PooledConnection to the pool
-func (pc *PooledConnection) Recycle() {
+// Recycle return PooledConnect to the pool
+func (pc *pooledConnectImpl) Recycle() {
 	if pc.IsClosed() {
 		pc.pool.Put(nil)
 	} else {
@@ -35,7 +35,7 @@ func (pc *PooledConnection) Recycle() {
 
 // Reconnect replaces the existing underlying connection with a new one.
 // If we get "MySQL server has gone away (errno 2006)", then call Reconnect
-func (pc *PooledConnection) Reconnect() error {
+func (pc *pooledConnectImpl) Reconnect() error {
 	pc.directConnection.Close()
 	newConn, err := NewDirectConnection(pc.pool.addr, pc.pool.user, pc.pool.password, pc.pool.db, pc.pool.charset, pc.pool.collationID)
 	if err != nil {
@@ -46,12 +46,12 @@ func (pc *PooledConnection) Reconnect() error {
 }
 
 // Close implement util.Resource interface
-func (pc *PooledConnection) Close() {
+func (pc *pooledConnectImpl) Close() {
 	pc.directConnection.Close()
 }
 
 // IsClosed check if pooled connection closed
-func (pc *PooledConnection) IsClosed() bool {
+func (pc *pooledConnectImpl) IsClosed() bool {
 	if pc.directConnection == nil {
 		return true
 	}
@@ -59,56 +59,56 @@ func (pc *PooledConnection) IsClosed() bool {
 }
 
 // UseDB  wrapper of direct connection, init database
-func (pc *PooledConnection) UseDB(db string) error {
+func (pc *pooledConnectImpl) UseDB(db string) error {
 	return pc.directConnection.UseDB(db)
 }
 
 // Execute wrapper of direct connection, execute sql
-func (pc *PooledConnection) Execute(sql string) (*mysql.Result, error) {
+func (pc *pooledConnectImpl) Execute(sql string) (*mysql.Result, error) {
 	return pc.directConnection.Execute(sql)
 }
 
 // SetAutoCommit wrapper of direct connection, set autocommit
-func (pc *PooledConnection) SetAutoCommit(v uint8) error {
+func (pc *pooledConnectImpl) SetAutoCommit(v uint8) error {
 	return pc.directConnection.SetAutoCommit(v)
 }
 
 // Begin wrapper of direct connection, begin transaction
-func (pc *PooledConnection) Begin() error {
+func (pc *pooledConnectImpl) Begin() error {
 	return pc.directConnection.Begin()
 }
 
 // Commit wrapper of direct connection, commit transaction
-func (pc *PooledConnection) Commit() error {
+func (pc *pooledConnectImpl) Commit() error {
 	return pc.directConnection.Commit()
 }
 
 // Rollback wrapper of direct connection, rollback transaction
-func (pc *PooledConnection) Rollback() error {
+func (pc *pooledConnectImpl) Rollback() error {
 	return pc.directConnection.Rollback()
 }
 
 // SetCharset wrapper of direct connection, set charset of connection
-func (pc *PooledConnection) SetCharset(charset string, collation mysql.CollationID) (bool, error) {
+func (pc *pooledConnectImpl) SetCharset(charset string, collation mysql.CollationID) (bool, error) {
 	return pc.directConnection.SetCharset(charset, collation)
 }
 
 // FieldList wrapper of direct connection, send field list to mysql
-func (pc *PooledConnection) FieldList(table string, wildcard string) ([]*mysql.Field, error) {
+func (pc *pooledConnectImpl) FieldList(table string, wildcard string) ([]*mysql.Field, error) {
 	return pc.directConnection.FieldList(table, wildcard)
 }
 
 // GetAddr wrapper of return addr of direct connection
-func (pc *PooledConnection) GetAddr() string {
+func (pc *pooledConnectImpl) GetAddr() string {
 	return pc.directConnection.GetAddr()
 }
 
 // SetSessionVariables set pc variables according to session
-func (pc *PooledConnection) SetSessionVariables(frontend *mysql.SessionVariables) (bool, error) {
+func (pc *pooledConnectImpl) SetSessionVariables(frontend *mysql.SessionVariables) (bool, error) {
 	return pc.directConnection.SetSessionVariables(frontend)
 }
 
 // WriteSetStatement exec sql
-func (pc *PooledConnection) WriteSetStatement() error {
+func (pc *pooledConnectImpl) WriteSetStatement() error {
 	return pc.directConnection.WriteSetStatement()
 }

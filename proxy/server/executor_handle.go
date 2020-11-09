@@ -314,7 +314,7 @@ func (se *SessionExecutor) handleSetAutoCommit(autocommit bool) (err error) {
 			}
 			pc.Recycle()
 		}
-		se.txConns = make(map[string]*backend.PooledConnection)
+		se.txConns = make(map[string]backend.PooledConnect)
 		return
 	}
 
