@@ -737,7 +737,7 @@ func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sq
 
 	if len(rs) == 0 {
 		msg := fmt.Sprintf("result is empty")
-		log.Warn("[server] Session handleUnsupport: %s, sql: %s", msg, sql)
+		log.Warn("[server] Session handle Unsupport: %s, sql: %s", msg, sql)
 		return nil, mysql.NewError(mysql.ErrUnknown, msg)
 	}
 	return rs[0], nil
