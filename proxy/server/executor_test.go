@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/backend/mocks"
@@ -103,6 +104,17 @@ func TestExecute(t *testing.T) {
 			RowDatas:   rowData,
 		},
 	}
+
+	maxSelectResultSet := se.manager.GetNamespace(se.namespace).maxSelectResultSet
+	var ctxL context.Context
+	var cancel context.CancelFunc
+	if se.manager.GetNamespace(se.namespace).maxSqlExecuteTime <= 0 {
+		ctxL, cancel = context.WithCancel(context.Background()) // 未开启sql执行超时限制
+	} else {
+		ctxL, cancel = context.WithTimeout(context.Background(), time.Duration(se.manager.GetNamespace(se.namespace).maxSqlExecuteTime)*time.Millisecond)
+	}
+	ctxL = context.WithValue(ctxL, "maxSelectResultSet", maxSelectResultSet)
+
 	//slice-0
 	ctx := context.Background()
 	slice0MasterConn := new(mocks.PooledConnect)
@@ -111,7 +123,7 @@ func TestExecute(t *testing.T) {
 	slice0MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice0MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice0MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice0MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", se.ctx).Return(expectResult1, nil)
+	slice0MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", ctxL).Return(expectResult1, nil)
 	slice0MasterConn.On("Recycle").Return(nil)
 
 	//slice-1
@@ -121,7 +133,7 @@ func TestExecute(t *testing.T) {
 	slice1MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice1MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice1MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice1MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", se.ctx).Return(expectResult2, nil)
+	slice1MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", ctxL).Return(expectResult2, nil)
 	slice1MasterConn.On("Recycle").Return(nil)
 
 	sqls := map[string]map[string][]string{
@@ -138,6 +150,9 @@ func TestExecute(t *testing.T) {
 
 	reqCtx := util.NewRequestContext()
 	reqCtx.Set(util.StmtType, parser.StmtInsert)
+
+	reqCtx.Set("ctx", ctxL)
+	reqCtx.Set("cancel", cancel)
 
 	rs, err := se.ExecuteSQLs(reqCtx, sqls)
 	assert.Equal(t, rs, ret)
@@ -161,7 +176,6 @@ func prepareSessionExecutor() (*SessionExecutor, error) {
 	// set database
 	executor.SetDatabase(database)
 	executor.namespace = namespaceName
-	initSessionCtx(executor)
 	return executor, nil
 }
 
@@ -280,8 +294,8 @@ encrypt_key=1234abcd5678efg*
         }
     ],
     "default_slice": "slice-0",
-    "max_sql_execute_time": "0",
-    "max_select_result_set": "100"
+    "max_sql_execute_time":0,
+    "max_select_result_set":100
 }`
 
 	//加载proxy配置

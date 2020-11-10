@@ -45,8 +45,8 @@ type Namespace struct {
 	GlobalSequences    []*GlobalSequence `json:"global_sequences"`
 	DefaultCharset     string            `json:"default_charset"`
 	DefaultCollation   string            `json:"default_collation"`
-	MaxSqlExecuteTime  string            `json:"max_sql_execute_time"`  // sql最大执行时间，大于该时间，进行熔断
-	MaxSelectResultSet string            `json:"max_select_result_set"` // sql查询最大返回条数
+	MaxSqlExecuteTime  int64             `json:"max_sql_execute_time"`  // sql最大执行时间，大于该时间，进行熔断
+	MaxSelectResultSet int64             `json:"max_select_result_set"` // sql查询最大返回条数
 }
 
 // Encode encode json

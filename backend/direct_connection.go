@@ -752,9 +752,11 @@ func (dc *DirectConnection) readResultRowsWithCtx(result *mysql.Result, isBinary
 			limitErr = errors2.ErrOutOfMaxTimeOrResultSetLimit
 			continue
 		default:
-			if len(result.RowDatas) > maxSelectResultSet { // 超过最大行数限制
-				limitErr = errors2.ErrOutOfMaxResultSetLimit
-				continue
+			if maxSelectResultSet != 0 { // 为0则不开启限制
+				if len(result.RowDatas) > maxSelectResultSet { // 超过最大行数限制
+					limitErr = errors2.ErrOutOfMaxResultSetLimit
+					continue
+				}
 			}
 			if data[0] == mysql.ErrHeader {
 				return dc.handleErrorPacket(data)

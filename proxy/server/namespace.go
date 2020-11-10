@@ -42,8 +42,8 @@ const (
 	defaultPlanCacheCapacity = 128
 
 	defaultSlowSQLTime        = 1000 // millisecond
-	defaultMaxSqlExecuteTime  = 0
-	defaultMaxSelectResultSet = 50000 // default max select result set rows:50000
+	defaultMaxSqlExecuteTime  = 0    // 默认为0，不开启
+	defaultMaxSelectResultSet = 0    // 默认为0，不开启
 )
 
 // UserProperty means runtime user properties
@@ -114,15 +114,17 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 	}
 
 	// init session slow sql max execute time
-	namespace.maxSqlExecuteTime, err = parseTime(namespaceConfig.MaxSqlExecuteTime, defaultMaxSqlExecuteTime)
-	if err != nil {
-		return nil, fmt.Errorf("parse maxSqlExecuteTime error: %v", err)
+	if namespaceConfig.MaxSqlExecuteTime <= 0 {
+		namespace.maxSqlExecuteTime = defaultMaxSqlExecuteTime
+	} else {
+		namespace.maxSqlExecuteTime = namespaceConfig.MaxSqlExecuteTime
 	}
 
 	// init session select result set max rows
-	namespace.maxSelectResultSet, err = parseTime(namespaceConfig.MaxSelectResultSet, defaultMaxSelectResultSet)
-	if err != nil {
-		return nil, fmt.Errorf("parse maxSqlExecuteTime error: %v", err)
+	if namespaceConfig.MaxSelectResultSet <= 0 {
+		namespace.maxSelectResultSet = defaultMaxSelectResultSet
+	} else {
+		namespace.maxSelectResultSet = namespaceConfig.MaxSelectResultSet
 	}
 
 	allowDBs := make(map[string]bool, len(namespaceConfig.AllowedDBS))
