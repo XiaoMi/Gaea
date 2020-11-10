@@ -166,7 +166,7 @@ func (dc *DirectConnection) writePacket(data []byte) error {
 	err := dc.conn.WritePacket(data)
 	if err != nil && strings.Contains(err.Error(), "broken pipe") {
 		// retry 3 times, close dc's conn、reset dc's stats and reconnect
-		for i := 0; i < 3; i++ { //先关闭，再重连
+		for i := 0; i < 3; i++ {
 			dc.Close()
 			e := dc.connect()
 			if e == nil { // no need to write data again
