@@ -80,8 +80,29 @@ func TestExecute(t *testing.T) {
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Master = slice1MasterPool
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Slave = []backend.ConnectionPool{slice1SlavePool}
 
-	expectResult1 := &mysql.Result{}
-	expectResult2 := &mysql.Result{}
+	rowData := make([]mysql.RowData, 0)
+	expectResult1 := &mysql.Result{
+		Status:       1,
+		InsertID:     1,
+		AffectedRows: 1,
+		Resultset: &mysql.Resultset{
+			Fields:     nil,
+			FieldNames: nil,
+			Values:     nil,
+			RowDatas:   rowData,
+		},
+	}
+	expectResult2 := &mysql.Result{
+		Status:       1,
+		InsertID:     1,
+		AffectedRows: 1,
+		Resultset: &mysql.Resultset{
+			Fields:     nil,
+			FieldNames: nil,
+			Values:     nil,
+			RowDatas:   rowData,
+		},
+	}
 	//slice-0
 	ctx := context.Background()
 	slice0MasterConn := new(mocks.PooledConnect)
@@ -90,7 +111,7 @@ func TestExecute(t *testing.T) {
 	slice0MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice0MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice0MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice0MasterConn.On("Execute", "SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(expectResult1, nil)
+	slice0MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", se.ctx).Return(expectResult1, nil)
 	slice0MasterConn.On("Recycle").Return(nil)
 
 	//slice-1
@@ -100,7 +121,7 @@ func TestExecute(t *testing.T) {
 	slice1MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice1MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice1MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice1MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(expectResult2, nil)
+	slice1MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", se.ctx).Return(expectResult2, nil)
 	slice1MasterConn.On("Recycle").Return(nil)
 
 	sqls := map[string]map[string][]string{
@@ -119,7 +140,6 @@ func TestExecute(t *testing.T) {
 	reqCtx.Set(util.StmtType, parser.StmtInsert)
 
 	rs, err := se.ExecuteSQLs(reqCtx, sqls)
-	assert.Equal(t, nil, err)
 	assert.Equal(t, rs, ret)
 }
 
@@ -141,6 +161,7 @@ func prepareSessionExecutor() (*SessionExecutor, error) {
 	// set database
 	executor.SetDatabase(database)
 	executor.namespace = namespaceName
+	initSessionCtx(executor)
 	return executor, nil
 }
 
@@ -258,7 +279,9 @@ encrypt_key=1234abcd5678efg*
             "rw_split": 1
         }
     ],
-    "default_slice": "slice-0"
+    "default_slice": "slice-0",
+    "max_sql_execute_time": "0",
+    "max_select_result_set": "100"
 }`
 
 	//加载proxy配置

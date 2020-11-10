@@ -65,6 +65,9 @@ type SessionExecutor struct {
 	stmts  map[uint32]*Stmt //prepare相关,client端到proxy的stmt
 
 	parser *parser.Parser
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // Response response info
@@ -151,7 +154,6 @@ func CreateNoopResponse() Response {
 }
 
 func newSessionExecutor(manager *Manager) *SessionExecutor {
-
 	return &SessionExecutor{
 		sessionVariables: mysql.NewSessionVariables(),
 		txConns:          make(map[string]backend.PooledConnect),
@@ -160,6 +162,17 @@ func newSessionExecutor(manager *Manager) *SessionExecutor {
 		status:           initClientConnStatus,
 		manager:          manager,
 	}
+}
+
+func initSessionCtx(se *SessionExecutor) {
+	maxSelectResultSet := se.manager.GetNamespace(se.namespace).maxSelectResultSet
+
+	if se.manager.GetNamespace(se.namespace).maxSqlExecuteTime <= 0 {
+		se.ctx, se.cancel = context.WithCancel(context.Background()) // 未开启sql执行超时限制
+	} else {
+		se.ctx, se.cancel = context.WithTimeout(context.Background(), time.Duration(se.manager.GetNamespace(se.namespace).maxSqlExecuteTime)*time.Millisecond)
+	}
+	se.ctx = context.WithValue(se.ctx, "maxSelectResultSet", maxSelectResultSet)
 }
 
 // GetNamespace return namespace in session
@@ -394,17 +407,7 @@ func (se *SessionExecutor) getTransactionConn(sliceName string) (pc backend.Pool
 }
 
 func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backend.PooledConnect, sql string) ([]*mysql.Result, error) {
-	var ctx context.Context
-	var cancel context.CancelFunc
-	maxSelectResultSet := se.manager.GetNamespace(se.namespace).maxSelectResultSet
-
-	if se.manager.GetNamespace(se.namespace).maxSqlExecuteTime <= 0 { //未开启sql执行超时限制
-		ctx, cancel = context.WithCancel(context.Background())
-	} else {
-		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(se.manager.GetNamespace(se.namespace).maxSqlExecuteTime)*time.Millisecond)
-	}
-	ctx = context.WithValue(ctx, "maxSelectResultSet", maxSelectResultSet)
-	defer cancel()
+	defer se.cancel()
 
 	ret := make(chan interface{}, 0)
 	r := make([]*mysql.Result, 0)
@@ -426,10 +429,10 @@ func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backen
 				ret <- r
 			}
 		}
-	}(reqCtx, pc, sql, ctx)
+	}(reqCtx, pc, sql, se.ctx)
 
 	select {
-	case <-ctx.Done():
+	case <-se.ctx.Done():
 		return nil, errors.ErrOutOfMaxTimeOrResultSetLimit
 	case v := <-ret:
 		if v == nil {
@@ -516,18 +519,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 
 	ret := make(chan interface{}, 0)
 	r := make([]*mysql.Result, 0)
-
-	var ctx context.Context
-	var cancel context.CancelFunc
-	maxSelectResultSet := se.manager.GetNamespace(se.namespace).maxSelectResultSet
-
-	if se.manager.GetNamespace(se.namespace).maxSqlExecuteTime <= 0 {
-		ctx, cancel = context.WithCancel(context.Background()) // 未开启sql执行超时限制
-	} else {
-		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(se.manager.GetNamespace(se.namespace).maxSqlExecuteTime)*time.Millisecond)
-	}
-	ctx = context.WithValue(ctx, "maxSelectResultSet", maxSelectResultSet)
-	defer cancel()
+	defer se.cancel()
 
 	f := func(reqCtx *util.RequestContext, execSqls map[string][]string, pc backend.PooledConnect, ctx context.Context) {
 		defer func() {
@@ -567,12 +559,12 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 
 	for sliceName, pc := range pcs {
 		s := sqls[sliceName] //map[string][]string
-		go f(reqCtx, s, pc, ctx)
+		go f(reqCtx, s, pc, se.ctx)
 	}
 
 	for i := 0; i < len(pcs); i++ {
 		select {
-		case <-ctx.Done():
+		case <-se.ctx.Done():
 			return nil, errors.ErrOutOfMaxTimeOrResultSetLimit
 		case v := <-ret:
 			if v == nil {
@@ -585,8 +577,12 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 				r = append(r, resultSetArray...) // 多个分片结果放入统一切片
 				var resultSetRowNum int
 				for _, result := range r { // 计算多分片结果集总行数
+					if result.Resultset == nil {
+						return nil, fmt.Errorf("resultSet of slice return nil err")
+					}
 					resultSetRowNum += len(result.RowDatas)
 				}
+				maxSelectResultSet := se.ctx.Value("maxSelectResultSet").(int64)
 				if resultSetRowNum > int(maxSelectResultSet) {
 					return nil, errors.ErrOutOfMaxResultSetLimit
 				}
