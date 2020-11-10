@@ -53,14 +53,14 @@ type Slice struct {
 	Cfg models.Slice
 
 	sync.RWMutex
-	Master *ConnectionPool
+	Master ConnectionPool
 
-	Slave          []*ConnectionPool
+	Slave          []ConnectionPool
 	LastSlaveIndex int
 	RoundRobinQ    []int
 	SlaveWeights   []int
 
-	StatisticSlave            []*ConnectionPool
+	StatisticSlave            []ConnectionPool
 	LastStatisticSlaveIndex   int
 	StatisticSlaveRoundRobinQ []int
 	StatisticSlaveWeights     []int
@@ -75,7 +75,7 @@ func (s *Slice) GetSliceName() string {
 }
 
 // GetConn get backend connection from different node based on fromSlave and userType
-func (s *Slice) GetConn(fromSlave bool, userType int) (pc *PooledConnection, err error) {
+func (s *Slice) GetConn(fromSlave bool, userType int) (pc PooledConnect, err error) {
 	if fromSlave {
 		if userType == models.StatisticUser {
 			pc, err = s.GetStatisticSlaveConn()
@@ -100,13 +100,13 @@ func (s *Slice) GetConn(fromSlave bool, userType int) (pc *PooledConnection, err
 }
 
 // GetMasterConn return a connection in master pool
-func (s *Slice) GetMasterConn() (*PooledConnection, error) {
+func (s *Slice) GetMasterConn() (PooledConnect, error) {
 	ctx := context.TODO()
 	return s.Master.Get(ctx)
 }
 
 // GetSlaveConn return a connection in slave pool
-func (s *Slice) GetSlaveConn() (*PooledConnection, error) {
+func (s *Slice) GetSlaveConn() (PooledConnect, error) {
 	s.Lock()
 	cp, err := s.getNextSlave()
 	s.Unlock()
@@ -118,7 +118,7 @@ func (s *Slice) GetSlaveConn() (*PooledConnection, error) {
 }
 
 // GetStatisticSlaveConn return a connection in statistic slave pool
-func (s *Slice) GetStatisticSlaveConn() (*PooledConnection, error) {
+func (s *Slice) GetStatisticSlaveConn() (PooledConnect, error) {
 	s.Lock()
 	cp, err := s.getNextStatisticSlave()
 	s.Unlock()
@@ -174,7 +174,7 @@ func (s *Slice) ParseSlave(slaves []string) error {
 	var weight int
 
 	count := len(slaves)
-	s.Slave = make([]*ConnectionPool, 0, count)
+	s.Slave = make([]ConnectionPool, 0, count)
 	s.SlaveWeights = make([]int, 0, count)
 
 	//parse addr and weight
@@ -212,7 +212,7 @@ func (s *Slice) ParseStatisticSlave(statisticSlaves []string) error {
 	var weight int
 
 	count := len(statisticSlaves)
-	s.StatisticSlave = make([]*ConnectionPool, 0, count)
+	s.StatisticSlave = make([]ConnectionPool, 0, count)
 	s.StatisticSlaveWeights = make([]int, 0, count)
 
 	//parse addr and weight

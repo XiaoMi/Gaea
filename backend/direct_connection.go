@@ -16,12 +16,14 @@ package backend
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
 	"strings"
 
+	errors2 "github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util/sync2"
@@ -164,7 +166,7 @@ func (dc *DirectConnection) writePacket(data []byte) error {
 	err := dc.conn.WritePacket(data)
 	if err != nil && strings.Contains(err.Error(), "broken pipe") {
 		// retry 3 times, close dc's conn、reset dc's stats and reconnect
-		for i := 0; i < 3; i++ {
+		for i := 0; i < 3; i++ { //先关闭，再重连
 			dc.Close()
 			e := dc.connect()
 			if e == nil { // no need to write data again
@@ -408,6 +410,11 @@ func (dc *DirectConnection) Execute(sql string) (*mysql.Result, error) {
 	return dc.exec(sql)
 }
 
+// Execute send ComQuery or ComStmtPrepare/ComStmtExecute/ComStmtClose to backend mysql
+func (dc *DirectConnection) ExecuteWithCtx(sql string, ctx context.Context) (*mysql.Result, error) {
+	return dc.execWithCtx(sql, ctx)
+}
+
 // Begin send ComQuery with 'begin' to backend mysql to start transaction
 func (dc *DirectConnection) Begin() error {
 	_, err := dc.exec("begin")
@@ -562,6 +569,14 @@ func (dc *DirectConnection) exec(query string) (*mysql.Result, error) {
 	return dc.readResult(false)
 }
 
+func (dc *DirectConnection) execWithCtx(query string, ctx context.Context) (*mysql.Result, error) {
+	if err := dc.writeComQuery(query); err != nil {
+		return nil, err
+	}
+
+	return dc.readResultWithCtx(false, ctx)
+}
+
 // read resultset from mysql
 func (dc *DirectConnection) readResultset(data []byte, binary bool) (*mysql.Result, error) {
 	result := &mysql.Result{
@@ -588,6 +603,38 @@ func (dc *DirectConnection) readResultset(data []byte, binary bool) (*mysql.Resu
 	}
 
 	if err := dc.readResultRows(result, binary); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// read resultset from mysql
+func (dc *DirectConnection) readResultsetWithCtx(data []byte, binary bool, ctx context.Context) (*mysql.Result, error) {
+	result := &mysql.Result{
+		Status:       0,
+		InsertID:     0,
+		AffectedRows: 0,
+
+		Resultset: &mysql.Resultset{},
+	}
+
+	// column count
+	pos := 0
+	count, pos, _, _ := mysql.ReadLenEncInt(data, pos)
+
+	if pos-len(data) != 0 {
+		return nil, mysql.ErrMalformPacket
+	}
+
+	result.Fields = make([]*mysql.Field, count)
+	result.FieldNames = make(map[string]int, count)
+
+	if err := dc.readResultColumns(result); err != nil {
+		return nil, err
+	}
+
+	if err := dc.readResultRowsWithCtx(result, binary, ctx); err != nil {
 		return nil, err
 	}
 
@@ -678,6 +725,61 @@ func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool) 
 	return nil
 }
 
+// readResultRows read result rows
+func (dc *DirectConnection) readResultRowsWithCtx(result *mysql.Result, isBinary bool, ctx context.Context) (err error) {
+	var data []byte
+	var limitErr error
+	for {
+		data, err = dc.readPacket()
+		if err != nil {
+			return
+		}
+		// EOF Packet
+		if dc.isEOFPacket(data) {
+			if dc.capability&mysql.ClientProtocol41 > 0 {
+				//result.Warnings = binary.LittleEndian.Uint16(data[1:])
+				//todo add strict_mode, warning will be treat as error
+				result.Status = binary.LittleEndian.Uint16(data[3:])
+				dc.status = result.Status
+			}
+
+			break
+		}
+
+		select {
+		case <-ctx.Done():
+			limitErr = errors2.ErrOutOfMaxTimeOrResultSetLimit
+			continue
+		default:
+			maxSelectResultSet := int(ctx.Value("maxSelectResultSet").(int64))
+			if len(result.RowDatas) > maxSelectResultSet { // 超过最大行数限制
+				limitErr = errors2.ErrOutOfMaxResultSetLimit
+				continue
+			}
+			if data[0] == mysql.ErrHeader {
+				return dc.handleErrorPacket(data)
+			}
+			result.RowDatas = append(result.RowDatas, data)
+		}
+	}
+
+	if limitErr != nil {
+		return limitErr
+	}
+
+	result.Values = make([][]interface{}, len(result.RowDatas))
+
+	for i := range result.Values {
+		result.Values[i], err = result.RowDatas[i].Parse(result.Fields, isBinary)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (dc *DirectConnection) isEOFPacket(data []byte) bool {
 	return data[0] == mysql.EOFHeader && len(data) <= 5
 }
@@ -744,6 +846,22 @@ func (dc *DirectConnection) readResult(binary bool) (*mysql.Result, error) {
 	return dc.readResultset(data, binary)
 }
 
+func (dc *DirectConnection) readResultWithCtx(binary bool, ctx context.Context) (*mysql.Result, error) {
+	data, err := dc.readPacket()
+	if err != nil {
+		return nil, err
+	}
+	if data[0] == mysql.OKHeader {
+		return dc.handleOKPacket(data)
+	} else if data[0] == mysql.ErrHeader {
+		return nil, dc.handleErrorPacket(data)
+	} else if data[0] == mysql.LocalInFileHeader {
+		return nil, mysql.ErrMalformPacket
+	}
+
+	return dc.readResultsetWithCtx(data, binary, ctx)
+}
+
 // IsAutoCommit check if autocommit
 func (dc *DirectConnection) IsAutoCommit() bool {
 	return dc.status&mysql.ServerStatusAutocommit > 0
@@ -757,6 +875,10 @@ func (dc *DirectConnection) IsInTransaction() bool {
 // GetCharset return charset of specific connection
 func (dc *DirectConnection) GetCharset() string {
 	return dc.charset
+}
+
+func (dc *DirectConnection) Flush() {
+	dc.conn.Flush()
 }
 
 func appendSetCharset(buf *bytes.Buffer, charset string, collation string) {

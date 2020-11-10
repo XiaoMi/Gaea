@@ -58,13 +58,16 @@ type SessionExecutor struct {
 	charset          string
 	sessionVariables *mysql.SessionVariables
 
-	txConns map[string]*backend.PooledConnection
+	txConns map[string]backend.PooledConnect
 	txLock  sync.Mutex
 
 	stmtID uint32
 	stmts  map[uint32]*Stmt //prepare相关,client端到proxy的stmt
 
 	parser *parser.Parser
+
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // Response response info
@@ -151,15 +154,25 @@ func CreateNoopResponse() Response {
 }
 
 func newSessionExecutor(manager *Manager) *SessionExecutor {
-
 	return &SessionExecutor{
 		sessionVariables: mysql.NewSessionVariables(),
-		txConns:          make(map[string]*backend.PooledConnection),
+		txConns:          make(map[string]backend.PooledConnect),
 		stmts:            make(map[uint32]*Stmt),
 		parser:           parser.New(),
 		status:           initClientConnStatus,
 		manager:          manager,
 	}
+}
+
+func initSessionCtx(se *SessionExecutor) {
+	maxSelectResultSet := se.manager.GetNamespace(se.namespace).maxSelectResultSet
+
+	if se.manager.GetNamespace(se.namespace).maxSqlExecuteTime <= 0 {
+		se.ctx, se.cancel = context.WithCancel(context.Background()) // 未开启sql执行超时限制
+	} else {
+		se.ctx, se.cancel = context.WithTimeout(context.Background(), time.Duration(se.manager.GetNamespace(se.namespace).maxSqlExecuteTime)*time.Millisecond)
+	}
+	se.ctx = context.WithValue(se.ctx, "maxSelectResultSet", maxSelectResultSet)
 }
 
 // GetNamespace return namespace in session
@@ -339,10 +352,10 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 	}
 }
 
-func (se *SessionExecutor) getBackendConns(sqls map[string]map[string][]string, fromSlave bool) (pcs map[string]*backend.PooledConnection, err error) {
-	pcs = make(map[string]*backend.PooledConnection)
+func (se *SessionExecutor) getBackendConns(sqls map[string]map[string][]string, fromSlave bool) (pcs map[string]backend.PooledConnect, err error) {
+	pcs = make(map[string]backend.PooledConnect)
 	for sliceName := range sqls {
-		var pc *backend.PooledConnection
+		var pc backend.PooledConnect
 		pc, err = se.getBackendConn(sliceName, fromSlave)
 		if err != nil {
 			return
@@ -352,7 +365,7 @@ func (se *SessionExecutor) getBackendConns(sqls map[string]map[string][]string, 
 	return
 }
 
-func (se *SessionExecutor) getBackendConn(sliceName string, fromSlave bool) (pc *backend.PooledConnection, err error) {
+func (se *SessionExecutor) getBackendConn(sliceName string, fromSlave bool) (pc backend.PooledConnect, err error) {
 	if !se.isInTransaction() {
 		slice := se.GetNamespace().GetSlice(sliceName)
 		return slice.GetConn(fromSlave, se.GetNamespace().GetUserProperty(se.user))
@@ -360,7 +373,7 @@ func (se *SessionExecutor) getBackendConn(sliceName string, fromSlave bool) (pc 
 	return se.getTransactionConn(sliceName)
 }
 
-func (se *SessionExecutor) getTransactionConn(sliceName string) (pc *backend.PooledConnection, err error) {
+func (se *SessionExecutor) getTransactionConn(sliceName string) (pc backend.PooledConnect, err error) {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 
@@ -393,25 +406,18 @@ func (se *SessionExecutor) getTransactionConn(sliceName string) (pc *backend.Poo
 	return
 }
 
-func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc *backend.PooledConnection, sql string) ([]*mysql.Result, error) {
-	var ctx context.Context
-	var cancel context.CancelFunc
-	if se.manager.GetNamespace(se.namespace).maxSqlExecuteTime <= 0 {
-		ctx = context.TODO()
-	} else {
-		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(se.manager.GetNamespace(se.namespace).maxSqlExecuteTime)*time.Millisecond)
-		defer cancel()
-	}
+func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backend.PooledConnect, sql string) ([]*mysql.Result, error) {
+	defer se.cancel()
 
 	ret := make(chan interface{}, 0)
 	r := make([]*mysql.Result, 0)
 
-	go func(reqCtx *util.RequestContext, pc *backend.PooledConnection, sql string) {
+	go func(reqCtx *util.RequestContext, pc backend.PooledConnect, sql string, ctx context.Context) {
 		defer func() {
 			se.recycleBackendConn(pc, false)
 		}()
 		startTime := time.Now()
-		r, err := pc.Execute(sql)
+		r, err := pc.ExecuteWithCtx(sql, ctx)
 		se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, sql, pc.GetAddr(), startTime, err)
 		select {
 		case <-ctx.Done():
@@ -423,11 +429,11 @@ func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc *backe
 				ret <- r
 			}
 		}
-	}(reqCtx, pc, sql)
+	}(reqCtx, pc, sql, se.ctx)
 
 	select {
-	case <-ctx.Done():
-		return nil, errors.ErrOutOfMaxSqlExecuteTime
+	case <-se.ctx.Done():
+		return nil, errors.ErrOutOfMaxTimeOrResultSetLimit
 	case v := <-ret:
 		if v == nil {
 			return nil, fmt.Errorf("result of sql execute return nil err")
@@ -443,7 +449,7 @@ func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc *backe
 	return r, nil
 }
 
-func (se *SessionExecutor) recycleBackendConn(pc *backend.PooledConnection, rollback bool) {
+func (se *SessionExecutor) recycleBackendConn(pc backend.PooledConnect, rollback bool) {
 	if pc == nil {
 		return
 	}
@@ -459,7 +465,7 @@ func (se *SessionExecutor) recycleBackendConn(pc *backend.PooledConnection, roll
 	pc.Recycle()
 }
 
-func (se *SessionExecutor) recycleBackendConns(pcs map[string]*backend.PooledConnection, rollback bool) {
+func (se *SessionExecutor) recycleBackendConns(pcs map[string]backend.PooledConnect, rollback bool) {
 	if se.isInTransaction() {
 		return
 	}
@@ -475,7 +481,7 @@ func (se *SessionExecutor) recycleBackendConns(pcs map[string]*backend.PooledCon
 	}
 }
 
-func initBackendConn(pc *backend.PooledConnection, phyDB string, charset string, collation mysql.CollationID, sessionVariables *mysql.SessionVariables) error {
+func initBackendConn(pc backend.PooledConnect, phyDB string, charset string, collation mysql.CollationID, sessionVariables *mysql.SessionVariables) error {
 	if err := pc.UseDB(phyDB); err != nil {
 		return err
 	}
@@ -499,7 +505,7 @@ func initBackendConn(pc *backend.PooledConnection, phyDB string, charset string,
 	return nil
 }
 
-func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs map[string]*backend.PooledConnection,
+func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs map[string]backend.PooledConnect,
 	sqls map[string]map[string][]string) ([]*mysql.Result, error) {
 
 	if len(pcs) != len(sqls) {
@@ -513,18 +519,9 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 
 	ret := make(chan interface{}, 0)
 	r := make([]*mysql.Result, 0)
+	defer se.cancel()
 
-	var ctx context.Context
-	var cancel context.CancelFunc
-
-	if se.manager.GetNamespace(se.namespace).maxSqlExecuteTime <= 0 {
-		ctx = context.TODO()
-	} else {
-		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(se.manager.GetNamespace(se.namespace).maxSqlExecuteTime)*time.Millisecond)
-		defer cancel()
-	}
-
-	f := func(reqCtx *util.RequestContext, execSqls map[string][]string, pc *backend.PooledConnection) {
+	f := func(reqCtx *util.RequestContext, execSqls map[string][]string, pc backend.PooledConnect, ctx context.Context) {
 		defer func() {
 			se.recycleBackendConn(pc, false)
 		}()
@@ -538,13 +535,14 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			}
 			for _, v := range sqls {
 				startTime := time.Now()
-				r, err := pc.Execute(v)
+				var r *mysql.Result
+				r, err = pc.ExecuteWithCtx(v, ctx)
 				se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, v, pc.GetAddr(), startTime, err)
 				if err != nil {
 					break loop
-				} else {
-					sliceResultSet = append(sliceResultSet, r)
 				}
+				//限制多分片返回的结果集记录数量
+				sliceResultSet = append(sliceResultSet, r)
 			}
 		}
 		select {
@@ -561,13 +559,13 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 
 	for sliceName, pc := range pcs {
 		s := sqls[sliceName] //map[string][]string
-		go f(reqCtx, s, pc)
+		go f(reqCtx, s, pc, se.ctx)
 	}
 
 	for i := 0; i < len(pcs); i++ {
 		select {
-		case <-ctx.Done():
-			return nil, errors.ErrOutOfMaxSqlExecuteTime
+		case <-se.ctx.Done():
+			return nil, errors.ErrOutOfMaxTimeOrResultSetLimit
 		case v := <-ret:
 			if v == nil {
 				return nil, fmt.Errorf("resultSet of slice return nil err")
@@ -576,7 +574,18 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 				return nil, fmt.Errorf("sql of slice execute err:%s", e.Error())
 			}
 			if resultSetArray, ok := v.([]*mysql.Result); ok {
-				r = append(r, resultSetArray...) // 多个分片结果统一返回
+				r = append(r, resultSetArray...) // 多个分片结果放入统一切片
+				var resultSetRowNum int
+				for _, result := range r { // 计算多分片结果集总行数
+					if result.Resultset == nil {
+						return nil, fmt.Errorf("resultSet of slice return nil err")
+					}
+					resultSetRowNum += len(result.RowDatas)
+				}
+				maxSelectResultSet := se.ctx.Value("maxSelectResultSet").(int64)
+				if resultSetRowNum > int(maxSelectResultSet) {
+					return nil, errors.ErrOutOfMaxResultSetLimit
+				}
 			}
 		}
 	}
@@ -742,7 +751,7 @@ func (se *SessionExecutor) commit() (err error) {
 		pc.Recycle()
 	}
 
-	se.txConns = make(map[string]*backend.PooledConnection)
+	se.txConns = make(map[string]backend.PooledConnect)
 	return
 }
 
@@ -759,7 +768,7 @@ func (se *SessionExecutor) rollback() (err error) {
 		pc.Recycle()
 	}
 
-	se.txConns = make(map[string]*backend.PooledConnection)
+	se.txConns = make(map[string]backend.PooledConnect)
 	return
 }
 
