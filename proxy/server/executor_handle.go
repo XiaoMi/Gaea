@@ -299,11 +299,10 @@ func (se *SessionExecutor) handleSetVariable(v *ast.VariableAssignment) error {
 	}
 }
 
-func (se *SessionExecutor) handleSetAutoCommit(autocommit bool) error {
+func (se *SessionExecutor) handleSetAutoCommit(autocommit bool) (err error) {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 
-	var err error
 	if autocommit {
 		se.status |= mysql.ServerStatusAutocommit
 		if se.status&mysql.ServerStatusInTrans > 0 {
@@ -316,11 +315,11 @@ func (se *SessionExecutor) handleSetAutoCommit(autocommit bool) error {
 			pc.Recycle()
 		}
 		se.txConns = make(map[string]*backend.PooledConnection)
-		return err
+		return
 	}
 
 	se.status &= ^mysql.ServerStatusAutocommit
-	return nil
+	return
 }
 
 func (se *SessionExecutor) handleStmtPrepare(sql string) (*Stmt, error) {
