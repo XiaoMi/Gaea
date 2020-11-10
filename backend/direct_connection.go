@@ -729,6 +729,7 @@ func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool) 
 func (dc *DirectConnection) readResultRowsWithCtx(result *mysql.Result, isBinary bool, ctx context.Context) (err error) {
 	var data []byte
 	var limitErr error
+	maxSelectResultSet := int(ctx.Value("maxSelectResultSet").(int64))
 	for {
 		data, err = dc.readPacket()
 		if err != nil {
@@ -751,7 +752,6 @@ func (dc *DirectConnection) readResultRowsWithCtx(result *mysql.Result, isBinary
 			limitErr = errors2.ErrOutOfMaxTimeOrResultSetLimit
 			continue
 		default:
-			maxSelectResultSet := int(ctx.Value("maxSelectResultSet").(int64))
 			if len(result.RowDatas) > maxSelectResultSet { // 超过最大行数限制
 				limitErr = errors2.ErrOutOfMaxResultSetLimit
 				continue

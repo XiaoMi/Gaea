@@ -36,23 +36,27 @@ type NamespaceManager struct {
 }
 // Namespace is struct driected used by server
 type Namespace struct {
-    name               string
-    allowedDBs         map[string]bool
-    defaultPhyDBs      map[string]string // logicDBName-phyDBName
-    sqls               map[string]string //key: sql fingerprint
-    slowSQLTime        int64             // session slow sql time, millisecond, default 1000
-    allowips           []util.IPInfo
-    router             *router.Router
-    slices             map[string]*backend.Slice // key: slice name
-    userProperties     map[string]*UserProperty  // key: user name ,value: user's properties
-    defaultCharset     string
-    defaultCollationID mysql.CollationID
-
-    slowSQLCache         *cache.LRUCache
-    errorSQLCache        *cache.LRUCache
-    backendSlowSQLCache  *cache.LRUCache
-    backendErrorSQLCache *cache.LRUCache
-    planCache            *cache.LRUCache
+  	name               string
+  	allowedDBs         map[string]bool
+  	defaultPhyDBs      map[string]string // logicDBName-phyDBName
+  	sqls               map[string]string //key: sql fingerprint
+  	slowSQLTime        int64             // session slow sql time, millisecond, default 1000
+  	allowips           []util.IPInfo
+  	router             *router.Router
+  	sequences          *sequence.SequenceManager
+  	slices             map[string]*backend.Slice // key: slice name
+  	userProperties     map[string]*UserProperty  // key: user name ,value: user's properties
+  	defaultCharset     string
+  	defaultCollationID mysql.CollationID
+  	openGeneralLog     bool
+  	maxSqlExecuteTime  int64 // session max sql execute time,millisecond
+  	maxSelectResultSet int64
+  
+  	slowSQLCache         *cache.LRUCache
+  	errorSQLCache        *cache.LRUCache
+  	backendSlowSQLCache  *cache.LRUCache
+  	backendErrorSQLCache *cache.LRUCache
+  	planCache            *cache.LRUCache
 }
 ```
 
