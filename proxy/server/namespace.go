@@ -41,8 +41,9 @@ const (
 	defaultSQLCacheCapacity  = 64
 	defaultPlanCacheCapacity = 128
 
-	defaultSlowSQLTime       = 1000 // millisecond
-	defaultMaxSqlExecuteTime = 0
+	defaultSlowSQLTime        = 1000 // millisecond
+	defaultMaxSqlExecuteTime  = 0
+	defaultMaxSelectResultSet = 50000 // default max select result set rows:50000
 )
 
 // UserProperty means runtime user properties
@@ -67,7 +68,8 @@ type Namespace struct {
 	defaultCharset     string
 	defaultCollationID mysql.CollationID
 	openGeneralLog     bool
-	maxSqlExecuteTime  int64 // session slow sql fuse time,millisecond
+	maxSqlExecuteTime  int64 // session max sql execute time,millisecond
+	maxSelectResultSet int64
 
 	slowSQLCache         *cache.LRUCache
 	errorSQLCache        *cache.LRUCache
@@ -111,8 +113,14 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 		return nil, fmt.Errorf("parse slowSQLTime error: %v", err)
 	}
 
-	// init session slow sql fuse time
+	// init session slow sql max execute time
 	namespace.maxSqlExecuteTime, err = parseTime(namespaceConfig.MaxSqlExecuteTime, defaultMaxSqlExecuteTime)
+	if err != nil {
+		return nil, fmt.Errorf("parse maxSqlExecuteTime error: %v", err)
+	}
+
+	// init session select result set max rows
+	namespace.maxSelectResultSet, err = parseTime(namespaceConfig.MaxSelectResultSet, defaultMaxSelectResultSet)
 	if err != nil {
 		return nil, fmt.Errorf("parse maxSqlExecuteTime error: %v", err)
 	}

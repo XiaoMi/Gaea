@@ -132,6 +132,7 @@ func (s *Server) onConn(c net.Conn) {
 		cc.c.writeErrorPacket(err)
 		return
 	}
+	initSessionCtx(cc.executor)
 
 	// added into time wheel
 	s.tw.Add(s.sessionTimeout, cc, cc.Close)
