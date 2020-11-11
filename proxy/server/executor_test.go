@@ -220,7 +220,7 @@ func Test_ExecuteWithCtx_One_Slice_Execute_TimeOut(t *testing.T) {
 	slice1MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice1MasterConn.On("GetAddr").Return("127.0.0.1:3306")
 	slice1MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", ctxL).Return(expectResult2, nil)
-	//slice1MasterConn.On("Recycle").Return(nil).Times(1)
+	slice1MasterConn.On("Recycle").Return(nil).Times(1)
 
 	sqls := map[string]map[string][]string{
 		"slice-0": {
