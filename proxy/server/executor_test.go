@@ -35,6 +35,20 @@ import (
 	"gopkg.in/ini.v1"
 )
 
+var se *SessionExecutor
+
+func InitTestSession() *SessionExecutor {
+	var err error
+	if se == nil {
+		se, err = prepareSessionExecutor()
+		if err != nil {
+			fmt.Println("prepare session executer error:")
+			return se
+		}
+	}
+	return se
+}
+
 func TestGetVariableExprResult(t *testing.T) {
 	tests := []struct {
 		variable []string
@@ -66,11 +80,7 @@ func TestGetVariableExprResult(t *testing.T) {
 }
 
 func Test_ExecuteWithCtx_Success(t *testing.T) {
-	se, err := prepareSessionExecutor()
-	if err != nil {
-		t.Fatal("prepare session executer error:", err)
-		return
-	}
+	se := InitTestSession()
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
@@ -156,16 +166,12 @@ func Test_ExecuteWithCtx_Success(t *testing.T) {
 	reqCtx.Set("ctx", ctxL)
 	reqCtx.Set("cancel", cancel)
 
-	rs, err := se.ExecuteSQLs(reqCtx, sqls)
+	rs, _ := se.ExecuteSQLs(reqCtx, sqls)
 	assert.Equal(t, ret, rs)
 }
 
 func Test_ExecuteWithCtx_One_Slice_Execute_TimeOut(t *testing.T) {
-	se, err := prepareSessionExecutor()
-	if err != nil {
-		t.Fatal("prepare session executer error:", err)
-		return
-	}
+	se := InitTestSession()
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
@@ -243,11 +249,7 @@ func Test_ExecuteWithCtx_One_Slice_Execute_TimeOut(t *testing.T) {
 }
 
 func Test_ExecuteWithCtx_One_Slice_ResultSet_OutOfLimit(t *testing.T) {
-	se, err := prepareSessionExecutor()
-	if err != nil {
-		t.Fatal("prepare session executer error:", err)
-		return
-	}
+	se := InitTestSession()
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
@@ -325,11 +327,7 @@ func Test_ExecuteWithCtx_One_Slice_ResultSet_OutOfLimit(t *testing.T) {
 }
 
 func Test_ExecuteWithCtx_Slice_ResultSet_Sum_OutOfLimit(t *testing.T) {
-	se, err := prepareSessionExecutor()
-	if err != nil {
-		t.Fatal("prepare session executer error:", err)
-		return
-	}
+	se := InitTestSession()
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
@@ -419,11 +417,7 @@ func Test_ExecuteWithCtx_Slice_ResultSet_Sum_OutOfLimit(t *testing.T) {
 
 //ERROR 1062 (23000): Duplicate entry '1960073974' for key 'PRIMARY'
 func Test_ExecuteWithCtx_One_Slice_Error(t *testing.T) {
-	se, err := prepareSessionExecutor()
-	if err != nil {
-		t.Fatal("prepare session executer error:", err)
-		return
-	}
+	se := InitTestSession()
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
