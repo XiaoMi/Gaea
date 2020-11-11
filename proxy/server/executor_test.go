@@ -35,19 +35,7 @@ import (
 	"gopkg.in/ini.v1"
 )
 
-var se *SessionExecutor
-
-func InitTestSession() *SessionExecutor {
-	var err error
-	if se == nil {
-		se, err = prepareSessionExecutor()
-		if err != nil {
-			fmt.Println("prepare session executer error:")
-			return se
-		}
-	}
-	return se
-}
+var se = prepareSessionExecutor()
 
 func TestGetVariableExprResult(t *testing.T) {
 	tests := []struct {
@@ -80,7 +68,6 @@ func TestGetVariableExprResult(t *testing.T) {
 }
 
 func Test_ExecuteWithCtx_Success(t *testing.T) {
-	se := InitTestSession()
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
@@ -171,7 +158,6 @@ func Test_ExecuteWithCtx_Success(t *testing.T) {
 }
 
 func Test_ExecuteWithCtx_One_Slice_Execute_TimeOut(t *testing.T) {
-	se := InitTestSession()
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
@@ -249,7 +235,6 @@ func Test_ExecuteWithCtx_One_Slice_Execute_TimeOut(t *testing.T) {
 }
 
 func Test_ExecuteWithCtx_One_Slice_ResultSet_OutOfLimit(t *testing.T) {
-	se := InitTestSession()
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
@@ -327,7 +312,6 @@ func Test_ExecuteWithCtx_One_Slice_ResultSet_OutOfLimit(t *testing.T) {
 }
 
 func Test_ExecuteWithCtx_Slice_ResultSet_Sum_OutOfLimit(t *testing.T) {
-	se := InitTestSession()
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
@@ -417,7 +401,6 @@ func Test_ExecuteWithCtx_Slice_ResultSet_Sum_OutOfLimit(t *testing.T) {
 
 //ERROR 1062 (23000): Duplicate entry '1960073974' for key 'PRIMARY'
 func Test_ExecuteWithCtx_One_Slice_Error(t *testing.T) {
-	se := InitTestSession()
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
@@ -506,14 +489,14 @@ func Test_ExecuteWithCtx_One_Slice_Error(t *testing.T) {
 	time.Sleep(3 * time.Second)
 }
 
-func prepareSessionExecutor() (*SessionExecutor, error) {
+func prepareSessionExecutor() *SessionExecutor {
 	var userName = "test_executor"
 	var namespaceName = "test_executor_namespace"
 	var database = "db_ks"
 
 	m, err := prepareNamespaceManager()
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 	executor := newSessionExecutor(m)
 	executor.user = userName
@@ -524,7 +507,7 @@ func prepareSessionExecutor() (*SessionExecutor, error) {
 	// set database
 	executor.SetDatabase(database)
 	executor.namespace = namespaceName
-	return executor, nil
+	return executor
 }
 
 func prepareNamespaceManager() (*Manager, error) {
