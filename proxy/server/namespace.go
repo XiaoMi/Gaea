@@ -108,7 +108,7 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 	namespace.sqls = parseBlackSqls(namespaceConfig.BlackSQL)
 
 	// init session slow sql time
-	namespace.slowSQLTime, err = parseTime(namespaceConfig.SlowSQLTime, defaultSlowSQLTime)
+	namespace.slowSQLTime, err = parseSlowSQLTime(namespaceConfig.SlowSQLTime)
 	if err != nil {
 		return nil, fmt.Errorf("parse slowSQLTime error: %v", err)
 	}
@@ -529,9 +529,9 @@ func parseBlackSqls(sqls []string) map[string]string {
 	return sqlMap
 }
 
-func parseTime(str string, defaultTime int64) (int64, error) {
+func parseSlowSQLTime(str string) (int64, error) {
 	if str == "" {
-		return defaultTime, nil
+		return defaultSlowSQLTime, nil
 	}
 	t, err := strconv.ParseInt(str, 10, 64)
 	if err != nil {

@@ -122,7 +122,7 @@ func Test_ExecuteWithCtx_Success(t *testing.T) {
 	slice0MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice0MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice0MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice0MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", ctxL).Return(expectResult1, nil)
+	slice0MasterConn.On("ExecuteWithCtx", ctxL, "SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(expectResult1, nil)
 	slice0MasterConn.On("Recycle").Return(nil)
 
 	//slice-1
@@ -132,7 +132,7 @@ func Test_ExecuteWithCtx_Success(t *testing.T) {
 	slice1MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice1MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice1MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice1MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", ctxL).Return(expectResult2, nil)
+	slice1MasterConn.On("ExecuteWithCtx", ctxL, "SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(expectResult2, nil)
 	slice1MasterConn.On("Recycle").Return(nil)
 
 	sqls := map[string]map[string][]string{
@@ -201,7 +201,7 @@ func Test_ExecuteWithCtx_One_Slice_Execute_TimeOut(t *testing.T) {
 	slice0MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice0MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice0MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice0MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", ctxL).WaitUntil(time.After(time.Second*5)).Return(nil, errors.ErrOutOfMaxTimeOrResultSetLimit)
+	slice0MasterConn.On("ExecuteWithCtx", ctxL, "SELECT * FROM `tbl_mycat` WHERE `k`=0").WaitUntil(time.After(time.Second*5)).Return(nil, errors.ErrOutOfMaxTime)
 	slice0MasterConn.On("Recycle").Return(nil).Times(1)
 
 	//slice-1
@@ -211,7 +211,7 @@ func Test_ExecuteWithCtx_One_Slice_Execute_TimeOut(t *testing.T) {
 	slice1MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice1MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice1MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice1MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", ctxL).Return(expectResult2, nil)
+	slice1MasterConn.On("ExecuteWithCtx", ctxL, "SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(expectResult2, nil)
 	slice1MasterConn.On("Recycle").Return(nil).Times(1)
 
 	sqls := map[string]map[string][]string{
@@ -231,7 +231,7 @@ func Test_ExecuteWithCtx_One_Slice_Execute_TimeOut(t *testing.T) {
 
 	rs, err := se.ExecuteSQLs(reqCtx, sqls)
 	assert.Equal(t, 0, len(rs))
-	assert.Equal(t, errors.ErrOutOfMaxTimeOrResultSetLimit, err)
+	assert.Equal(t, errors.ErrOutOfMaxTime, err)
 }
 
 func Test_ExecuteWithCtx_One_Slice_ResultSet_OutOfLimit(t *testing.T) {
@@ -278,7 +278,7 @@ func Test_ExecuteWithCtx_One_Slice_ResultSet_OutOfLimit(t *testing.T) {
 	slice0MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice0MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice0MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice0MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", ctxL).Return(nil, errors.ErrOutOfMaxResultSetLimit)
+	slice0MasterConn.On("ExecuteWithCtx", ctxL, "SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(nil, errors.ErrOutOfMaxResultSetLimit)
 	slice0MasterConn.On("Recycle").Return(nil).Times(1)
 
 	//slice-1
@@ -288,7 +288,7 @@ func Test_ExecuteWithCtx_One_Slice_ResultSet_OutOfLimit(t *testing.T) {
 	slice1MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice1MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice1MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice1MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", ctxL).Return(expectResult2, nil)
+	slice1MasterConn.On("ExecuteWithCtx", ctxL, "SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(expectResult2, nil)
 	slice1MasterConn.On("Recycle").Return(nil).Times(1)
 
 	sqls := map[string]map[string][]string{
@@ -366,7 +366,7 @@ func Test_ExecuteWithCtx_Slice_ResultSet_Sum_OutOfLimit(t *testing.T) {
 	slice0MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice0MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice0MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice0MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", ctxL).Return(expectResult1, nil)
+	slice0MasterConn.On("ExecuteWithCtx", ctxL, "SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(expectResult1, nil)
 	slice0MasterConn.On("Recycle").Return(nil).Times(1)
 
 	//slice-1
@@ -376,7 +376,7 @@ func Test_ExecuteWithCtx_Slice_ResultSet_Sum_OutOfLimit(t *testing.T) {
 	slice1MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice1MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice1MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice1MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", ctxL).Return(expectResult2, nil)
+	slice1MasterConn.On("ExecuteWithCtx", ctxL, "SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(expectResult2, nil)
 	slice1MasterConn.On("Recycle").Return(nil).Times(1)
 
 	sqls := map[string]map[string][]string{
@@ -455,7 +455,7 @@ func Test_ExecuteWithCtx_One_Slice_Error(t *testing.T) {
 	slice0MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice0MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice0MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice0MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", ctxL).Return(nil, fmt.Errorf("ERROR 1062 (23000): Duplicate entry '1960073974' for key 'PRIMARY'"))
+	slice0MasterConn.On("ExecuteWithCtx", ctxL, "SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(nil, fmt.Errorf("ERROR 1062 (23000): Duplicate entry '1960073974' for key 'PRIMARY'"))
 	slice0MasterConn.On("Recycle").Return(nil).Times(1)
 
 	//slice-1
@@ -465,7 +465,7 @@ func Test_ExecuteWithCtx_One_Slice_Error(t *testing.T) {
 	slice1MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice1MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice1MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice1MasterConn.On("ExecuteWithCtx", "SELECT * FROM `tbl_mycat` WHERE `k`=0", ctxL).WaitUntil(time.After(1*time.Second)).Return(expectResult2, nil)
+	slice1MasterConn.On("ExecuteWithCtx", ctxL, "SELECT * FROM `tbl_mycat` WHERE `k`=0").WaitUntil(time.After(1*time.Second)).Return(expectResult2, nil)
 	slice1MasterConn.On("Recycle").Return(nil).Times(1)
 
 	sqls := map[string]map[string][]string{

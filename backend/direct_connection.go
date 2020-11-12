@@ -411,8 +411,8 @@ func (dc *DirectConnection) Execute(sql string) (*mysql.Result, error) {
 }
 
 // Execute send ComQuery or ComStmtPrepare/ComStmtExecute/ComStmtClose to backend mysql
-func (dc *DirectConnection) ExecuteWithCtx(sql string, ctx context.Context) (*mysql.Result, error) {
-	return dc.execWithCtx(sql, ctx)
+func (dc *DirectConnection) ExecuteWithCtx(ctx context.Context, sql string) (*mysql.Result, error) {
+	return dc.execWithCtx(ctx, sql)
 }
 
 // Begin send ComQuery with 'begin' to backend mysql to start transaction
@@ -569,12 +569,12 @@ func (dc *DirectConnection) exec(query string) (*mysql.Result, error) {
 	return dc.readResult(false)
 }
 
-func (dc *DirectConnection) execWithCtx(query string, ctx context.Context) (*mysql.Result, error) {
+func (dc *DirectConnection) execWithCtx(ctx context.Context, query string) (*mysql.Result, error) {
 	if err := dc.writeComQuery(query); err != nil {
 		return nil, err
 	}
 
-	return dc.readResultWithCtx(false, ctx)
+	return dc.readResultWithCtx(ctx, false)
 }
 
 // read resultset from mysql
@@ -610,7 +610,7 @@ func (dc *DirectConnection) readResultset(data []byte, binary bool) (*mysql.Resu
 }
 
 // read resultset from mysql
-func (dc *DirectConnection) readResultsetWithCtx(data []byte, binary bool, ctx context.Context) (*mysql.Result, error) {
+func (dc *DirectConnection) readResultsetWithCtx(ctx context.Context, data []byte, binary bool) (*mysql.Result, error) {
 	result := &mysql.Result{
 		Status:       0,
 		InsertID:     0,
@@ -634,7 +634,7 @@ func (dc *DirectConnection) readResultsetWithCtx(data []byte, binary bool, ctx c
 		return nil, err
 	}
 
-	if err := dc.readResultRowsWithCtx(result, binary, ctx); err != nil {
+	if err := dc.readResultRowsWithCtx(ctx, result, binary); err != nil {
 		return nil, err
 	}
 
@@ -726,7 +726,7 @@ func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool) 
 }
 
 // readResultRows read result rows
-func (dc *DirectConnection) readResultRowsWithCtx(result *mysql.Result, isBinary bool, ctx context.Context) (err error) {
+func (dc *DirectConnection) readResultRowsWithCtx(ctx context.Context, result *mysql.Result, isBinary bool) (err error) {
 	var data []byte
 	var limitErr error
 	maxSelectResultSet := int(ctx.Value("maxSelectResultSet").(int64))
@@ -749,7 +749,7 @@ func (dc *DirectConnection) readResultRowsWithCtx(result *mysql.Result, isBinary
 
 		select {
 		case <-ctx.Done():
-			limitErr = errors2.ErrOutOfMaxTimeOrResultSetLimit
+			limitErr = errors2.ErrOutOfMaxTime
 			continue
 		default:
 			if maxSelectResultSet != 0 { // 为0则不开启限制
@@ -848,7 +848,7 @@ func (dc *DirectConnection) readResult(binary bool) (*mysql.Result, error) {
 	return dc.readResultset(data, binary)
 }
 
-func (dc *DirectConnection) readResultWithCtx(binary bool, ctx context.Context) (*mysql.Result, error) {
+func (dc *DirectConnection) readResultWithCtx(ctx context.Context, binary bool) (*mysql.Result, error) {
 	data, err := dc.readPacket()
 	if err != nil {
 		return nil, err
@@ -861,7 +861,7 @@ func (dc *DirectConnection) readResultWithCtx(binary bool, ctx context.Context) 
 		return nil, mysql.ErrMalformPacket
 	}
 
-	return dc.readResultsetWithCtx(data, binary, ctx)
+	return dc.readResultsetWithCtx(ctx, data, binary)
 }
 
 // IsAutoCommit check if autocommit
@@ -877,10 +877,6 @@ func (dc *DirectConnection) IsInTransaction() bool {
 // GetCharset return charset of specific connection
 func (dc *DirectConnection) GetCharset() string {
 	return dc.charset
-}
-
-func (dc *DirectConnection) Flush() {
-	dc.conn.Flush()
 }
 
 func appendSetCharset(buf *bytes.Buffer, charset string, collation string) {

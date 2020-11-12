@@ -405,7 +405,7 @@ func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backen
 			se.recycleBackendConn(pc, false)
 		}()
 		startTime := time.Now()
-		r, err := pc.ExecuteWithCtx(sql, ctx)
+		r, err := pc.ExecuteWithCtx(ctx, sql)
 		se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, sql, pc.GetAddr(), startTime, err)
 		select {
 		case <-ctx.Done():
@@ -421,7 +421,7 @@ func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backen
 
 	select {
 	case <-ctx.Done():
-		return nil, errors.ErrOutOfMaxTimeOrResultSetLimit
+		return nil, errors.ErrOutOfMaxTime
 	case v := <-ret:
 		if v == nil {
 			return nil, fmt.Errorf("result of sql execute return nil err")
@@ -527,7 +527,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			for _, v := range sqls {
 				startTime := time.Now()
 				var r *mysql.Result
-				r, err = pc.ExecuteWithCtx(v, ctx)
+				r, err = pc.ExecuteWithCtx(ctx, v)
 				se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, v, pc.GetAddr(), startTime, err)
 				if err != nil {
 					break loop
@@ -553,10 +553,13 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 		go f(reqCtx, s, pc, ctx)
 	}
 
+	maxSelectResultSet := ctx.Value("maxSelectResultSet").(int64)
+	var resultSetRowNum int //结果集聚合总行数
+
 	for i := 0; i < len(pcs); i++ {
 		select {
 		case <-ctx.Done():
-			return nil, errors.ErrOutOfMaxTimeOrResultSetLimit
+			return nil, errors.ErrOutOfMaxTime
 		case v := <-ret:
 			if v == nil {
 				return nil, fmt.Errorf("resultSet of slice return nil err")
@@ -566,10 +569,8 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			}
 			if resultSetArray, ok := v.([]*mysql.Result); ok {
 				r = append(r, resultSetArray...) // 多个分片结果放入统一切片
-				maxSelectResultSet := ctx.Value("maxSelectResultSet").(int64)
-				if maxSelectResultSet != 0 { //该值为0，则不统计返回结果集大小
-					var resultSetRowNum int
-					for _, result := range r { // 计算多分片结果集总行数
+				if maxSelectResultSet != 0 {     //该值为0，则不统计返回结果集大小
+					for _, result := range resultSetArray {
 						if result.Resultset == nil {
 							continue
 						}

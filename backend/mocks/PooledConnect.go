@@ -70,13 +70,13 @@ func (_m *PooledConnect) Execute(sql string) (*mysql.Result, error) {
 	return r0, r1
 }
 
-// ExecuteWithCtx provides a mock function with given fields: sql, ctx
-func (_m *PooledConnect) ExecuteWithCtx(sql string, ctx context.Context) (*mysql.Result, error) {
-	ret := _m.Called(sql, ctx)
+// ExecuteWithCtx provides a mock function with given fields: ctx, sql
+func (_m *PooledConnect) ExecuteWithCtx(ctx context.Context, sql string) (*mysql.Result, error) {
+	ret := _m.Called(ctx, sql)
 
 	var r0 *mysql.Result
-	if rf, ok := ret.Get(0).(func(string, context.Context) *mysql.Result); ok {
-		r0 = rf(sql, ctx)
+	if rf, ok := ret.Get(0).(func(context.Context, string) *mysql.Result); ok {
+		r0 = rf(ctx, sql)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*mysql.Result)
@@ -84,8 +84,8 @@ func (_m *PooledConnect) ExecuteWithCtx(sql string, ctx context.Context) (*mysql
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(string, context.Context) error); ok {
-		r1 = rf(sql, ctx)
+	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = rf(ctx, sql)
 	} else {
 		r1 = ret.Error(1)
 	}

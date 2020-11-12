@@ -98,7 +98,7 @@ var (
 	ErrNamespaceNotPrepared = errors.New("namespace is not prepared")
 
 	// ErrOutOfMaxSqlExecuteTime out of max sql execute time or max select result set
-	ErrOutOfMaxTimeOrResultSetLimit = errors.New("out of max sql execute time or max select result set")
+	ErrOutOfMaxTime = errors.New("out of max sql execute time")
 	// ErrOutOfMaxResultSetLimit out of  max select result set limit
 	ErrOutOfMaxResultSetLimit = errors.New("out of  max select result set limit")
 )
