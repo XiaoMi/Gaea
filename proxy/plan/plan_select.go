@@ -16,6 +16,7 @@ package plan
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/ast"
@@ -199,6 +200,8 @@ func HandleSelectStmt(p *SelectPlan, stmt *ast.SelectStmt) error {
 		return fmt.Errorf("handle Limit error: %v", err)
 	}
 
+	handleExtraFieldList(stmt)
+
 	if err := postHandleGlobalTableRouteResultInQuery(p.StmtInfo); err != nil {
 		return fmt.Errorf("post handle global table error: %v", err)
 	}
@@ -256,6 +259,25 @@ func handleOrderBy(p *SelectPlan, stmt *ast.SelectStmt) error {
 
 	stmt.Fields.Fields = append(stmt.Fields.Fields, orderByFields...)
 	return nil
+}
+
+func handleExtraFieldList(stmt *ast.SelectStmt) {
+	alias := make(map[string]struct{})
+	for _, field := range stmt.Fields.Fields {
+		if field.AsName.L != "" {
+			alias[field.AsName.L] = struct{}{}
+		}
+	}
+	for i, field := range stmt.Fields.Fields {
+		field, isColumnExpr := field.Expr.(*ast.ColumnNameExpr)
+		if !isColumnExpr {
+			continue
+		}
+		if _, ok := alias[strings.ToLower(field.Name.Name.L)]; !ok {
+			continue
+		}
+		stmt.Fields.Fields = append(stmt.Fields.Fields[:i], stmt.Fields.Fields[i+1:]...)
+	}
 }
 
 func createSelectFieldsFromByItems(p *SelectPlan, items []*ast.ByItem) ([]*ast.SelectField, error) {
