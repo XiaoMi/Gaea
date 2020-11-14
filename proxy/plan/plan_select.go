@@ -200,7 +200,7 @@ func HandleSelectStmt(p *SelectPlan, stmt *ast.SelectStmt) error {
 		return fmt.Errorf("handle Limit error: %v", err)
 	}
 
-	handleExtraFieldList(stmt)
+	handleExtraFieldList(p, stmt)
 
 	if err := postHandleGlobalTableRouteResultInQuery(p.StmtInfo); err != nil {
 		return fmt.Errorf("post handle global table error: %v", err)
@@ -261,19 +261,21 @@ func handleOrderBy(p *SelectPlan, stmt *ast.SelectStmt) error {
 	return nil
 }
 
-func handleExtraFieldList(stmt *ast.SelectStmt) {
+func handleExtraFieldList(p *SelectPlan, stmt *ast.SelectStmt) {
 	alias := make(map[string]struct{})
 	for _, field := range stmt.Fields.Fields {
 		if field.AsName.L != "" {
 			alias[field.AsName.L] = struct{}{}
 		}
 	}
-	for i, field := range stmt.Fields.Fields {
-		field, isColumnExpr := field.Expr.(*ast.ColumnNameExpr)
+	for i := p.originColumnCount; i < len(stmt.Fields.Fields); {
+		field, isColumnExpr := stmt.Fields.Fields[i].Expr.(*ast.ColumnNameExpr)
 		if !isColumnExpr {
+			i++
 			continue
 		}
 		if _, ok := alias[strings.ToLower(field.Name.Name.L)]; !ok {
+			i++
 			continue
 		}
 		stmt.Fields.Fields = append(stmt.Fields.Fields[:i], stmt.Fields.Fields[i+1:]...)
