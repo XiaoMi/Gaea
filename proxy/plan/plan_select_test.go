@@ -3472,6 +3472,28 @@ func TestSelectOrderByAliasColumn(t *testing.T) {
 				},
 			},
 		},
+		{
+			db:  "db_mycat",
+			sql: "select id as a, uid from tbl_mycat where uid = 2 order by id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {
+						"SELECT `id` AS `a`,`uid` FROM `tbl_mycat` WHERE `uid`=2 ORDER BY `id`",
+					},
+					"db_mycat_1": {
+						"SELECT `id` AS `a`,`uid` FROM `tbl_mycat` WHERE `uid`=2 ORDER BY `id`",
+					},
+				},
+				"slice-1": {
+					"db_mycat_2": {
+						"SELECT `id` AS `a`,`uid` FROM `tbl_mycat` WHERE `uid`=2 ORDER BY `id`",
+					},
+					"db_mycat_3": {
+						"SELECT `id` AS `a`,`uid` FROM `tbl_mycat` WHERE `uid`=2 ORDER BY `id`",
+					},
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -3504,6 +3526,28 @@ func TestSelectGroupByAliasColumn(t *testing.T) {
 					},
 					"db_mycat_3": {
 						"SELECT COUNT(`id`) AS `a`,`uid` FROM `tbl_mycat` WHERE `uid`=2 GROUP BY `a`",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select id as a, uid from tbl_mycat where uid = 2 group by id",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {
+						"SELECT `id` AS `a`,`uid` FROM `tbl_mycat` WHERE `uid`=2 GROUP BY `id`",
+					},
+					"db_mycat_1": {
+						"SELECT `id` AS `a`,`uid` FROM `tbl_mycat` WHERE `uid`=2 GROUP BY `id`",
+					},
+				},
+				"slice-1": {
+					"db_mycat_2": {
+						"SELECT `id` AS `a`,`uid` FROM `tbl_mycat` WHERE `uid`=2 GROUP BY `id`",
+					},
+					"db_mycat_3": {
+						"SELECT `id` AS `a`,`uid` FROM `tbl_mycat` WHERE `uid`=2 GROUP BY `id`",
 					},
 				},
 			},
