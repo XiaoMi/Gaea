@@ -1764,12 +1764,12 @@ func TestMycatSelectGroupBy(t *testing.T) {
 			sql: "select id, user from tbl_mycat group by id",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_mycat_0": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` GROUP BY `id`"},
-					"db_mycat_1": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` GROUP BY `id`"},
+					"db_mycat_0": {"SELECT `id`,`user` FROM `tbl_mycat` GROUP BY `id`"},
+					"db_mycat_1": {"SELECT `id`,`user` FROM `tbl_mycat` GROUP BY `id`"},
 				},
 				"slice-1": {
-					"db_mycat_2": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` GROUP BY `id`"},
-					"db_mycat_3": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` GROUP BY `id`"},
+					"db_mycat_2": {"SELECT `id`,`user` FROM `tbl_mycat` GROUP BY `id`"},
+					"db_mycat_3": {"SELECT `id`,`user` FROM `tbl_mycat` GROUP BY `id`"},
 				},
 			},
 		},
@@ -1778,12 +1778,12 @@ func TestMycatSelectGroupBy(t *testing.T) {
 			sql: "select id, count(user) from tbl_mycat group by id",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_mycat_0": {"SELECT `id`,COUNT(`user`),`id` FROM `tbl_mycat` GROUP BY `id`"},
-					"db_mycat_1": {"SELECT `id`,COUNT(`user`),`id` FROM `tbl_mycat` GROUP BY `id`"},
+					"db_mycat_0": {"SELECT `id`,COUNT(`user`) FROM `tbl_mycat` GROUP BY `id`"},
+					"db_mycat_1": {"SELECT `id`,COUNT(`user`) FROM `tbl_mycat` GROUP BY `id`"},
 				},
 				"slice-1": {
-					"db_mycat_2": {"SELECT `id`,COUNT(`user`),`id` FROM `tbl_mycat` GROUP BY `id`"},
-					"db_mycat_3": {"SELECT `id`,COUNT(`user`),`id` FROM `tbl_mycat` GROUP BY `id`"},
+					"db_mycat_2": {"SELECT `id`,COUNT(`user`) FROM `tbl_mycat` GROUP BY `id`"},
+					"db_mycat_3": {"SELECT `id`,COUNT(`user`) FROM `tbl_mycat` GROUP BY `id`"},
 				},
 			},
 		},
@@ -1792,7 +1792,7 @@ func TestMycatSelectGroupBy(t *testing.T) {
 			sql: "select id, count(user) from tbl_mycat where id = 1 group by id",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_mycat_1": {"SELECT `id`,COUNT(`user`),`id` FROM `tbl_mycat` WHERE `id`=1 GROUP BY `id`"},
+					"db_mycat_1": {"SELECT `id`,COUNT(`user`) FROM `tbl_mycat` WHERE `id`=1 GROUP BY `id`"},
 				},
 			},
 		},
@@ -1801,12 +1801,12 @@ func TestMycatSelectGroupBy(t *testing.T) {
 			sql: "select user, count(id) from tbl_mycat where user = 'curry' group by user",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_mycat_0": {"SELECT `user`,COUNT(`id`),`user` FROM `tbl_mycat` WHERE `user`='curry' GROUP BY `user`"},
-					"db_mycat_1": {"SELECT `user`,COUNT(`id`),`user` FROM `tbl_mycat` WHERE `user`='curry' GROUP BY `user`"},
+					"db_mycat_0": {"SELECT `user`,COUNT(`id`) FROM `tbl_mycat` WHERE `user`='curry' GROUP BY `user`"},
+					"db_mycat_1": {"SELECT `user`,COUNT(`id`) FROM `tbl_mycat` WHERE `user`='curry' GROUP BY `user`"},
 				},
 				"slice-1": {
-					"db_mycat_2": {"SELECT `user`,COUNT(`id`),`user` FROM `tbl_mycat` WHERE `user`='curry' GROUP BY `user`"},
-					"db_mycat_3": {"SELECT `user`,COUNT(`id`),`user` FROM `tbl_mycat` WHERE `user`='curry' GROUP BY `user`"},
+					"db_mycat_2": {"SELECT `user`,COUNT(`id`) FROM `tbl_mycat` WHERE `user`='curry' GROUP BY `user`"},
+					"db_mycat_3": {"SELECT `user`,COUNT(`id`) FROM `tbl_mycat` WHERE `user`='curry' GROUP BY `user`"},
 				},
 			},
 		},
@@ -1843,7 +1843,7 @@ func TestMycatSelectHaving(t *testing.T) {
 			sql: "select id, count(user) from tbl_mycat where id=1 group by id having count(user) > 5",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_mycat_1": {"SELECT `id`,COUNT(`user`),`id` FROM `tbl_mycat` WHERE `id`=1 GROUP BY `id` HAVING COUNT(`user`)>5"},
+					"db_mycat_1": {"SELECT `id`,COUNT(`user`) FROM `tbl_mycat` WHERE `id`=1 GROUP BY `id` HAVING COUNT(`user`)>5"},
 				},
 			},
 		},
@@ -1866,12 +1866,12 @@ func TestMycatSelectOrderBy(t *testing.T) {
 			sql: "select id, user from tbl_mycat order by id",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_mycat_0": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id`"},
-					"db_mycat_1": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id`"},
+					"db_mycat_0": {"SELECT `id`,`user` FROM `tbl_mycat` ORDER BY `id`"},
+					"db_mycat_1": {"SELECT `id`,`user` FROM `tbl_mycat` ORDER BY `id`"},
 				},
 				"slice-1": {
-					"db_mycat_2": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id`"},
-					"db_mycat_3": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id`"},
+					"db_mycat_2": {"SELECT `id`,`user` FROM `tbl_mycat` ORDER BY `id`"},
+					"db_mycat_3": {"SELECT `id`,`user` FROM `tbl_mycat` ORDER BY `id`"},
 				},
 			},
 		},
@@ -1880,7 +1880,7 @@ func TestMycatSelectOrderBy(t *testing.T) {
 			sql: "select id, user from tbl_mycat where id = 1 order by id",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_mycat_1": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` WHERE `id`=1 ORDER BY `id`"},
+					"db_mycat_1": {"SELECT `id`,`user` FROM `tbl_mycat` WHERE `id`=1 ORDER BY `id`"},
 				},
 			},
 		},
@@ -1889,12 +1889,12 @@ func TestMycatSelectOrderBy(t *testing.T) {
 			sql: "select id, user from tbl_mycat where id in (0,1,2,3,4,5,6,7) order by id",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_mycat_0": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` WHERE `id` IN (0,4) ORDER BY `id`"},
-					"db_mycat_1": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` WHERE `id` IN (1,5) ORDER BY `id`"},
+					"db_mycat_0": {"SELECT `id`,`user` FROM `tbl_mycat` WHERE `id` IN (0,4) ORDER BY `id`"},
+					"db_mycat_1": {"SELECT `id`,`user` FROM `tbl_mycat` WHERE `id` IN (1,5) ORDER BY `id`"},
 				},
 				"slice-1": {
-					"db_mycat_2": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` WHERE `id` IN (2,6) ORDER BY `id`"},
-					"db_mycat_3": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` WHERE `id` IN (3,7) ORDER BY `id`"},
+					"db_mycat_2": {"SELECT `id`,`user` FROM `tbl_mycat` WHERE `id` IN (2,6) ORDER BY `id`"},
+					"db_mycat_3": {"SELECT `id`,`user` FROM `tbl_mycat` WHERE `id` IN (3,7) ORDER BY `id`"},
 				},
 			},
 		},
@@ -1903,12 +1903,12 @@ func TestMycatSelectOrderBy(t *testing.T) {
 			sql: "select id, user from tbl_mycat order by id desc",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_mycat_0": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id` DESC"},
-					"db_mycat_1": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id` DESC"},
+					"db_mycat_0": {"SELECT `id`,`user` FROM `tbl_mycat` ORDER BY `id` DESC"},
+					"db_mycat_1": {"SELECT `id`,`user` FROM `tbl_mycat` ORDER BY `id` DESC"},
 				},
 				"slice-1": {
-					"db_mycat_2": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id` DESC"},
-					"db_mycat_3": {"SELECT `id`,`user`,`id` FROM `tbl_mycat` ORDER BY `id` DESC"},
+					"db_mycat_2": {"SELECT `id`,`user` FROM `tbl_mycat` ORDER BY `id` DESC"},
+					"db_mycat_3": {"SELECT `id`,`user` FROM `tbl_mycat` ORDER BY `id` DESC"},
 				},
 			},
 		},

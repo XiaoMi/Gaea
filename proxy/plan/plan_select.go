@@ -261,7 +261,8 @@ func handleOrderBy(p *SelectPlan, stmt *ast.SelectStmt) error {
 
 func handleExtraFieldList(p *SelectPlan, stmt *ast.SelectStmt) {
 	selectFields := make(map[string]int)
-	for i, field := range stmt.Fields.Fields {
+	for i := 0; i < p.originColumnCount; i++ {
+		field := stmt.Fields.Fields[i]
 		if field.AsName.L != "" {
 			selectFields[field.AsName.L] = i
 		} else if field, isColumnExpr := stmt.Fields.Fields[i].Expr.(*ast.ColumnNameExpr); isColumnExpr {
