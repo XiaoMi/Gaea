@@ -260,10 +260,12 @@ func handleOrderBy(p *SelectPlan, stmt *ast.SelectStmt) error {
 }
 
 func handleExtraFieldList(p *SelectPlan, stmt *ast.SelectStmt) {
-	alias := make(map[string]int)
+	selectFields := make(map[string]int)
 	for i, field := range stmt.Fields.Fields {
 		if field.AsName.L != "" {
-			alias[field.AsName.L] = i
+			selectFields[field.AsName.L] = i
+		} else if field, isColumnExpr := stmt.Fields.Fields[i].Expr.(*ast.ColumnNameExpr); isColumnExpr {
+			selectFields[field.Name.Name.L] = i
 		}
 	}
 
@@ -275,7 +277,7 @@ func handleExtraFieldList(p *SelectPlan, stmt *ast.SelectStmt) {
 		if !isColumnExpr {
 			continue
 		}
-		if index, ok := alias[strings.ToLower(field.Name.Name.L)]; !ok {
+		if index, ok := selectFields[strings.ToLower(field.Name.Name.L)]; !ok {
 			continue
 		} else {
 			stmt.Fields.Fields = append(stmt.Fields.Fields[:currColumnIndex], stmt.Fields.Fields[currColumnIndex+1:]...)
@@ -291,7 +293,7 @@ func handleExtraFieldList(p *SelectPlan, stmt *ast.SelectStmt) {
 		if !isColumnExpr {
 			continue
 		}
-		if index, ok := alias[strings.ToLower(field.Name.Name.L)]; !ok {
+		if index, ok := selectFields[strings.ToLower(field.Name.Name.L)]; !ok {
 			continue
 		} else {
 			stmt.Fields.Fields = append(stmt.Fields.Fields[:currColumnIndex], stmt.Fields.Fields[currColumnIndex+1:]...)
