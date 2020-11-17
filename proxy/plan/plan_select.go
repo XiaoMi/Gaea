@@ -16,7 +16,6 @@ package plan
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/ast"
@@ -278,7 +277,7 @@ func handleExtraFieldList(p *SelectPlan, stmt *ast.SelectStmt) {
 		if !isColumnExpr {
 			continue
 		}
-		if index, ok := selectFields[strings.ToLower(field.Name.Name.L)]; !ok {
+		if index, ok := selectFields[field.Name.Name.L]; !ok {
 			continue
 		} else {
 			stmt.Fields.Fields = append(stmt.Fields.Fields[:currColumnIndex], stmt.Fields.Fields[currColumnIndex+1:]...)
@@ -294,7 +293,7 @@ func handleExtraFieldList(p *SelectPlan, stmt *ast.SelectStmt) {
 		if !isColumnExpr {
 			continue
 		}
-		if index, ok := selectFields[strings.ToLower(field.Name.Name.L)]; !ok {
+		if index, ok := selectFields[field.Name.Name.L]; !ok {
 			continue
 		} else {
 			stmt.Fields.Fields = append(stmt.Fields.Fields[:currColumnIndex], stmt.Fields.Fields[currColumnIndex+1:]...)
