@@ -92,12 +92,13 @@ func TestSelectStmtCheckShard(t *testing.T) {
 // TODO: no router, panic, change to table test function
 func _TestGroupByRewriting(t *testing.T) {
 	tests := []struct {
-		sql     string
-		rewrite string
-		start   int
-		count   int
+		sql        string
+		rewrite    string
+		groupByCol []int
+		count      int
 	}{
-		{"select * from tbl1 group by a, b", "SELECT *,a,b FROM tbl1", 1, 2},
+		{"select * from tbl1 group by a, b", "SELECT *,a,b FROM tbl1",
+			[]int{1, 2}, 2},
 	}
 	for _, test := range tests {
 		t.Run(test.sql, func(t *testing.T) {
@@ -120,12 +121,13 @@ func _TestGroupByRewriting(t *testing.T) {
 			if rewriteSQL != test.rewrite {
 				t.Errorf("rewrite sql not equal, expect: %v, actual: %v", test.rewrite, rewriteSQL)
 			}
-
-			if test.start != info.groupByColumnStart {
-				t.Errorf("groupByColumnStart not equal, expect: %v, actual: %v", test.start, info.groupByColumnStart)
+			if len(info.GetGroupByColumnInfo()) != test.count {
+				t.Errorf("rewrite sql not equal, expect: %v, actual: %v", test.rewrite, rewriteSQL)
 			}
-			if test.count != info.groupByColumnCount {
-				t.Errorf("groupByColumnCount not equal, expect: %v, actual: %v", test.count, info.groupByColumnCount)
+			for i, columnsIndex := range info.GetGroupByColumnInfo() {
+				if test.groupByCol[i] != columnsIndex {
+					t.Errorf("groupByColumnStart not equal, expect: %v, actual: %v", test.groupByCol[i], columnsIndex)
+				}
 			}
 		})
 	}

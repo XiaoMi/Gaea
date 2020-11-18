@@ -555,15 +555,7 @@ func newEmptyResultset(info *SelectPlan, stmt *ast.SelectStmt) *mysql.Resultset 
 	r := new(mysql.Resultset)
 
 	fieldLen := len(stmt.Fields.Fields)
-	if info.HasGroupBy() {
-		_, groupByCount := info.GetGroupByColumnInfo()
-		fieldLen -= groupByCount
-	}
-
-	if info.HasOrderBy() {
-		_, orderByDescs := info.GetOrderByColumnInfo()
-		fieldLen -= len(orderByDescs)
-	}
+	fieldLen -= info.columnCount - info.originColumnCount
 
 	r.Fields = make([]*mysql.Field, fieldLen)
 	for i, expr := range stmt.Fields.Fields {
