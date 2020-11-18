@@ -467,13 +467,13 @@ func buildSelectGroupByResult(p *SelectPlan, r *mysql.Result) error {
 	resultFieldLength := len(r.Fields)
 	originColumnCount := p.GetColumnCount()
 	deltaColumnCount := resultFieldLength - originColumnCount
-	groupByStart, groupByCount := p.GetGroupByColumnInfo()
-	groupByStartIndex := deltaColumnCount + groupByStart
-	groupByEndIndex := groupByStartIndex + groupByCount
 
 	// 根据group by的列进行结果聚合
 	for i, v := range r.Values {
-		keySlice := v[groupByStartIndex:groupByEndIndex]
+		keySlice := make([]interface{}, 0)
+		for _, index := range p.GetGroupByColumnInfo() {
+			keySlice = append(keySlice, v[index+deltaColumnCount])
+		}
 		mk, err := generateMapKey(keySlice)
 		if err != nil {
 			return err
@@ -561,18 +561,7 @@ func trimExtraFields(p *SelectPlan, r *mysql.Result) error {
 	resultFieldLength := len(r.Fields)
 	originColumnCount := p.GetColumnCount()
 	deltaColumnCount := resultFieldLength - originColumnCount
-
-	var extraFieldStartIndex = -1
-	if p.HasOrderBy() {
-		orderByStart, orderByDescs := p.GetOrderByColumnInfo()
-		if len(orderByDescs) != 0 {
-			extraFieldStartIndex = deltaColumnCount + orderByStart
-		}
-	}
-
-	if p.HasGroupBy() {
-		extraFieldStartIndex = deltaColumnCount + p.groupByColumnStart
-	}
+	extraFieldStartIndex := deltaColumnCount + p.GetOriginColumnCount()
 
 	if extraFieldStartIndex != -1 {
 		r.Fields = r.Fields[0:extraFieldStartIndex]
@@ -593,13 +582,11 @@ func sortSelectResult(p *SelectPlan, stmt *ast.SelectStmt, ret *mysql.Result) er
 	originColumnCount := p.GetColumnCount()
 	deltaColumnCount := resultFieldLength - originColumnCount
 
-	orderByStart, orderByDirections := p.GetOrderByColumnInfo()
-	orderByStartIndex := deltaColumnCount + orderByStart
-
+	orderByColumns, orderByDirections := p.GetOrderByColumnInfo()
 	var sortKeys []mysql.SortKey
 	for i := 0; i < len(orderByDirections); i++ {
 		sortKey := mysql.SortKey{}
-		sortKey.Column = orderByStartIndex + i
+		sortKey.Column = orderByColumns[i] + deltaColumnCount
 		if orderByDirections[i] {
 			sortKey.Direction = mysql.SortDesc
 		} else {

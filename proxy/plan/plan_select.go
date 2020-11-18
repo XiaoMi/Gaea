@@ -32,13 +32,12 @@ type SelectPlan struct {
 
 	stmt *ast.SelectStmt
 
-	distinct           bool // 是否是SELECT DISTINCT
-	groupByColumnStart int
-	groupByColumnCount int
-	orderByColumnStart int    // ORDER BY 补列起始位置
-	orderByDirections  []bool // ORDER BY 方向, true: DESC
-	originColumnCount  int    // 补列前的列长度
-	columnCount        int    // 补列后的列长度
+	distinct          bool   // 是否是SELECT DISTINCT
+	groupByColumn     []int  // GROUP BY 列索引
+	orderByColumn     []int  // ORDER BY 列索引
+	orderByDirections []bool // ORDER BY 方向, true: DESC
+	originColumnCount int    // 补列前的列长度
+	columnCount       int    // 补列后的列长度
 
 	aggregateFuncs map[int]AggregateFuncMerger // key = column index
 
@@ -53,9 +52,6 @@ type SelectPlan struct {
 func NewSelectPlan(db string, sql string, r *router.Router) *SelectPlan {
 	return &SelectPlan{
 		TableAliasStmtInfo: NewTableAliasStmtInfo(db, sql, r),
-		groupByColumnStart: 0,
-		groupByColumnCount: 0,
-		orderByColumnStart: 0,
 		aggregateFuncs:     make(map[int]AggregateFuncMerger),
 		offset:             -1,
 		count:              -1,
@@ -115,7 +111,7 @@ func (s *SelectPlan) GetLimitValue() (int64, int64) {
 
 // HasGroupBy if the select statement has group by clause, return true
 func (s *SelectPlan) HasGroupBy() bool {
-	return s.groupByColumnCount != 0
+	return len(s.groupByColumn) != 0
 }
 
 // GetOriginColumnCount get origin column count in statement,
@@ -130,8 +126,8 @@ func (s *SelectPlan) GetColumnCount() int {
 }
 
 // GetGroupByColumnInfo get extra column offset and length for group by
-func (s *SelectPlan) GetGroupByColumnInfo() (int, int) {
-	return s.groupByColumnStart, s.groupByColumnCount
+func (s *SelectPlan) GetGroupByColumnInfo() []int {
+	return s.groupByColumn
 }
 
 // HasOrderBy if select statement has order by clause, return true
@@ -140,8 +136,8 @@ func (s *SelectPlan) HasOrderBy() bool {
 }
 
 // GetOrderByColumnInfo get extra column offset and length for order by
-func (s *SelectPlan) GetOrderByColumnInfo() (int, []bool) {
-	return s.orderByColumnStart, s.orderByDirections
+func (s *SelectPlan) GetOrderByColumnInfo() ([]int, []bool) {
+	return s.orderByColumn, s.orderByDirections
 }
 
 // GetSQLs get generated SQLs
@@ -181,6 +177,8 @@ func HandleSelectStmt(p *SelectPlan, stmt *ast.SelectStmt) error {
 	if err := handleOrderBy(p, stmt); err != nil {
 		return fmt.Errorf("handle OrderBy error: %v", err)
 	}
+
+	handleExtraFieldList(p, stmt)
 
 	// 记录补列后的Fields长度, 后面的handler不会补列了
 	if stmt.Fields != nil {
@@ -228,9 +226,9 @@ func handleGroupBy(p *SelectPlan, stmt *ast.SelectStmt) error {
 		return fmt.Errorf("get group by fields error: %v", err)
 	}
 
-	// set group by infos
-	p.groupByColumnStart = len(stmt.Fields.Fields)
-	p.groupByColumnCount = len(groupByFields)
+	for i := 0; i < len(groupByFields); i++ {
+		p.groupByColumn = append(p.groupByColumn, i+len(stmt.Fields.Fields))
+	}
 
 	// append group by fields
 	stmt.Fields.Fields = append(stmt.Fields.Fields, groupByFields...)
@@ -248,7 +246,9 @@ func handleOrderBy(p *SelectPlan, stmt *ast.SelectStmt) error {
 		return fmt.Errorf("get order by fields error: %v", err)
 	}
 
-	p.orderByColumnStart = len(stmt.Fields.Fields)
+	for i := 0; i < len(orderByFields); i++ {
+		p.orderByColumn = append(p.orderByColumn, i+len(stmt.Fields.Fields))
+	}
 
 	for _, f := range stmt.OrderBy.Items {
 		p.orderByDirections = append(p.orderByDirections, f.Desc)
@@ -256,6 +256,52 @@ func handleOrderBy(p *SelectPlan, stmt *ast.SelectStmt) error {
 
 	stmt.Fields.Fields = append(stmt.Fields.Fields, orderByFields...)
 	return nil
+}
+
+func handleExtraFieldList(p *SelectPlan, stmt *ast.SelectStmt) {
+	selectFields := make(map[string]int)
+	for i := 0; i < p.originColumnCount; i++ {
+		field := stmt.Fields.Fields[i]
+		if field.AsName.L != "" {
+			selectFields[field.AsName.L] = i
+		}
+		if field, isColumnExpr := stmt.Fields.Fields[i].Expr.(*ast.ColumnNameExpr); isColumnExpr {
+			selectFields[field.Name.Name.L] = i
+		}
+	}
+
+	deleteNum := 0
+	for i := 0; i < len(p.groupByColumn); i++ {
+		p.groupByColumn[i] -= deleteNum
+		currColumnIndex := p.originColumnCount + i - deleteNum
+		field, isColumnExpr := stmt.Fields.Fields[currColumnIndex].Expr.(*ast.ColumnNameExpr)
+		if !isColumnExpr {
+			continue
+		}
+		if index, ok := selectFields[field.Name.Name.L]; !ok {
+			continue
+		} else {
+			stmt.Fields.Fields = append(stmt.Fields.Fields[:currColumnIndex], stmt.Fields.Fields[currColumnIndex+1:]...)
+			p.groupByColumn[i] = index
+			deleteNum++
+		}
+	}
+
+	for i := 0; i < len(p.orderByColumn); i++ {
+		p.orderByColumn[i] -= deleteNum
+		currColumnIndex := p.originColumnCount + len(p.groupByColumn) + i - deleteNum
+		field, isColumnExpr := stmt.Fields.Fields[currColumnIndex].Expr.(*ast.ColumnNameExpr)
+		if !isColumnExpr {
+			continue
+		}
+		if index, ok := selectFields[field.Name.Name.L]; !ok {
+			continue
+		} else {
+			stmt.Fields.Fields = append(stmt.Fields.Fields[:currColumnIndex], stmt.Fields.Fields[currColumnIndex+1:]...)
+			p.orderByColumn[i] = index
+			deleteNum++
+		}
+	}
 }
 
 func createSelectFieldsFromByItems(p *SelectPlan, items []*ast.ByItem) ([]*ast.SelectField, error) {
