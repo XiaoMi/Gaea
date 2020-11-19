@@ -9,6 +9,7 @@ Gaea支持kingshard常用分表规则, 对应关系如下:
 | kingshard规则名称 | Gaea规则名称 |
 | ---------------- | ---------- |
 | hash             | hash       |
+| mod              | mod        |
 | range            | range      |
 | date_year        | date_year  |
 | date_month       | date_month |
