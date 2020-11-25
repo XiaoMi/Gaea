@@ -6,6 +6,8 @@ gaea配置由两部分组成，本地配置为gaea_proxy直接使用的配置内
 
 ```ini
 ; 配置类型，目前支持file/etcd两种方式，file方式不支持热加载，但是可以快速体验功能
+; file 模式下读取file_config_path下的namespace配置文件
+; etcd 模式下读取
 config_type=etcd
 
 ;file config path, 具体配置放到file_config_path的namespace目录下，该下级目录为固定目录
