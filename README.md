@@ -35,9 +35,12 @@ Gaea是小米中国区电商研发部研发的基于mysql协议的数据库中�
 
 ![gaea架构图](docs/assets/architecture.png)
 
-## 集群部署图
+## 集群部署图  
 
-![gaea集群部署图](docs/assets/deployment.png)
+![gaea集群部署图](docs/assets/deployment.png)  
+
+如上图所示, 部署一套gaea-cc和etcd可用来管理多套gaea集群, 负责集群内namespace配置的增删改查.
+[gaea-cc的HTTP接口文档](docs/gaea-cc.md)
 
 ## 安装使用
 
