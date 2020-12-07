@@ -448,10 +448,17 @@ mycat_string的配置规则如下:
 
 其中`partition_count`, `partition_length`, `hash_slice`配置项的含义与mycat `PartitionByString`规则中的同名配置项的含义相同.
 
+
 -   partition_count代表分区数、partition_length代表字符串hash求模基数、hash_slice是hash运算位即根据子字符串hash运算.
 
+-   其中，hash_slice支持一下格式:
+    -   "2"代表(0,2)
+    -   "1:2"代表(1,2)
+    -   "1:"代表(1,0)
+    -   "-1:"代表(-1,0)
+    -   ":-1"代表(0,-1)
+    -   ":"代表(0,0)
 -   例1：值“45abc”，hash运算位0:2 ，取其中45进行计算
-
 -   例2：值“aaaabbb2345”，hash预算位-4:0 ，取其中2345进行计算
 
 
