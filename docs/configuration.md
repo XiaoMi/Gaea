@@ -73,6 +73,8 @@ namespace的配置格式为json，包含分表、非分表、实例等配置信�
 | slices          | map数组    | 一主多从的物理实例，slice里map的具体字段可参照slice配置 |
 | shard_rules     | map数组    | 分库、分表、特殊表的配置内容，具体字段可参照shard配置    |
 | users           | map数组    | 应用端连接gaea所需要的用户配置，具体字段可参照users配置 |
+| max_sql_execute_time           | int    | 慢sql熔断时间，单位ms，为0表示不开启|
+| max_select_result_set           | int    | 结果集最大行数限制，避免结果集过大导致oom |
 
 ### slice配置
 
@@ -91,6 +93,8 @@ namespace的配置格式为json，包含分表、非分表、实例等配置信�
 ### shard配置
 
 这里列出了一些基本配置参数, 详细配置请参考[分片表配置](shard.md)
+
+如需要了解详细库表对照示例，可以查看[分片规则示例说明](shard-example.md)
 
 | 字段名称   | 字段类型 | 字段含义 |
 | --------- | -------- | --------------------- |
@@ -376,7 +380,9 @@ namespace的配置格式为json，包含分表、非分表、实例等配置信�
             "rw_split": 1
         }
     ],
-    "default_slice": "slice-0"
+    "default_slice": "slice-0",
+    "max_sql_execute_time":0,
+    "max_select_result_set":0
 }
 ```
 
