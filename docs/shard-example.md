@@ -14,42 +14,9 @@
 
 <h2 id="gaea_kingshard_hash">gaea kingshard hash分片示例</h2>
 
-### 创建数据库表
-我们预定义两个分片slice-0、slice-1，分别位于两个数据库实例端口为3307、3308，每个slice定义一个库，每个库预定义2张表
+我们预定义两个分片slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
-```shell script
-#连接3307数据库实例
-mysql -h127.0.0.1 -P3307 -uroot -p1234
-#创建数据库
-create database db_kingshard;
-#在命令行执行以下命令，创建分表shard_hash_0000、shard_hash_0001
-for i in `seq 0 1`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_hash_000"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-
-#连接3306数据库实例
-mysql -h127.0.0.1 -P3308 -uroot -p1234
-#创建数据库
-create database db_kingshard;
-#在命令行执行以下命令，创建分表shard_hash_0002、shard_hash_0003
-for i in `seq 2 3`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_hash_000"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-#登录3307示例，查询slice-0分片表展示：
-mysql> show tables;
-+------------------------+
-| Tables_in_db_kingshard |
-+------------------------+
-| shard_hash_0000        |
-| shard_hash_0001        |
-+------------------------+
-2 rows in set (0.01 sec)
-#登录3308示例，查询slice-1分片表展示：
-mysql> show tables;
-+------------------------+
-| Tables_in_db_kingshard |
-+------------------------+
-| shard_hash_0002        |
-| shard_hash_0003        |
-+------------------------+
-2 rows in set (0.00 sec)
-```
+Gaea启动地址为127.0.0.1:13307
 
 ### namespace配置
 ```json
@@ -123,9 +90,44 @@ mysql> show tables;
 }
 ```
 
+### 创建数据库表
+```shell script
+#连接3307数据库实例
+mysql -h127.0.0.1 -P3307 -uroot -p1234
+#创建数据库
+create database db_kingshard;
+#在命令行执行以下命令，创建分表shard_hash_0000、shard_hash_0001
+for i in `seq 0 1`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_hash_000"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+
+#连接3306数据库实例
+mysql -h127.0.0.1 -P3308 -uroot -p1234
+#创建数据库
+create database db_kingshard;
+#在命令行执行以下命令，创建分表shard_hash_0002、shard_hash_0003
+for i in `seq 2 3`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_hash_000"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+#登录3307示例，查询slice-0分片表展示：
+mysql> show tables;
++------------------------+
+| Tables_in_db_kingshard |
++------------------------+
+| shard_hash_0000        |
+| shard_hash_0001        |
++------------------------+
+2 rows in set (0.01 sec)
+#登录3308示例，查询slice-1分片表展示：
+mysql> show tables;
++------------------------+
+| Tables_in_db_kingshard |
++------------------------+
+| shard_hash_0002        |
+| shard_hash_0003        |
++------------------------+
+2 rows in set (0.00 sec)
+```
+
 ### 插入数据
 ```shell script
-#命令行执行：
+#命令行执行,该命令连接Gaea执行插入：
 for i in `seq 1 10`;do mysql -h127.0.0.1 -P13306 -utest -p1234  db_kingshard -e "insert into shard_hash (id, col1) values(${i}, 'test$i')";done
 ```
 
@@ -188,42 +190,9 @@ mysql>  select * from shard_hash_0003;
 
 <h2 id="gaea_kingshard_mod">gaea kingshard mod分片示例</h2>
 
-### 创建数据库表
-我们预定义两个分片slice-0、slice-1，分别位于两个数据库实例端口为3307、3308，每个slice定义一个库，每个库预定义2张表
+我们预定义两个分片slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
-```shell script
-#连接3307数据库实例
-mysql -h127.0.0.1 -P3307 -uroot -p1234
-#创建数据库
-create database db_kingshard;
-#在命令行执行以下命令，创建分表,shard_mod_0000、shard_mod_0001
-for i in `seq 0 1`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_mod_000"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-
-#连接3306数据库实例
-mysql -h127.0.0.1 -P3308 -uroot -p1234
-#创建数据库
-create database db_kingshard;
-#在命令行执行以下命令，创建分表,shard_mod_0002、shard_mod_0003
-for i in `seq 2 3`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_mod_000"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-#登录3307实例，查询slice-0分片表展示：
-mysql> show tables;
-+------------------------+
-| Tables_in_db_kingshard |
-+------------------------+
-| shard_mod_0000         |
-| shard_mod_0001         |
-+------------------------+
-2 rows in set (0.01 sec)
-#登录3308示例，查询slice-1分片表展示：
-mysql> show tables;
-+------------------------+
-| Tables_in_db_kingshard |
-+------------------------+
-| shard_mod_0002         |
-| shard_mod_0003         |
-+------------------------+
-2 rows in set (0.00 sec)
-```
+Gaea启动地址为127.0.0.1:13307
 
 ### namespace配置
 ```json
@@ -295,12 +264,46 @@ mysql> show tables;
     "default_slice": "slice-1",
     "global_sequences": null
 }
+```
 
+### 创建数据库表
+```shell script
+#连接3307数据库实例
+mysql -h127.0.0.1 -P3307 -uroot -p1234
+#创建数据库
+create database db_kingshard;
+#在命令行执行以下命令，创建分表,shard_mod_0000、shard_mod_0001
+for i in `seq 0 1`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_mod_000"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+
+#连接3306数据库实例
+mysql -h127.0.0.1 -P3308 -uroot -p1234
+#创建数据库
+create database db_kingshard;
+#在命令行执行以下命令，创建分表,shard_mod_0002、shard_mod_0003
+for i in `seq 2 3`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_mod_000"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+#登录3307实例，查询slice-0分片表展示：
+mysql> show tables;
++------------------------+
+| Tables_in_db_kingshard |
++------------------------+
+| shard_mod_0000         |
+| shard_mod_0001         |
++------------------------+
+2 rows in set (0.01 sec)
+#登录3308示例，查询slice-1分片表展示：
+mysql> show tables;
++------------------------+
+| Tables_in_db_kingshard |
++------------------------+
+| shard_mod_0002         |
+| shard_mod_0003         |
++------------------------+
+2 rows in set (0.00 sec)
 ```
 
 ### 插入数据
 ```shell script
-#命令行执行：
+#命令行执行,该命令连接Gaea执行插入：
 for i in `seq 1 10`;do mysql -h127.0.0.1 -P13306 -utest -p1234  db_kingshard -e "insert into shard_mod (id, col1) values(${i}, 'test$i')";done
 ```
 
@@ -361,68 +364,13 @@ mysql> select * from shard_mod_0003;
 |  7 | test7 |
 +----+-------+
 2 rows in set (0.01 sec)
-
-# 对分片表数据进行跨节点更新，连接Gaea，执行：
-mysql> update shard_mod set col1="test" where id in(4,2);
-Query OK, 2 rows affected (0.02 sec)
-
-mysql> select * from shard_mod;
-+----+--------+
-| id | col1   |
-+----+--------+
-|  2 | test   |
-|  6 | test6  |
-| 10 | test10 |
-|  3 | test3  |
-|  7 | test7  |
-|  4 | test   |
-|  8 | test8  |
-|  1 | test1  |
-|  5 | test5  |
-|  9 | test9  |
-+----+--------+
-10 rows in set (0.04 sec)
 ```
 
 <h2 id="gaea_kingshard_range">gaea kingshard range分片示例</h2>
 
-### 创建数据库表
-我们预定义两个分片slice-0、slice-1，分别位于两个数据库实例端口为3307、3308，每个slice定义一个库，每个库预定义2张表
+我们预定义两个分片slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
-```shell script
-#连接3307数据库实例
-mysql -h127.0.0.1 -P3307 -uroot -p1234
-#创建数据库
-create database db_kingshard;
-#在命令行执行以下命令，创建分表,shard_range_0000、shard_range_0001
-for i in `seq 0 1`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_range_000"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-
-#连接3306数据库实例
-mysql -h127.0.0.1 -P3308 -uroot -p1234
-#创建数据库
-create database db_kingshard;
-#在命令行执行以下命令，创建分表,shard_range_0002、shard_range_0003
-for i in `seq 2 3`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_range_000"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-#登录3307实例，查询slice-0分片表展示：
-mysql> show tables;
-+------------------------+
-| Tables_in_db_kingshard |
-+------------------------+
-| shard_range_0000       |
-| shard_range_0001       |
-+------------------------+
-2 rows in set (0.00 sec)
-
-#登录3308示例，查询slice-1分片表展示：
-mysql> show tables;
-+------------------------+
-| Tables_in_db_kingshard |
-+------------------------+
-| shard_range_0002       |
-| shard_range_0003       |
-+------------------------+
-2 rows in set (0.01 sec)
-```
+Gaea启动地址为127.0.0.1:13307
 
 ### namespace配置
 ```json
@@ -495,13 +443,48 @@ mysql> show tables;
     "default_slice": "slice-1",
     "global_sequences": null
 }
-
 ```
 其中，"table_row_limit:3"配置含义为:每张子表的记录数，分表字段位于区间[0,3)在shard_range_0000上，分表字段位于区间[3,6)在子表shard_range_0001上，依此类推...
 
+### 创建数据库表
+```shell script
+#连接3307数据库实例
+mysql -h127.0.0.1 -P3307 -uroot -p1234
+#创建数据库
+create database db_kingshard;
+#在命令行执行以下命令，创建分表,shard_range_0000、shard_range_0001
+for i in `seq 0 1`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_range_000"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+
+#连接3306数据库实例
+mysql -h127.0.0.1 -P3308 -uroot -p1234
+#创建数据库
+create database db_kingshard;
+#在命令行执行以下命令，创建分表,shard_range_0002、shard_range_0003
+for i in `seq 2 3`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_range_000"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+#登录3307实例，查询slice-0分片表展示：
+mysql> show tables;
++------------------------+
+| Tables_in_db_kingshard |
++------------------------+
+| shard_range_0000       |
+| shard_range_0001       |
++------------------------+
+2 rows in set (0.00 sec)
+
+#登录3308示例，查询slice-1分片表展示：
+mysql> show tables;
++------------------------+
+| Tables_in_db_kingshard |
++------------------------+
+| shard_range_0002       |
+| shard_range_0003       |
++------------------------+
+2 rows in set (0.01 sec)
+```
+
 ### 插入数据
 ```shell script
-#命令行执行：
+#命令行执行,该命令连接Gaea执行插入：
 for i in `seq 1 10`;do mysql -h127.0.0.1 -P13306 -utest -p1234  db_kingshard -e "insert into shard_range (id, col1) values(${i}, 'test$i')";done
 ```
 
@@ -564,43 +547,9 @@ mysql> select * from shard_range_0003;
 
 <h2 id="gaea_kingshard_date_year">gaea kingshard date year分片示例</h2>
 
-### 创建数据库表
-我们预定义两个分片slice-0、slice-1，分别位于两个数据库实例端口为3307、3308，每个slice定义一个库，每个库预定义2张表
+我们预定义两个分片slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
-```shell script
-#连接3307数据库实例
-mysql -h127.0.0.1 -P3307 -uroot -p1234
-#创建数据库
-create database db_kingshard;
-#在命令行执行以下命令，创建分表,shard_year_2016、shard_year_2017
-for i in `seq 6 7`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_year_201"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-
-#连接3306数据库实例
-mysql -h127.0.0.1 -P3308 -uroot -p1234
-#创建数据库
-create database db_kingshard;
-#在命令行执行以下命令，创建分表,shard_year_2018、shard_year_2019
-for i in `seq 8 9`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_year_201"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-#登录3307实例，查询slice-0分片表展示：
-mysql> show tables;
-+------------------------+
-| Tables_in_db_kingshard |
-+------------------------+
-| shard_year_2016        |
-| shard_year_2017        |
-+------------------------+
-2 rows in set (0.00 sec)
-
-#登录3308示例，查询slice-1分片表展示：
-mysql> show tables;
-+------------------------+
-| Tables_in_db_kingshard |
-+------------------------+
-| shard_year_2018        |
-| shard_year_2019        |
-+------------------------+
-2 rows in set (0.01 sec)
-```
+Gaea启动地址为127.0.0.1:13307
 
 ### namespace配置
 ```json
@@ -672,14 +621,47 @@ mysql> show tables;
     "default_slice": "slice-1",
     "global_sequences": null
 }
-
-
 ```
 
+### 创建数据库表
+```shell script
+#连接3307数据库实例
+mysql -h127.0.0.1 -P3307 -uroot -p1234
+#创建数据库
+create database db_kingshard;
+#在命令行执行以下命令，创建分表,shard_year_2016、shard_year_2017
+for i in `seq 6 7`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_year_201"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+
+#连接3306数据库实例
+mysql -h127.0.0.1 -P3308 -uroot -p1234
+#创建数据库
+create database db_kingshard;
+#在命令行执行以下命令，创建分表,shard_year_2018、shard_year_2019
+for i in `seq 8 9`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_year_201"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+#登录3307实例，查询slice-0分片表展示：
+mysql> show tables;
++------------------------+
+| Tables_in_db_kingshard |
++------------------------+
+| shard_year_2016        |
+| shard_year_2017        |
++------------------------+
+2 rows in set (0.00 sec)
+
+#登录3308示例，查询slice-1分片表展示：
+mysql> show tables;
++------------------------+
+| Tables_in_db_kingshard |
++------------------------+
+| shard_year_2018        |
+| shard_year_2019        |
++------------------------+
+2 rows in set (0.01 sec)
+```
 
 ### 插入数据
 ```shell script
-#命令行执行：
+#命令行执行,该命令连接Gaea执行插入：
 for i in `seq 6 9`;do mysql -h127.0.0.1 -P13306 -utest -p1234  db_kingshard -e "insert into shard_year (id, col1,create_time) values(${i}, 'test$i','201$i-07-01')";done
 ```
 
@@ -732,43 +714,9 @@ mysql> select * from shard_year_2019;
 
 <h2 id="gaea_kingshard_date_month">gaea kingshard date month分片示例</h2>
 
-### 创建数据库表
-我们预定义两个分片slice-0、slice-1，分别位于两个数据库实例端口为3307、3308，每个slice定义一个库，每个库预定义2张表
+我们预定义两个分片slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
-```shell script
-#连接3307数据库实例
-mysql -h127.0.0.1 -P3307 -uroot -p1234
-#创建数据库
-create database db_kingshard;
-#在命令行执行以下命令，创建分表,shard_month_201405、shard_month_201406
-for i in `seq 5 6`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_month_20140"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-
-#连接3306数据库实例
-mysql -h127.0.0.1 -P3308 -uroot -p1234
-#创建数据库
-create database db_kingshard;
-#在命令行执行以下命令，创建分表,shard_month_201408、shard_month_201409
-for i in `seq 8 9`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_month_20140"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-#登录3307实例，查询slice-0分片表展示：
-mysql> show tables;
-+------------------------+
-| Tables_in_db_kingshard |
-+------------------------+
-| shard_month_201405     |
-| shard_month_201406     |
-+------------------------+
-2 rows in set (0.01 sec)
-
-#登录3308示例，查询slice-1分片表展示：
-mysql> show tables;
-+------------------------+
-| Tables_in_db_kingshard |
-+------------------------+
-| shard_month_201408     |
-| shard_month_201409     |
-+------------------------+
-2 rows in set (0.00 sec)
-```
+Gaea启动地址为127.0.0.1:13307
 
 ### namespace配置
 ```json
@@ -840,13 +788,47 @@ mysql> show tables;
     "default_slice": "slice-1",
     "global_sequences": null
 }
-
 ```
 
+### 创建数据库表
+```shell script
+#连接3307数据库实例
+mysql -h127.0.0.1 -P3307 -uroot -p1234
+#创建数据库
+create database db_kingshard;
+#在命令行执行以下命令，创建分表,shard_month_201405、shard_month_201406
+for i in `seq 5 6`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_month_20140"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+
+#连接3306数据库实例
+mysql -h127.0.0.1 -P3308 -uroot -p1234
+#创建数据库
+create database db_kingshard;
+#在命令行执行以下命令，创建分表,shard_month_201408、shard_month_201409
+for i in `seq 8 9`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_month_20140"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+#登录3307实例，查询slice-0分片表展示：
+mysql> show tables;
++------------------------+
+| Tables_in_db_kingshard |
++------------------------+
+| shard_month_201405     |
+| shard_month_201406     |
++------------------------+
+2 rows in set (0.01 sec)
+
+#登录3308示例，查询slice-1分片表展示：
+mysql> show tables;
++------------------------+
+| Tables_in_db_kingshard |
++------------------------+
+| shard_month_201408     |
+| shard_month_201409     |
++------------------------+
+2 rows in set (0.00 sec)
+```
 
 ### 插入数据
 ```shell script
-#命令行执行：
+#命令行执行,该命令连接Gaea执行插入：
 for i in `seq 5 6`;do mysql -h127.0.0.1 -P13306 -utest -p1234  db_kingshard -e "insert into shard_month (id, col1,create_time) values(${i}, 'test$i','2014-0$i-01')";done
 for i in `seq 8 9`;do mysql -h127.0.0.1 -P13306 -utest -p1234  db_kingshard -e "insert into shard_month (id, col1,create_time) values(${i}, 'test$i','2014-0$i-01')";done
 ```
@@ -902,43 +884,9 @@ mysql> select * from shard_month_201409;
 
 <h2 id="gaea_kingshard_date_day">gaea kingshard date day分片示例</h2>
 
-### 创建数据库表
-我们预定义两个分片slice-0、slice-1，分别位于两个数据库实例端口为3307、3308，每个slice定义一个库，每个库预定义2张表
+我们预定义两个分片slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
-```shell script
-#连接3307数据库实例
-mysql -h127.0.0.1 -P3307 -uroot -p1234
-#创建数据库
-create database db_kingshard;
-#在命令行执行以下命令，创建分表,shard_month_201405、shard_day_20201201、shard_day_20201202
-for i in `seq 1 2`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_day_2020120"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-
-#连接3306数据库实例
-mysql -h127.0.0.1 -P3308 -uroot -p1234
-#创建数据库
-create database db_kingshard;
-#在命令行执行以下命令，创建分表,shard_day_20201203、shard_day_20201204
-for i in `seq 3 4`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_day_2020120"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-#登录3307实例，查询slice-0分片表展示：
-mysql> show tables;
-+------------------------+
-| Tables_in_db_kingshard |
-+------------------------+
-| shard_day_20201201     |
-| shard_day_20201202     |
-+------------------------+
-2 rows in set (0.00 sec)
-
-#登录3308示例，查询slice-1分片表展示：
-mysql> show tables;
-+------------------------+
-| Tables_in_db_kingshard |
-+------------------------+
-| shard_day_20201203     |
-| shard_day_20201204     |
-+------------------------+
-2 rows in set (0.00 sec)
-```
+Gaea启动地址为127.0.0.1:13307
 
 ### namespace配置
 ```json
@@ -1010,13 +958,47 @@ mysql> show tables;
     "default_slice": "slice-1",
     "global_sequences": null
 }
-
 ```
 
+### 创建数据库表
+```shell script
+#连接3307数据库实例
+mysql -h127.0.0.1 -P3307 -uroot -p1234
+#创建数据库
+create database db_kingshard;
+#在命令行执行以下命令，创建分表,shard_month_201405、shard_day_20201201、shard_day_20201202
+for i in `seq 1 2`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_day_2020120"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+
+#连接3306数据库实例
+mysql -h127.0.0.1 -P3308 -uroot -p1234
+#创建数据库
+create database db_kingshard;
+#在命令行执行以下命令，创建分表,shard_day_20201203、shard_day_20201204
+for i in `seq 3 4`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_kingshard -e "CREATE TABLE IF NOT EXISTS shard_day_2020120"${i}" ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+#登录3307实例，查询slice-0分片表展示：
+mysql> show tables;
++------------------------+
+| Tables_in_db_kingshard |
++------------------------+
+| shard_day_20201201     |
+| shard_day_20201202     |
++------------------------+
+2 rows in set (0.00 sec)
+
+#登录3308示例，查询slice-1分片表展示：
+mysql> show tables;
++------------------------+
+| Tables_in_db_kingshard |
++------------------------+
+| shard_day_20201203     |
+| shard_day_20201204     |
++------------------------+
+2 rows in set (0.00 sec)
+```
 
 ### 插入数据
 ```shell script
-#命令行执行：
+#命令行执行,该命令连接Gaea执行插入：
 for i in `seq 1 4`;do mysql -h127.0.0.1 -P13306 -utest -p1234  db_kingshard -e "insert into shard_day (id, col1,create_time) values(${i}, 'test$i','2020-12-0$i')";done
 ```
 
@@ -1071,74 +1053,9 @@ mysql> select * from shard_day_20201204;
 
 <h2 id="gaea_mycat_mod">gaea mycat mod分片示例</h2>
 
-### 创建数据库表
-我们预定义两个分片slice-0、slice-1，分别位于两个数据库实例端口为3307、3308，每个slice预定义2个库，每个库一张表
+我们预定义两个分片slice-0、slice-1，每个slice预定义2个库，每个库一张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
-```shell script
-#连接3307数据库实例
-mysql -h127.0.0.1 -P3307 -uroot -p1234
-#创建数据库
-create database db_mycat_0;
-create database db_mycat_1;
-#在命令行执行以下命令，创建分表
-for i in `seq 0 1`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat  ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-
-#连接3306数据库实例
-mysql -h127.0.0.1 -P3308 -uroot -p1234
-#创建数据库
-create database db_mycat_2;
-create database db_mycat_3;
-#在命令行执行以下命令，创建分表
-for i in `seq 2 3`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-#登录3307实例，查询slice-0分片表展示：
-mysql> use db_mycat_0;
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_0 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.00 sec)
-mysql> use db_mycat_1
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_1 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.01 sec)
-
-#登录3308示例，查询slice-1分片表展示：
-mysql> use db_mycat_2;
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_2 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.00 sec)
-mysql> use db_mycat_3;
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_3 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.00 sec)
-```
+Gaea启动地址为127.0.0.1:13307
 
 ### namespace配置
 ```json
@@ -1215,10 +1132,76 @@ mysql> show tables;
 }
 ```
 
+### 创建数据库表
+```shell script
+#连接3307数据库实例
+mysql -h127.0.0.1 -P3307 -uroot -p1234
+#创建数据库
+create database db_mycat_0;
+create database db_mycat_1;
+#在命令行执行以下命令，创建分表
+for i in `seq 0 1`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat  ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+
+#连接3306数据库实例
+mysql -h127.0.0.1 -P3308 -uroot -p1234
+#创建数据库
+create database db_mycat_2;
+create database db_mycat_3;
+#在命令行执行以下命令，创建分表
+for i in `seq 2 3`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+#登录3307实例，查询slice-0分片表展示：
+mysql> use db_mycat_0;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_0 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.00 sec)
+mysql> use db_mycat_1
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_1 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.01 sec)
+
+#登录3308示例，查询slice-1分片表展示：
+mysql> use db_mycat_2;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_2 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.00 sec)
+mysql> use db_mycat_3;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_3 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.00 sec)
+```
 
 ### 插入数据
 ```shell script
-#命令行执行：
+#命令行执行,该命令连接Gaea执行插入：
 for i in `seq 1 10`;do mysql -h127.0.0.1 -P13306 -utest -p1234  db_mycat -e "insert into tbl_mycat (id, col1) values(${i}, 'test$i')";done
 ```
 
@@ -1306,74 +1289,9 @@ mysql> select * from tbl_mycat;
 
 <h2 id="gaea_mycat_long">gaea mycat_long(固定hash分片算法)分片示例</h2>
 
-### 创建数据库表
-我们预定义两个分片slice-0、slice-1，分别位于两个数据库实例端口为3307、3308，每个slice预定义2个库，每个库一张表
+我们预定义两个分片slice-0、slice-1，每个slice预定义2个库，每个库一张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
-```shell script
-#连接3307数据库实例
-mysql -h127.0.0.1 -P3307 -uroot -p1234
-#创建数据库
-create database db_mycat_0;
-create database db_mycat_1;
-#在命令行执行以下命令，创建分表
-for i in `seq 0 1`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat  ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-
-#连接3306数据库实例
-mysql -h127.0.0.1 -P3308 -uroot -p1234
-#创建数据库
-create database db_mycat_2;
-create database db_mycat_3;
-#在命令行执行以下命令，创建分表
-for i in `seq 2 3`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-#登录3307实例，查询slice-0分片表展示：
-mysql> use db_mycat_0;
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_0 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.00 sec)
-mysql> use db_mycat_1
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_1 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.01 sec)
-
-#登录3308示例，查询slice-1分片表展示：
-mysql> use db_mycat_2;
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_2 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.00 sec)
-mysql> use db_mycat_3;
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_3 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.00 sec)
-```
+Gaea启动地址为127.0.0.1:13307
 
 ### namespace配置
 ```json
@@ -1452,10 +1370,76 @@ mysql> show tables;
 }
 ```
 
+### 创建数据库表
+```shell script
+#连接3307数据库实例
+mysql -h127.0.0.1 -P3307 -uroot -p1234
+#创建数据库
+create database db_mycat_0;
+create database db_mycat_1;
+#在命令行执行以下命令，创建分表
+for i in `seq 0 1`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat  ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+
+#连接3306数据库实例
+mysql -h127.0.0.1 -P3308 -uroot -p1234
+#创建数据库
+create database db_mycat_2;
+create database db_mycat_3;
+#在命令行执行以下命令，创建分表
+for i in `seq 2 3`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+#登录3307实例，查询slice-0分片表展示：
+mysql> use db_mycat_0;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_0 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.00 sec)
+mysql> use db_mycat_1
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_1 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.01 sec)
+
+#登录3308示例，查询slice-1分片表展示：
+mysql> use db_mycat_2;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_2 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.00 sec)
+mysql> use db_mycat_3;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_3 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.00 sec)
+```
 
 ### 插入数据
 ```shell script
-#命令行执行,插入2000行记录。
+#命令行执行,该命令连接Gaea执行插入,插入2000行记录。
 for i in `seq 1 2000`;do mysql -h127.0.0.1 -P13306 -utest -p1234  db_mycat -e "insert into tbl_mycat (id, col1) values(${i}, 'test$i')";done
 ```
 
@@ -1614,74 +1598,9 @@ mysql> select * from tbl_mycat;
 
 <h2 id="gaea_mycat_partitionByMurmurHash">gaea mycat_murmur(一致性Hash)分片示例</h2>
 
-### 创建数据库表
-我们预定义两个分片slice-0、slice-1，分别位于两个数据库实例端口为3307、3308，每个slice预定义2个库，每个库一张表
+我们预定义两个分片slice-0、slice-1，每个slice预定义2个库，每个库一张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
-```shell script
-#连接3307数据库实例
-mysql -h127.0.0.1 -P3307 -uroot -p1234
-#创建数据库
-create database db_mycat_0;
-create database db_mycat_1;
-#在命令行执行以下命令，创建分表
-for i in `seq 0 1`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat  ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-
-#连接3306数据库实例
-mysql -h127.0.0.1 -P3308 -uroot -p1234
-#创建数据库
-create database db_mycat_2;
-create database db_mycat_3;
-#在命令行执行以下命令，创建分表
-for i in `seq 2 3`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-#登录3307实例，查询slice-0分片表展示：
-mysql> use db_mycat_0;
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_0 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.00 sec)
-mysql> use db_mycat_1
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_1 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.01 sec)
-
-#登录3308示例，查询slice-1分片表展示：
-mysql> use db_mycat_2;
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_2 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.00 sec)
-mysql> use db_mycat_3;
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_3 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.00 sec)
-```
+Gaea启动地址为127.0.0.1:13307
 
 ### namespace配置
 ```json
@@ -1761,10 +1680,76 @@ mysql> show tables;
 }
 ```
 
+### 创建数据库表
+```shell script
+#连接3307数据库实例
+mysql -h127.0.0.1 -P3307 -uroot -p1234
+#创建数据库
+create database db_mycat_0;
+create database db_mycat_1;
+#在命令行执行以下命令，创建分表
+for i in `seq 0 1`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat  ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+
+#连接3306数据库实例
+mysql -h127.0.0.1 -P3308 -uroot -p1234
+#创建数据库
+create database db_mycat_2;
+create database db_mycat_3;
+#在命令行执行以下命令，创建分表
+for i in `seq 2 3`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+#登录3307实例，查询slice-0分片表展示：
+mysql> use db_mycat_0;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_0 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.00 sec)
+mysql> use db_mycat_1
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_1 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.01 sec)
+
+#登录3308示例，查询slice-1分片表展示：
+mysql> use db_mycat_2;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_2 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.00 sec)
+mysql> use db_mycat_3;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_3 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.00 sec)
+```
 
 ### 插入数据
 ```shell script
-#命令行执行：
+#命令行执行,该命令连接Gaea执行插入：
 for i in `seq 1 2000`;do mysql -h127.0.0.1 -P13306 -utest -p1234  db_mycat -e "insert into tbl_mycat (id, col1) values(${i}, 'test$i')";done
 ```
 
@@ -1892,74 +1877,9 @@ mysql> select * from tbl_mycat;
 
 <h2 id="gaea_mycat_partitionByString">gaea mycat_string(字符串拆分hash)分片示例</h2>
 
-### 创建数据库表
-我们预定义两个分片slice-0、slice-1，分别位于两个数据库实例端口为3307、3308，每个slice预定义2个库，每个库一张表
+我们预定义两个分片slice-0、slice-1，每个slice预定义2个库，每个库一张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
-```shell script
-#连接3307数据库实例
-mysql -h127.0.0.1 -P3307 -uroot -p1234
-#创建数据库
-create database db_mycat_0;
-create database db_mycat_1;
-#在命令行执行以下命令，创建分表
-for i in `seq 0 1`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat  ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-
-#连接3306数据库实例
-mysql -h127.0.0.1 -P3308 -uroot -p1234
-#创建数据库
-create database db_mycat_2;
-create database db_mycat_3;
-#在命令行执行以下命令，创建分表
-for i in `seq 2 3`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
-#登录3307实例，查询slice-0分片表展示：
-mysql> use db_mycat_0;
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_0 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.00 sec)
-mysql> use db_mycat_1
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_1 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.01 sec)
-
-#登录3308示例，查询slice-1分片表展示：
-mysql> use db_mycat_2;
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_2 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.00 sec)
-mysql> use db_mycat_3;
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
-Database changed
-mysql> show tables;
-+----------------------+
-| Tables_in_db_mycat_3 |
-+----------------------+
-| tbl_mycat            |
-+----------------------+
-1 row in set (0.00 sec)
-```
+Gaea启动地址为127.0.0.1:13307
 
 ### namespace配置
 ```json
@@ -2036,10 +1956,76 @@ mysql> show tables;
 }
 ```
 
+### 创建数据库表
+```shell script
+#连接3307数据库实例
+mysql -h127.0.0.1 -P3307 -uroot -p1234
+#创建数据库
+create database db_mycat_0;
+create database db_mycat_1;
+#在命令行执行以下命令，创建分表
+for i in `seq 0 1`;do  mysql -h127.0.0.1 -P3307 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat  ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+
+#连接3306数据库实例
+mysql -h127.0.0.1 -P3308 -uroot -p1234
+#创建数据库
+create database db_mycat_2;
+create database db_mycat_3;
+#在命令行执行以下命令，创建分表
+for i in `seq 2 3`;do  mysql -h127.0.0.1 -P3308 -uroot -p1234  db_mycat_$i -e "CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;";done
+#登录3307实例，查询slice-0分片表展示：
+mysql> use db_mycat_0;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_0 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.00 sec)
+mysql> use db_mycat_1
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_1 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.01 sec)
+
+#登录3308示例，查询slice-1分片表展示：
+mysql> use db_mycat_2;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_2 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.00 sec)
+mysql> use db_mycat_3;
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+Database changed
+mysql> show tables;
++----------------------+
+| Tables_in_db_mycat_3 |
++----------------------+
+| tbl_mycat            |
++----------------------+
+1 row in set (0.00 sec)
+```
 
 ### 插入数据
 ```shell script
-#命令行执行：
+#命令行执行,该命令连接Gaea执行插入：
 for i in `seq 1 2000`;do mysql -h127.0.0.1 -P13306 -utest -p1234  db_mycat -e "insert into tbl_mycat (id, col1) values(${i}, 'test$i')";done
 ```
 
