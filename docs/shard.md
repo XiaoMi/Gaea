@@ -53,7 +53,7 @@ Gaea支持kingshard常用分表规则, 对应关系如下:
 
 该配置中的locations字段数组包含两个成员, locations[0]=2 代表slice字段数组slices[0]包含两个分片表, 即slice-0的master实例包含两个子表。locations[1]=2 代表slice字段数组slices[1]包含两个分片表, 即slice-1的master实例包含两个子表。
 
-key字段代表用于分库分表的键。
+key字段代表用于分库分表的键, 在该示例中是以id列作为分片分表键。
 
 ##### mod
 我们想将`db_example`库的`shard_mod`表配置为分片表, 共4个分片表, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
