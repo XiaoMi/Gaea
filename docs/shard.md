@@ -51,7 +51,7 @@ Gaea支持kingshard常用分表规则, 对应关系如下:
 // ]
 ```
 
-该配置中的locations字段数组locations[0]=2 代表slice字段数组slices[0]包含两个分片表。locations[1]=2 代表slice字段数组slices[1]包含两个分片表。
+该配置中的locations字段数组包含两个成员, locations[0]=2 代表slice字段数组slices[0]包含两个分片表, 即slice-0的master实例包含两个子表。locations[1]=2 代表slice字段数组slices[1]包含两个分片表, 即slice-1的master实例包含两个子表。
 
 key字段代表用于分库分表的键。
 
