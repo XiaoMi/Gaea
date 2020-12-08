@@ -28,23 +28,24 @@ import (
 
 // Namespace means namespace model stored in etcd
 type Namespace struct {
-	OpenGeneralLog   bool              `json:"open_general_log"`
-	IsEncrypt        bool              `json:"is_encrypt"` // true: 加密存储 false: 非加密存储，目前加密Slice、User中的用户名、密码
-	Name             string            `json:"name"`
-	Online           bool              `json:"online"`
-	ReadOnly         bool              `json:"read_only"`
-	AllowedDBS       map[string]bool   `json:"allowed_dbs"`
-	DefaultPhyDBS    map[string]string `json:"default_phy_dbs"`
-	SlowSQLTime      string            `json:"slow_sql_time"`
-	BlackSQL         []string          `json:"black_sql"`
-	AllowedIP        []string          `json:"allowed_ip"`
-	Slices           []*Slice          `json:"slices"`
-	ShardRules       []*Shard          `json:"shard_rules"`
-	Users            []*User           `json:"users"` // 客户端接入proxy用户，每个用户可以设置读写分离、读写权限等
-	DefaultSlice     string            `json:"default_slice"`
-	GlobalSequences  []*GlobalSequence `json:"global_sequences"`
-	DefaultCharset   string            `json:"default_charset"`
-	DefaultCollation string            `json:"default_collation"`
+	OpenGeneralLog   bool               `json:"open_general_log"`
+	IsEncrypt        bool               `json:"is_encrypt"` // true: 加密存储 false: 非加密存储，目前加密Slice、User中的用户名、密码
+	Name             string             `json:"name"`
+	Online           bool               `json:"online"`
+	ReadOnly         bool               `json:"read_only"`
+	AllowedDBS       map[string]bool    `json:"allowed_dbs"`
+	DefaultPhyDBS    map[string]string  `json:"default_phy_dbs"`
+	SlowSQLTime      string             `json:"slow_sql_time"`
+	BlackSQL         []string           `json:"black_sql"`
+	AllowedIP        []string           `json:"allowed_ip"`
+	Slices           []*Slice           `json:"slices"`
+	ShardRules       []*Shard           `json:"shard_rules"`
+	Users            []*User            `json:"users"` // 客户端接入proxy用户，每个用户可以设置读写分离、读写权限等
+	DefaultSlice     string             `json:"default_slice"`
+	GlobalSequences  []*GlobalSequence  `json:"global_sequences"`
+	DefaultCharset   string             `json:"default_charset"`
+	DefaultCollation string             `json:"default_collation"`
+	HealthCheck      *HealthCheckConfig `json:"health_check"`
 }
 
 // Encode encode json
@@ -94,6 +95,9 @@ func (n *Namespace) Verify() error {
 		return err
 	}
 
+	if err := n.verifyHealthCheck(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -230,6 +234,13 @@ func (n *Namespace) verifySlices() error {
 
 func (n *Namespace) isSlicesEmpty() bool {
 	return len(n.Slices) == 0
+}
+
+func (n *Namespace) verifyHealthCheck() error {
+	if n.HealthCheck == nil {
+		return nil
+	}
+	return n.HealthCheck.verify()
 }
 
 func (n *Namespace) verifyEachSlice() error {

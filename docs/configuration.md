@@ -123,7 +123,33 @@ namespace的配置格式为json，包含分表、非分表、实例等配置信�
 | pk_name        | string   | 使用全局序列号的列名，单表只允许一个列使用全局序列号  |
 | slice_name     | string   | mycat_sequence表所在分片                     | 
 
+### 健康检查配置
 
+| 字段名称             | 字段类型  | 字段含义                                        |
+| ------------------- | -------- | -----------------------------------------------|
+| open                | string   | 是否开启健康检查                      |
+| mode                | string   | 健康检查模式, 目前支持两种模式 (poller/heartbeat)   |
+| interval            | string   | 健康检查间隔时间,单位: 秒                             |
+| unhealthy_threshold | string   | slave延迟时间, 超过该阈值则判定slave状态异常,单位: 秒  |
+
+
+- heartbeat模式   
+  创建一个用来健康检查的表, gaea定时访问master, 更新检查时间, 并从slave读取检查时间, 如果检查时间和当前时间的差值超出unhealthy_threshold, 判定slave短暂不可用, 请求将直接转移到其他slave或master.   
+  使用heartbeat模式需要先初始化库表.
+```
+CREATE DATABASE IF NOT EXISTS gaea_dba_check; 
+
+CREATE TABLE IF NOT EXISTS gaea_dba_check.heartbeat ( 
+  id INT UNSIGNED NOT NULL PRIMARY KEY,
+  check_timestamp BIGINT UNSIGNED NOT NULL,
+  unique key(id)
+) engine=InnoDB
+```
+
+- poller模式   
+  查询slave状态```SHOW SLAVE STATUS```, 获取该slice的mysql主从同步延迟时间```Seconds_Behind_Master```, 跟unhealthy_threshold比较,
+  超出阈值, 判定slave短暂不可用, 请求将直接转移到其他slave或master.
+  
 ## 配置示例
 
 ```
@@ -376,7 +402,13 @@ namespace的配置格式为json，包含分表、非分表、实例等配置信�
             "rw_split": 1
         }
     ],
-    "default_slice": "slice-0"
+    "default_slice": "slice-0",
+    "health_check": {
+        "open" : true,
+        "mode" : "heartbeat",
+        "interval" : 10,
+        "unhealthy_Threshold" : 100
+    }
 }
 ```
 

@@ -149,6 +149,17 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 		return nil, fmt.Errorf("init slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
 	}
 
+	// init backend mysql health checker
+	for _, slice := range namespace.slices {
+		// init slice stat manager
+		slice.Namespace = namespace.name
+		if namespaceConfig.HealthCheck == nil || !namespaceConfig.HealthCheck.Open {
+			continue
+		}
+		slice.CreateSliceStatManager(namespaceConfig.HealthCheck)
+		slice.StartRefreshSliceStat()
+	}
+
 	// init router
 	namespace.router, err = router.NewRouter(namespaceConfig)
 	if err != nil {

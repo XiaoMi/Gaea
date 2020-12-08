@@ -20,7 +20,6 @@ import (
 	"testing"
 
 	"github.com/XiaoMi/Gaea/backend"
-	"github.com/XiaoMi/Gaea/backend/mocks"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/mysql"
@@ -71,10 +70,10 @@ func TestExecute(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
-	slice0MasterPool := new(mocks.ConnectionPool)
-	slice0SlavePool := new(mocks.ConnectionPool)
-	slice1MasterPool := new(mocks.ConnectionPool)
-	slice1SlavePool := new(mocks.ConnectionPool)
+	slice0MasterPool := new(backend.MockConnectionPool)
+	slice0SlavePool := new(backend.MockConnectionPool)
+	slice1MasterPool := new(backend.MockConnectionPool)
+	slice1SlavePool := new(backend.MockConnectionPool)
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Master = slice0MasterPool
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Slave = []backend.ConnectionPool{slice0SlavePool}
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Master = slice1MasterPool
@@ -84,7 +83,7 @@ func TestExecute(t *testing.T) {
 	expectResult2 := &mysql.Result{}
 	//slice-0
 	ctx := context.Background()
-	slice0MasterConn := new(mocks.PooledConnect)
+	slice0MasterConn := new(backend.MockPooledConnect)
 	slice0MasterPool.On("Get", ctx).Return(slice0MasterConn, nil).Once()
 	slice0MasterConn.On("UseDB", "db_mycat_0").Return(nil)
 	slice0MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
@@ -94,7 +93,7 @@ func TestExecute(t *testing.T) {
 	slice0MasterConn.On("Recycle").Return(nil)
 
 	//slice-1
-	slice1MasterConn := new(mocks.PooledConnect)
+	slice1MasterConn := new(backend.MockPooledConnect)
 	slice1MasterPool.On("Get", ctx).Return(slice1MasterConn, nil).Once()
 	slice1MasterConn.On("UseDB", "db_mycat_2").Return(nil)
 	slice1MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)

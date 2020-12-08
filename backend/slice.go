@@ -33,6 +33,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
@@ -50,23 +51,23 @@ const (
 
 // Slice means one slice of the mysql cluster
 type Slice struct {
-	Cfg models.Slice
-
 	sync.RWMutex
-	Master ConnectionPool
+	Namespace string
+	Cfg       models.Slice
 
-	Slave          []ConnectionPool
-	LastSlaveIndex int
-	RoundRobinQ    []int
-	SlaveWeights   []int
+	Master                 ConnectionPool
+	Slave                  []ConnectionPool
+	slaveBalancer          *balancer
+	slaveWeights           []int
+	StatisticSlave         []ConnectionPool
+	statisticSlaveBalancer *balancer
+	statisticSlaveWeights  []int
 
-	StatisticSlave            []ConnectionPool
-	LastStatisticSlaveIndex   int
-	StatisticSlaveRoundRobinQ []int
-	StatisticSlaveWeights     []int
-
-	charset     string
-	collationID mysql.CollationID
+	charset             string
+	collationID         mysql.CollationID
+	statManager         *statManager
+	healthCheckInterval int
+	stopHealthCheck     chan struct{}
 }
 
 // GetSliceName return name of slice
@@ -108,31 +109,37 @@ func (s *Slice) GetMasterConn() (PooledConnect, error) {
 // GetSlaveConn return a connection in slave pool
 func (s *Slice) GetSlaveConn() (PooledConnect, error) {
 	s.Lock()
-	cp, err := s.getNextSlave()
+	index, err := s.slaveBalancer.next()
 	s.Unlock()
 	if err != nil {
 		return nil, err
 	}
 	ctx := context.TODO()
-	return cp.Get(ctx)
+	return s.Slave[index].Get(ctx)
 }
 
 // GetStatisticSlaveConn return a connection in statistic slave pool
 func (s *Slice) GetStatisticSlaveConn() (PooledConnect, error) {
 	s.Lock()
-	cp, err := s.getNextStatisticSlave()
+	index, err := s.statisticSlaveBalancer.next()
 	s.Unlock()
 	if err != nil {
 		return nil, err
 	}
 	ctx := context.TODO()
-	return cp.Get(ctx)
+	return s.StatisticSlave[index].Get(ctx)
 }
 
 // Close close the pool in slice
 func (s *Slice) Close() error {
 	s.Lock()
 	defer s.Unlock()
+
+	//stop health check
+	if s.statManager != nil {
+		close(s.stopHealthCheck)
+	}
+
 	// close master
 	s.Master.Close()
 
@@ -175,7 +182,7 @@ func (s *Slice) ParseSlave(slaves []string) error {
 
 	count := len(slaves)
 	s.Slave = make([]ConnectionPool, 0, count)
-	s.SlaveWeights = make([]int, 0, count)
+	s.slaveWeights = make([]int, 0, count)
 
 	//parse addr and weight
 	for i := 0; i < count; i++ {
@@ -188,7 +195,7 @@ func (s *Slice) ParseSlave(slaves []string) error {
 		} else {
 			weight = 1
 		}
-		s.SlaveWeights = append(s.SlaveWeights, weight)
+		s.slaveWeights = append(s.slaveWeights, weight)
 		idleTimeout, err := util.Int2TimeDuration(s.Cfg.IdleTimeout)
 		if err != nil {
 			return err
@@ -197,7 +204,7 @@ func (s *Slice) ParseSlave(slaves []string) error {
 		cp.Open()
 		s.Slave = append(s.Slave, cp)
 	}
-	s.initBalancer()
+	s.slaveBalancer = newBalancer(s.slaveWeights, len(s.Slave))
 	return nil
 }
 
@@ -213,7 +220,7 @@ func (s *Slice) ParseStatisticSlave(statisticSlaves []string) error {
 
 	count := len(statisticSlaves)
 	s.StatisticSlave = make([]ConnectionPool, 0, count)
-	s.StatisticSlaveWeights = make([]int, 0, count)
+	s.statisticSlaveWeights = make([]int, 0, count)
 
 	//parse addr and weight
 	for i := 0; i < count; i++ {
@@ -226,7 +233,7 @@ func (s *Slice) ParseStatisticSlave(statisticSlaves []string) error {
 		} else {
 			weight = 1
 		}
-		s.StatisticSlaveWeights = append(s.StatisticSlaveWeights, weight)
+		s.statisticSlaveWeights = append(s.statisticSlaveWeights, weight)
 		idleTimeout, err := util.Int2TimeDuration(s.Cfg.IdleTimeout)
 		if err != nil {
 			return err
@@ -235,7 +242,7 @@ func (s *Slice) ParseStatisticSlave(statisticSlaves []string) error {
 		cp.Open()
 		s.StatisticSlave = append(s.StatisticSlave, cp)
 	}
-	s.initStatisticSlaveBalancer()
+	s.statisticSlaveBalancer = newBalancer(s.statisticSlaveWeights, len(s.StatisticSlave))
 	return nil
 }
 
@@ -243,4 +250,49 @@ func (s *Slice) ParseStatisticSlave(statisticSlaves []string) error {
 func (s *Slice) SetCharsetInfo(charset string, collationID mysql.CollationID) {
 	s.charset = charset
 	s.collationID = collationID
+}
+
+func (s *Slice) CreateSliceStatManager(cfg *models.HealthCheckConfig) {
+	s.statManager = newStatManager(cfg, s)
+	s.stopHealthCheck = make(chan struct{})
+	s.healthCheckInterval = cfg.IntervalSeconds
+}
+
+func (s *Slice) StartRefreshSliceStat() {
+	go func() {
+		ticker := time.NewTicker(time.Duration(s.healthCheckInterval) * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				slaveWeights := make([]int, 0)
+				statisticSlaveWeights := make([]int, 0)
+
+				s.statManager.getMaster()
+				for i, slave := range s.Slave {
+					if !s.statManager.getSlave(i) {
+						slaveWeights = append(slaveWeights, 0)
+						log.Warn("namespace:%s slice:%s slave:%v is invalid", s.Namespace, s.GetSliceName(), slave.Addr())
+						continue
+					}
+					slaveWeights = append(slaveWeights, s.slaveWeights[i])
+				}
+				for i, statisticSlave := range s.StatisticSlave {
+					if !s.statManager.getStatisticSlave(i) {
+						statisticSlaveWeights = append(statisticSlaveWeights, 0)
+						log.Warn("namespace:%s slice:%s statisticSlave:%v is invalid", s.Namespace, s.GetSliceName(), statisticSlave.Addr())
+						continue
+					}
+					statisticSlaveWeights = append(statisticSlaveWeights, s.statisticSlaveWeights[i])
+				}
+
+				s.Lock()
+				s.slaveBalancer = newBalancer(slaveWeights, len(s.Slave))
+				s.statisticSlaveBalancer = newBalancer(statisticSlaveWeights, len(s.StatisticSlave))
+				s.Unlock()
+			case <-s.stopHealthCheck:
+				return
+			}
+		}
+	}()
 }
