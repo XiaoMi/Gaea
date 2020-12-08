@@ -11,7 +11,7 @@ import (
 
 const (
 	gaeaServerId                 = 3
-	sqlUpsertMostRecentHeartbeat = "INSERT INTO gaea_dba_check.heartbeat (id , check_timestamp) VALUES (%d, %d) ON DUPLICATE KEY UPDATE check_timestamp=VALUES(check_timestamp)"
+	sqlUpsertMostRecentHeartbeat = "INSERT INTO gaea_dba_check.heartbeat (id, check_timestamp) VALUES (%d, %d) ON DUPLICATE KEY UPDATE check_timestamp=VALUES(check_timestamp)"
 	sqlFetchMostRecentHeartbeat  = "SELECT check_timestamp FROM gaea_dba_check.heartbeat WHERE id=%d"
 
 	sqlFetchMostRecentReplicationStatus = "SHOW SLAVE STATUS"
