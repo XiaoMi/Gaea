@@ -50,10 +50,9 @@ Gaea支持kingshard常用分表规则, 对应关系如下:
 
 // ]
 ```
-
-该配置中的locations字段数组locations[0]=2 代表slice字段数组slices[0]包含两个分片表。locations[1]=2 代表slice字段数组slices[1]包含两个分片表。
-
-key字段代表用于分库分表的键。
+配置说明：
+-   该配置中的locations字段数组locations[0]=2 代表slices字段数组slices[0]包含两个分片表。locations[1]=2 代表slices字段数组slices[1]包含两个分片表。
+-   key字段代表用于分库分表的键。
 
 ##### mod
 我们想将`db_example`库的`shard_mod`表配置为分片表, 共4个分片表, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
@@ -90,9 +89,9 @@ key字段代表用于分库分表的键。
 
 // ]
 ```
-
-该配置中的locations字段数组locations[0]=2 代表slice字段数组slices[0]包含两个分片表。locations[1]=2 代表slice字段数组slices[1]包含两个分片表。
-key字段代表用于分库分表的键。
+配置说明：
+-   该配置中的locations字段数组locations[0]=2 代表slices字段数组slices[0]包含两个分片表。locations[1]=2 代表slices字段数组slices[1]包含两个分片表。
+-   key字段代表用于分库分表的键。
 
 ##### range
 range分表方式说明：
@@ -135,7 +134,7 @@ range分表方式说明：
 ```
 
 配置说明：
--   该配置中的locations字段数组locations[0]=2 代表slice字段数组slices[0]包含两个分片表。locations[1]=2 代表slice字段数组slices[1]包含两个分片表。
+-   该配置中的locations字段数组locations[0]=2 代表slices字段数组slices[0]包含两个分片表。locations[1]=2 代表slices字段数组slices[1]包含两个分片表。
 -   key字段代表用于分库分表的键。
 -   table_row_limit字段的值为100，代表每张子表的记录数。id字段的值为[0,100)在tbl_example_0000上，[100,200)在tbl_example_0001上,依此类推...
 
@@ -377,7 +376,7 @@ mycat_long的配置规则如下:
 ```
 
 其中`partition_count`, `partition_length`配置项的含义与mycat `PartitionByLong`规则中的同名配置项的含义相同.
--   该配置中的locations字段数组locations[0]=2 代表slice字段数组slices[0]包含两个分片表。locations[1]=2 代表slice字段数组slices[1]包含两个分片表。
+-   该配置中的locations字段数组locations[0]=2 代表slice字段数组slices[0]包含两个分片表。locations[1]=2 代表slices字段数组slices[1]包含两个分片表。
 -   partition_count标识分片个数，需要与设置的分片数量相等，由于定义了4个分片，因此这里只能是4、partition_length分片范围列表。
     
     因此这里的组合可以是:"partition_count":"4"、"partition_length"："256"代表希望将数据水平分成4份，每份各占25%。
@@ -414,12 +413,9 @@ mycat_murmur的配置规则如下:
     "virtual_bucket_times": "160"
 }
 ```
--   该配置中的locations字段数组locations[0]=2 代表slice字段数组slices[0]包含两个分片表。locations[1]=2 代表slice字段数组slices[1]包含两个分片表。
+-   该配置中的locations字段数组locations[0]=2 代表slices字段数组slices[0]包含两个分片表。locations[1]=2 代表slices字段数组slices[1]包含两个分片表。
 -   其中`seed`, `virtual_bucket_times`配置项的含义与mycat `PartitionByMurmurHash`规则中的同名配置项的含义相同，代表一个实际的数据库节点被映射出该值对应的虚拟节点，这里设置160即虚拟节点数是物理节点数的160倍. 而在mycat中需要指定的`count`配置项, 在Gaea中通过locations自动判断, 不需要手动指定.
-
-目前Gaea中不支持配置weight, 所有bucket weight都是1.
-
-一致性hash运算有效解决了分布式数据的扩容问题
+-   目前Gaea中不支持配置weight, 所有bucket weight都是1.
 
 ##### PartitionByString
 
@@ -450,16 +446,14 @@ mycat_string的配置规则如下:
 
 其中`partition_count`, `partition_length`, `hash_slice`配置项的含义与mycat `PartitionByString`规则中的同名配置项的含义相同.
 
--   该配置中的locations字段数组locations[0]=2 代表slice字段数组slices[0]包含两个分片表。locations[1]=2 代表slice字段数组slices[1]包含两个分片表。
+-   该配置中的locations字段数组locations[0]=2 代表slice字段数组slices[0]包含两个分片表。locations[1]=2 代表slices字段数组slices[1]包含两个分片表。
 -   partition_count代表分区数、partition_length代表字符串hash求模基数、hash_slice是hash运算位即根据子字符串hash运算.
-
 -   其中，hash_slice支持一下格式:
     -   "2"代表(0,2)
     -   "1:2"代表(1,2)
     -   "1:"代表(1,0)
     -   "-1:"代表(-1,0)
     -   ":-1"代表(0,-1)
-    -   ":"代表(0,0)
 -   例1：值“45abc”，hash运算位0:2 ，取其中45进行计算
 -   例2：值“aaaabbb2345”，hash预算位-4:0 ，取其中2345进行计算
 
