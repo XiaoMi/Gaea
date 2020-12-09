@@ -15,8 +15,9 @@ Gaea支持kingshard常用分表规则, 对应关系如下:
 | date_month       | date_month |
 | date_day         | date_day   |
 
-##### hash
-我们想将`db_example`库的`tbl_example`表配置为分片表, 共4个分片表, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
+##### hash 
+分片方式说明：基于分表键的hash值计算子表下标。   
+我们想将`db_example`库的`tbl_example`表配置为分片表, 共4个分片, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
 
 | slice | 后端数据库名 | 后端表名 |
 | ----- | ---------- | ------- |
@@ -51,11 +52,12 @@ Gaea支持kingshard常用分表规则, 对应关系如下:
 // ]
 ```
 配置说明：
--   该配置中的locations字段数组locations[0]=2 代表slices字段数组slices[0]包含两个分片表,即slice-0的master实例包含两个子表。locations[1]=2 代表slices字段数组slices[1]包含两个分片表,即slice-1的master实例包含两个子表。
--   key字段代表用于分库分表的键。
+-   该配置中的locations字段包含两个元素, locations[0]=2 代表slices字段数组slices[0]包含两个分片,即slice-0的master实例包含两个子表。locations[1]=2 代表slices字段数组slices[1]包含两个分片,即slice-1的master实例包含两个子表。
+-   key字段代表用于分表的键。
 
 ##### mod
-我们想将`db_example`库的`shard_mod`表配置为分片表, 共4个分片表, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
+分片方式说明：基于分表键对子表数量的取模运算值计算子表下标。    
+我们想将`db_example`库的`shard_mod`表配置为分片表, 共4个分片, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
 
 | slice | 后端数据库名 | 后端表名 |
 | ----- | ---------- | ------- |
@@ -90,14 +92,13 @@ Gaea支持kingshard常用分表规则, 对应关系如下:
 // ]
 ```
 配置说明：
--   该配置中的locations字段数组locations[0]=2 代表slices字段数组slices[0]包含两个分片表,即slice-0的master实例包含两个子表。locations[1]=2 代表slices字段数组slices[1]包含两个分片表,即slice-1的master实例包含两个子表。
--   key字段代表用于分库分表的键。
+-   该配置中的locations字段包含两个元素, locations[0]=2 代表slices字段数组slices[0]包含两个分片,即slice-0的master实例包含两个子表。locations[1]=2 代表slices字段数组slices[1]包含两个分片,即slice-1的master实例包含两个子表。
+-   key字段代表用于分表的键。
 
 ##### range
-range分表方式说明：
-基于整数范围划分来得到子表下标。该方式的优点：基于范围的查询或更新速度快，因为查询（或更新）的范围有可能落在同一张子表中。这样可以避免全部子表的查询（更新）。缺点：数据热点问题。因为在一段时间内整个集群的写压力都会落在一张子表上。此时整个mysql集群的写能力受限于单台mysql server的性能。并且，当正在集中写的mysql 节点如果宕机的话，整个mysql集群处于不可写状态。基于range方式的分表字段类型受限。
-
-我们想将`db_example`库的`tbl_example`表配置为分片表, 共4个分片表, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
+分片方式说明：基于分表键的所在范围计算子表下标。  
+该方式的优点：基于范围的查询或更新速度快，因为查询（或更新）的范围有可能落在同一张子表中。这样可以避免全部子表的查询（更新）。缺点：数据热点问题。因为在一段时间内整个集群的写压力都会落在一张子表上。此时整个mysql集群的写能力受限于单台mysql server的性能。并且，当正在集中写的mysql 节点如果宕机的话，整个mysql集群处于不可写状态。     
+我们想将`db_example`库的`tbl_example`表配置为分片表, 共4个分片, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
 
 | slice | 后端数据库名 | 后端表名 |
 | ----- | ---------- | ------- |
@@ -134,17 +135,13 @@ range分表方式说明：
 ```
 
 配置说明：
--   该配置中的locations字段数组locations[0]=2 代表slices字段数组slices[0]包含两个分片表,即slice-0的master实例包含两个子表。locations[1]=2 代表slices字段数组slices[1]包含两个分片表,即slice-1的master实例包含两个子表。
--   key字段代表用于分库分表的键。
+-   该配置中的locations包含两个元素, locations[0]=2 代表slices字段数组slices[0]包含两个分片,即slice-0的master实例包含两个子表。locations[1]=2 代表slices字段数组slices[1]包含两个分片表,即slice-1的master实例包含两个子表。
+-   key字段代表用于分表的键。
 -   table_row_limit字段的值为100，代表每张子表的记录数。id字段的值为[0,100)在tbl_example_0000上，[100,200)在tbl_example_0001上,依此类推...
 
 ##### date_year
-gaea 支持Mysql中三种格式的时间类型
--   date类型，格式：YYYY-MM-DD，例如:2016-03-04,注意：2016-3-04，2016-03-4，2016-3-4等格式都是不支持的。
--   datetime，格式：YYYY-MM-DD HH:MM:SS，例如:2016-03-04 13:23:43,注意：2016-3-04 13:23:43，2016-03-4 13:23:43，2016-3-4 13:23:43等格式都是不支持的。
--   timestamp，整数类型。
-
-我们想将`db_example`库的`shard_year`表配置为分片表, 共4个分片表, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
+分片方式说明：基于分表键日期(年)计算子表下标。  
+我们想将`db_example`库的`shard_year`表配置为分片表, 共4个分片, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
 
 | slice | 后端数据库名 | 后端表名 |
 | ----- | ---------- | ------- |
@@ -180,14 +177,19 @@ gaea 支持Mysql中三种格式的时间类型
 ```
 
 配置说明：
--   该配置表示shardding key是create_time
--   按年的分类类型是date_year
--   shard_year_2016、shard_year_2017两个表在slice-0上，shard_year_2018、shard_year_2019在slice-1上。
+-   key:该配置表示shardding key是create_time 
+-   data_range:表示shard_year_2016、shard_year_2017两个表在slice-0上，shard_year_2018、shard_year_2019在slice-1上, 左闭右闭。  
+
+gaea 支持Mysql中三种格式的时间类型
+-   date类型，格式：YYYY-MM-DD，例如:2016-03-04,注意：2016-3-04，2016-03-4，2016-3-4等格式都是不支持的。
+-   datetime，格式：YYYY-MM-DD HH:MM:SS，例如:2016-03-04 13:23:43,注意：2016-3-04 13:23:43，2016-03-4 13:23:43，2016-3-4 13:23:43等格式都是不支持的。
+-   timestamp，整数类型。   
 
 注意：子表的命名格式必须是:shard_table_YYYY，shard_table是分表名，后面接具体的年。传入范围必须是有序递增，不能是[2018-2019,2016-2017]，且不能重叠，不能是[2017-2018,2018-2019]。
 
-##### date_month
-我们想将`db_example`库的`shard_month`表配置为分片表, 共4个分片表, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
+##### date_month 
+分片方式说明：基于分表键日期(月)计算子表下标。   
+我们想将`db_example`库的`shard_month`表配置为分片表, 共4个分片, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
 
 | slice | 后端数据库名 | 后端表名 |
 | ----- | ---------- | ------- |
@@ -223,15 +225,15 @@ gaea 支持Mysql中三种格式的时间类型
 ```
 
 配置说明：
--   sharding key 是create_time
--   按月的分表类型是date_month
--   shard_month_201405、shard_month_201406两个子表在slice-0上，shard_month_201408、shard_month_201409在slice-1上
--   如果一个分片上只包含一张表，可以这样配置date_range[201609,201610-201611]
+-   key: sharding key 是create_time
+-   type: 按月的分表类型是date_month
+-   data_range: shard_month_201405、shard_month_201406两个子表在slice-0上，shard_month_201408、shard_month_201409在slice-1上,如果一个slice上只包含一张表，可以这样配置date_range[201609,201610-201611]
 
 注意：子表的命名格式必须是:shard_table_YYYYMM,shard_table是分表名，后面接具体的年和月。传入范围必须是有序递增的，不能是[201609-201610,201501]。
 
 ##### date_day
-我们想将`db_example`库的`shard_day`表配置为分片表, 共4个分片表, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
+分片方式说明：基于分表键日期(天)计算子表下标。     
+我们想将`db_example`库的`shard_day`表配置为分片表, 共4个分片, 分布到2个slice上, 每个slice上有1个库, 每个库2张表, 即:
 
 | slice | 后端数据库名 | 后端表名 |
 | ----- | ---------- | ------- |
@@ -267,10 +269,9 @@ gaea 支持Mysql中三种格式的时间类型
 ```
 
 配置说明：
--   sharding key 是create_time
--   按月的分表类型是date_day
--   shard_day_20201201、shard_day_20201202两个子表在slice-0上，shard_day_20201203、shard_day_20201204在slice-1上
--   如果一个分片上只包含一张表，可以这样配置date_range[20160901,20161001-20161101]
+-   key: 分表键是create_time
+-   type: 按天的分表类型是date_day
+-   data_range: 表示shard_day_20201201、shard_day_20201202两个子表在slice-0上，shard_day_20201203、shard_day_20201204在slice-1上, 如果一个slice上只包含一张表，可以这样配置date_range[20160901,20161001-20161101]
 
 注意：子表的命名格式必须是:shard_table_YYYYMMDD,shard_table是分表名，后面接具体的年、月和日。传入范围必须是有序递增的，不能是[20160901-20160902,20150901]。
 
@@ -286,8 +287,8 @@ Gaea支持mycat的常用分库规则, 对应关系如下:
 | PartitionByString     | mycat_string      |
 
 ##### PartitionByMod
-
-我们想将`db_mycat`库的`tbl_mycat`表配置为分片表, 共4个分片表, 分布到2个slice上面, 每个slice上有2个库, 每个库1张表, 即:
+分片方式说明：基于分片键对子库数量的取模运算值计算子库下标。   
+我们想将`db_mycat`库的`tbl_mycat`表配置为分片表, 共4个分片, 分布到2个slice上面, 每个slice上有2个库, 每个库1张表, 即:
 
 | slice | 后端数据库名 | 后端表名 |
 | ----- | ---------- | ------- |
@@ -342,15 +343,13 @@ Gaea支持mycat的常用分库规则, 对应关系如下:
 "databases": [
     "db_mycat_0",
     "db_mycat_1",
-    "db_mycat_0",
-    "db_mycat_1"
+    "db_mycat_3",
+    "db_mycat_4"
 ]
 ```
 
-此种配置非常明确即根据id进行十进制求模运算。
-
 ##### PartitionByLong
-
+分片方式说明：基于分片键固定分片hash算法计算子库下标。  
 mycat_long的配置规则如下:
 
 ```
@@ -376,20 +375,17 @@ mycat_long的配置规则如下:
 ```
 
 其中`partition_count`, `partition_length`配置项的含义与mycat `PartitionByLong`规则中的同名配置项的含义相同.
--   该配置中的locations字段数组locations[0]=2 代表slices字段数组slices[0]包含两个分片表,即slice-0的master实例包含两个子表。locations[1]=2 代表slices字段数组slices[1]包含两个分片表,即slice-1的master实例包含两个子表。
--   partition_count标识分片个数，需要与设置的分片数量相等，由于定义了4个分片，因此这里只能是4、partition_length分片范围列表。
-    
-    因此这里的组合可以是:"partition_count":"4"、"partition_length"："256"代表希望将数据水平分成4份，每份各占25%。
-    
-    也可以是"partition_count":"2,2"、"partition_length"："128,384"代表希望将数据水平分成4份，前两份占128/1024、后两份占384/1024。
-    
-    如果初始化了3个分片，则可以是:"partition_count":"2,1"、"partition_length"："256,512"代表希望将数据水平分成3份，前两份各占25%，第三份占50%。
-    
+-   该配置中的locations字段包含两个元素, locations[0]=2 代表slices字段数组slices[0]包含两个分片,即slice-0的master实例包含两个子库。locations[1]=2 代表slices字段数组slices[1]包含两个分片,即slice-1的master实例包含两个子库。
+-   partition_count标识分片个数，需要与设置的分片数量相等，由于定义了4个分片，因此这里只能是4
+-   partition_length代表分片范围列表
+    1. 配置"partition_count":"4"、"partition_length"："256"代表希望将数据水平分成4份，每份各占25%
+    2. 配置"partition_count":"2,2"、"partition_length"："128,384"代表希望将数据水平分成4份，前两份占128/1024、后两份占384/1024 
+    3. 配置"partition_count":"2,1"、"partition_length"："256,512"代表希望将数据水平分成3份，前两份各占25%，第三份占50%  
 -   分区长度：默认为最大2^n=1024 ,即最大支持1024分区。
 -   约束：1024 = sum((count[i]*length[i])). count和length两个向量的点积恒等于1024。如上述示例中，4 * 256=1024、128 * 2 + 384 * 2=1024、256 * 2 + 512=1024。
 
 ##### PartitionByMurmurHash
- 
+分片方式说明：基于分片键一致性hash算法计算子库下标。  
 mycat_murmur的配置规则如下:
 
 ```
@@ -413,12 +409,12 @@ mycat_murmur的配置规则如下:
     "virtual_bucket_times": "160"
 }
 ```
--   该配置中的locations字段数组locations[0]=2 代表slices字段数组slices[0]包含两个分片表,即slice-0的master实例包含两个子表。locations[1]=2 代表slices字段数组slices[1]包含两个分片表,即slice-1的master实例包含两个子表。
--   其中`seed`, `virtual_bucket_times`配置项的含义与mycat `PartitionByMurmurHash`规则中的同名配置项的含义相同，代表一个实际的数据库节点被映射出该值对应的虚拟节点，这里设置160即虚拟节点数是物理节点数的160倍. 而在mycat中需要指定的`count`配置项, 在Gaea中通过locations自动判断, 不需要手动指定.
+-   该配置中的locations字段包含两个元素, locations[0]=2 代表slices字段数组slices[0]包含两个分片,即slice-0的master实例包含两个子库。locations[1]=2 代表slices字段数组slices[1]包含两个分片,即slice-1的master实例包含两个子库。
+-   其中`seed`, `virtual_bucket_times`配置项的含义与mycat `PartitionByMurmurHash`规则中的同名配置项的含义相同，代表一个实际的数据库节点被映射出该值对应的虚拟节点，这里设置160即虚拟节点数是物理节点数的160倍. 
 -   目前Gaea中不支持配置weight, 所有bucket weight都是1.
 
 ##### PartitionByString
-
+分片方式说明：基于分片键字串hash值计算子库下标。 
 mycat_string的配置规则如下:
 
 ```
@@ -445,20 +441,18 @@ mycat_string的配置规则如下:
 ```
 
 其中`partition_count`, `partition_length`, `hash_slice`配置项的含义与mycat `PartitionByString`规则中的同名配置项的含义相同.
-
--   该配置中的locations字段数组locations[0]=2 代表slices字段数组slices[0]包含两个分片表,即slice-0的master实例包含两个子表。locations[1]=2 代表slices字段数组slices[1]包含两个分片表,即slice-1的master实例包含两个子表。
--   partition_count代表分区数、partition_length代表字符串hash求模基数、hash_slice是hash运算位即根据子字符串hash运算.
--   其中，hash_slice支持一下格式:
+-   该配置中的locations字段包含两个元素, locations[0]=2 代表slices字段数组slices[0]包含两个分片,即slice-0的master实例包含两个子库。locations[1]=2 代表slices字段数组slices[1]包含两个分片,即slice-1的master实例包含两个子库。
+-   partition_count代表分片数
+-   partition_length代表字符串hash求模基数
+-   hash_slice是hash运算位即根据子字符串hash运算.  
+其中，hash_slice支持一下格式:  
     -   "2"代表(0,2)
     -   "1:2"代表(1,2)
     -   "1:"代表(1,0)
     -   "-1:"代表(-1,0)
     -   ":-1"代表(0,-1)
--   例1：值“45abc”，hash运算位0:2 ，取其中45进行计算
--   例2：值“aaaabbb2345”，hash预算位-4:0 ，取其中2345进行计算
-
-
-
+例1：值“45abc”，hash运算位0:2 ，取其中45进行计算  
+例2：值“aaaabbb2345”，hash预算位-4:0 ，取其中2345进行计算  
 
 ### 关联表和全局表
 
