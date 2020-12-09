@@ -14,7 +14,7 @@
 
 <h2 id="gaea_kingshard_hash">gaea kingshard hash分片示例</h2>
 
-我们预定义两个分片slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
+我们预定义两个slice slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
 Gaea启动地址为127.0.0.1:13307
 
@@ -368,7 +368,7 @@ mysql> select * from shard_mod_0003;
 
 <h2 id="gaea_kingshard_range">gaea kingshard range分片示例</h2>
 
-我们预定义两个分片slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
+我们预定义两个slice slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
 Gaea启动地址为127.0.0.1:13307
 
@@ -547,7 +547,7 @@ mysql> select * from shard_range_0003;
 
 <h2 id="gaea_kingshard_date_year">gaea kingshard date year分片示例</h2>
 
-我们预定义两个分片slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
+我们预定义两个slice slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
 Gaea启动地址为127.0.0.1:13307
 
@@ -714,7 +714,7 @@ mysql> select * from shard_year_2019;
 
 <h2 id="gaea_kingshard_date_month">gaea kingshard date month分片示例</h2>
 
-我们预定义两个分片slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
+我们预定义两个slice slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
 Gaea启动地址为127.0.0.1:13307
 
@@ -884,7 +884,7 @@ mysql> select * from shard_month_201409;
 
 <h2 id="gaea_kingshard_date_day">gaea kingshard date day分片示例</h2>
 
-我们预定义两个分片slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
+我们预定义两个slice slice-0、slice-1，每个slice定义一个库，每个库预定义2张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
 Gaea启动地址为127.0.0.1:13307
 
@@ -1053,7 +1053,7 @@ mysql> select * from shard_day_20201204;
 
 <h2 id="gaea_mycat_mod">gaea mycat mod分片示例</h2>
 
-我们预定义两个分片slice-0、slice-1，每个slice预定义2个库，每个库一张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
+我们预定义两个slice slice-0、slice-1，每个slice预定义2个库，每个库一张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
 Gaea启动地址为127.0.0.1:13307
 
@@ -1289,7 +1289,7 @@ mysql> select * from tbl_mycat;
 
 <h2 id="gaea_mycat_long">gaea mycat_long(固定hash分片算法)分片示例</h2>
 
-我们预定义两个分片slice-0、slice-1，每个slice预定义2个库，每个库一张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
+我们预定义两个slice slice-0、slice-1，每个slice预定义2个库，每个库一张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
 Gaea启动地址为127.0.0.1:13307
 
@@ -1598,7 +1598,7 @@ mysql> select * from tbl_mycat;
 
 <h2 id="gaea_mycat_partitionByMurmurHash">gaea mycat_murmur(一致性Hash)分片示例</h2>
 
-我们预定义两个分片slice-0、slice-1，每个slice预定义2个库，每个库一张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
+我们预定义两个slice slice-0、slice-1，每个slice预定义2个库，每个库一张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
 Gaea启动地址为127.0.0.1:13307
 
@@ -1877,7 +1877,7 @@ mysql> select * from tbl_mycat;
 
 <h2 id="gaea_mycat_partitionByString">gaea mycat_string(字符串拆分hash)分片示例</h2>
 
-我们预定义两个分片slice-0、slice-1，每个slice预定义2个库，每个库一张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
+我们预定义两个slice slice-0、slice-1，每个slice预定义2个库，每个库一张表，其中slice-0的主库地址为127.0.0.1:3307，slice-1的主库地址为127.0.0.1:3308。
 
 Gaea启动地址为127.0.0.1:13307
 
