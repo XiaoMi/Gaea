@@ -524,19 +524,18 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			for connID, pc := range pcsUnCompleted {
 				killPc, err := pc.GetPool().Get(context.TODO())
 				if err != nil {
-					log.Warn("kill thread id:%d error, get connection err:%v", connID, err.Error())
+					log.Warn("kill thread id: %d failed, get connection err: %v", connID, err.Error())
 					continue
 				}
 				if _, err = killPc.Execute(fmt.Sprintf("kill %d", connID)); err != nil {
-					log.Warn("kill thread id:%d error, err:%v", connID, err.Error())
+					log.Warn("kill thread id: %d failed, err: %v", connID, err.Error())
 				}
 				se.recycleBackendConn(killPc, false)
 			}
-
 			for j := 0; j < len(pcsUnCompleted); j++ {
 				<-done
 			}
-			return nil, fmt.Errorf("exceed of the maxSqlExecuteTime:%d ms", maxExecuteTime)
+			return nil, fmt.Errorf("%v: %dms", errors.ErrTimeLimitExceeded, maxExecuteTime)
 		}
 	}
 
