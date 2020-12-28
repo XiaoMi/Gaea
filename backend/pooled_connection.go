@@ -45,6 +45,10 @@ func (pc *pooledConnectImpl) Reconnect() error {
 	return nil
 }
 
+func (pc *pooledConnectImpl) GetPool() ConnectionPool {
+	return pc.pool
+}
+
 // Close implement util.Resource interface
 func (pc *pooledConnectImpl) Close() {
 	pc.directConnection.Close()
@@ -111,4 +115,8 @@ func (pc *pooledConnectImpl) SetSessionVariables(frontend *mysql.SessionVariable
 // WriteSetStatement exec sql
 func (pc *pooledConnectImpl) WriteSetStatement() error {
 	return pc.directConnection.WriteSetStatement()
+}
+
+func (pc *pooledConnectImpl) GetConnectionID() int64 {
+	return int64(pc.directConnection.conn.ConnectionID)
 }
