@@ -393,41 +393,6 @@ func (se *SessionExecutor) getTransactionConn(sliceName string) (pc backend.Pool
 	return
 }
 
-func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backend.PooledConnect, sql string) ([]*mysql.Result, error) {
-	startTime := time.Now()
-
-	maxSqlExecuteTime := se.manager.GetNamespace(se.namespace).maxSqlExecuteTime
-	var ctx context.Context
-	if maxSqlExecuteTime <= 0 {
-		ctx = context.Background()
-	} else {
-		ctx, _ = context.WithTimeout(context.Background(), time.Duration(maxSqlExecuteTime)*time.Millisecond)
-	}
-
-	done := make(chan struct{})
-	defer close(done)
-
-	var r *mysql.Result
-	var executeErr error
-	go func(reqCtx *util.RequestContext, pc backend.PooledConnect, sql string, ctx context.Context) {
-		r, executeErr = pc.Execute(sql)
-		se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, sql, pc.GetAddr(), startTime, executeErr)
-		done <- struct{}{}
-	}(reqCtx, pc, sql, ctx)
-
-	select {
-	case <-done:
-		return []*mysql.Result{r}, executeErr
-	case <-ctx.Done():
-		// The context expired
-		// Try to kill the connection to effectively cancel the Execute.
-		se.killConnection(pc)
-		// Wait for the pc.Execute call to return.
-		<-done
-		return nil, fmt.Errorf("sql exec out of maxSqlExecuteTime:%d Millisecond", maxSqlExecuteTime)
-	}
-}
-
 func (se *SessionExecutor) recycleBackendConn(pc backend.PooledConnect, rollback bool) {
 	if pc == nil {
 		return
@@ -486,13 +451,31 @@ func initBackendConn(pc backend.PooledConnect, phyDB string, charset string, col
 
 func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs map[string]backend.PooledConnect,
 	sqls map[string]map[string][]string) ([]*mysql.Result, error) {
-	pcslen := len(pcs)
-	if pcslen != len(sqls) {
+
+	parallel := len(pcs)
+	if parallel != len(sqls) {
 		log.Warn("Session executeInMultiSlices error, conns: %v, sqls: %v, error: %s", pcs, sqls, errors.ErrConnNotEqual.Error())
 		return nil, errors.ErrConnNotEqual
-	}
-	if pcslen == 0 {
+	} else if parallel == 0 {
 		return nil, errors.ErrNoPlan
+	}
+
+	var ctx = context.Background()
+	var cancel context.CancelFunc
+	maxExecuteTime := se.manager.GetNamespace(se.namespace).GetMaxExecuteTime()
+	if maxExecuteTime > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(maxExecuteTime)*time.Millisecond)
+		defer cancel()
+	}
+
+	// Control go routine execution
+	done := make(chan int64, parallel)
+	defer close(done)
+
+	// This map is not thread safe.
+	pcsUnCompleted := make(map[int64]backend.PooledConnect, parallel)
+	for _, pc := range pcs {
+		pcsUnCompleted[pc.GetConnectionID()] = pc
 	}
 
 	resultCount := 0
@@ -501,31 +484,8 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			resultCount += len(sqlDB)
 		}
 	}
-
 	rs := make([]interface{}, resultCount)
-
-	maxSqlExecuteTime := se.manager.GetNamespace(se.namespace).maxSqlExecuteTime
-	var ctx context.Context
-	if maxSqlExecuteTime <= 0 {
-		ctx = context.Background()
-	} else {
-		ctx, _ = context.WithTimeout(context.Background(), time.Duration(maxSqlExecuteTime)*time.Millisecond)
-	}
-
-	// Control goroutinue execution
-	done := make(chan int64, pcslen)
-	defer close(done)
-
-	// This map is not thread safe.
-	pcsCompleted := make(map[int64]backend.PooledConnect, pcslen)
-	for _, pc := range pcs {
-		pcsCompleted[pc.GetConnectionID()] = pc
-	}
-
 	f := func(reqCtx *util.RequestContext, rs []interface{}, i int, execSqls map[string][]string, pc backend.PooledConnect) {
-		defer func() {
-			done <- pc.GetConnectionID()
-		}()
 		for db, sqls := range execSqls {
 			err := initBackendConn(pc, db, se.GetCharset(), se.GetCollationID(), se.GetVariables())
 			if err != nil {
@@ -544,6 +504,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 				i++
 			}
 		}
+		done <- pc.GetConnectionID()
 	}
 
 	offset := 0
@@ -555,18 +516,27 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 		}
 	}
 
-	sliceDone := 0
-	for i := 0; i < pcslen; i++ {
+	for i := 0; i < parallel; i++ {
 		select {
 		case connectionID := <-done:
-			sliceDone++
-			delete(pcsCompleted, connectionID)
+			delete(pcsUnCompleted, connectionID)
 		case <-ctx.Done():
-			se.killConnections(pcsCompleted)
-			for j := 0; j < pcslen-sliceDone; j++ {
+			for connID, pc := range pcsUnCompleted {
+				killPc, err := pc.GetPool().Get(context.TODO())
+				if err != nil {
+					log.Warn("kill thread id:%d error, get connection err:%v", connID, err.Error())
+					continue
+				}
+				if _, err = killPc.Execute(fmt.Sprintf("kill %d", connID)); err != nil {
+					log.Warn("kill thread id:%d error, err:%v", connID, err.Error())
+				}
+				se.recycleBackendConn(killPc, false)
+			}
+
+			for j := 0; j < len(pcsUnCompleted); j++ {
 				<-done
 			}
-			return nil, fmt.Errorf("sql exec out of maxSqlExecuteTime:%d Millisecond", maxSqlExecuteTime)
+			return nil, fmt.Errorf("exceed of the maxSqlExecuteTime:%d Millisecond", maxExecuteTime)
 		}
 	}
 
@@ -581,39 +551,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			r[i] = rs[i].(*mysql.Result)
 		}
 	}
-
 	return r, err
-}
-
-func (se *SessionExecutor) killConnection(pc backend.PooledConnect) {
-	connID := pc.GetConnectionID()
-	killPc, err := pc.GetPool().Get(context.TODO())
-	if err != nil {
-		log.Warn("get kill connection err:", err.Error())
-		return
-	}
-	defer se.recycleBackendConn(killPc, false)
-	_, err = killPc.Execute(fmt.Sprintf("kill %d", connID))
-	if err != nil {
-		log.Warn("SessionExecutor.killConnection error,failed to kill connID %v: %v", connID, err)
-	}
-	return
-}
-
-func (se *SessionExecutor) killConnections(pcsCompleted map[int64]backend.PooledConnect) {
-	for connID, pc := range pcsCompleted {
-		killPc, err := pc.GetPool().Get(context.TODO())
-		if err != nil {
-			log.Warn("get kill connection err:", err.Error())
-			continue
-		}
-		defer se.recycleBackendConn(killPc, false)
-		_, err = killPc.Execute(fmt.Sprintf("kill %d", connID))
-		if err != nil {
-			log.Warn("SessionExecutor.killConnection error,failed to kill connID %v: %v", connID, err)
-		}
-	}
-	return
 }
 
 func canHandleWithoutPlan(stmtType int) bool {
@@ -808,15 +746,15 @@ func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sq
 		return nil, err
 	}
 
-	if err = initBackendConn(pc, phyDB, se.charset, se.collation, se.sessionVariables); err != nil {
-		return nil, err
-	}
-
-	// execute.sql may be rewritten in getShowExecDB
-	rs, err := se.executeInSlice(reqCtx, pc, sql)
-	if err != nil {
-		return nil, err
-	}
+	//if err = initBackendConn(pc, phyDB, se.charset, se.collation, se.sessionVariables); err != nil {
+	//	return nil, err
+	//}
+	//
+	//// execute.sql may be rewritten in getShowExecDB
+	//rs, err := se.executeInSlice(reqCtx, pc, sql)
+	//if err != nil {
+	//	return nil, err
+	//}
 
 	if len(rs) == 0 {
 		msg := fmt.Sprintf("result is empty")

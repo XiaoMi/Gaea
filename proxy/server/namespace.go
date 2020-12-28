@@ -237,6 +237,10 @@ func (n *Namespace) GetUserProperty(user string) int {
 	return n.userProperties[user].OtherProperty
 }
 
+func (n *Namespace) GetMaxExecuteTime() int64 {
+	return n.maxSqlExecuteTime
+}
+
 // IsSQLAllowed check black sql
 func (n *Namespace) IsSQLAllowed(reqCtx *util.RequestContext, sql string) bool {
 	if len(n.sqls) == 0 {
