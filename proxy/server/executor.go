@@ -536,7 +536,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			for j := 0; j < len(pcsUnCompleted); j++ {
 				<-done
 			}
-			return nil, fmt.Errorf("exceed of the maxSqlExecuteTime:%d Millisecond", maxExecuteTime)
+			return nil, fmt.Errorf("exceed of the maxSqlExecuteTime:%d ms", maxExecuteTime)
 		}
 	}
 
