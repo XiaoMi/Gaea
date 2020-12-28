@@ -735,26 +735,27 @@ func (se *SessionExecutor) rollback() (err error) {
 
 // ExecuteSQL execute sql
 func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sql string) (*mysql.Result, error) {
-	pc, err := se.getBackendConn("slice-0", getFromSlave(reqCtx))
-	defer se.recycleBackendConn(pc, false)
-	if err != nil {
-		return nil, err
-	}
-
 	phyDB, err := se.GetNamespace().GetDefaultPhyDB(db)
 	if err != nil {
 		return nil, err
 	}
 
-	//if err = initBackendConn(pc, phyDB, se.charset, se.collation, se.sessionVariables); err != nil {
-	//	return nil, err
-	//}
-	//
-	//// execute.sql may be rewritten in getShowExecDB
-	//rs, err := se.executeInSlice(reqCtx, pc, sql)
-	//if err != nil {
-	//	return nil, err
-	//}
+	sqls := make(map[string]map[string][]string)
+	dbSQLs := make(map[string][]string)
+	dbSQLs[phyDB] = []string{sql}
+	sqls[slice] = dbSQLs
+
+	pcs, err := se.getBackendConns(sqls, getFromSlave(reqCtx))
+	defer se.recycleBackendConns(pcs, false)
+	if err != nil {
+		log.Warn("getUnShardConns failed: %v", err)
+		return nil, err
+	}
+
+	rs, err := se.executeInMultiSlices(reqCtx, pcs, sqls)
+	if err != nil {
+		return nil, err
+	}
 
 	if len(rs) == 0 {
 		msg := fmt.Sprintf("result is empty")
@@ -779,7 +780,6 @@ func (se *SessionExecutor) ExecuteSQLs(reqCtx *util.RequestContext, sqls map[str
 
 	rs, err := se.executeInMultiSlices(reqCtx, pcs, sqls)
 	if err != nil {
-		log.Warn("executeInMultiSlices error: %v", err)
 		return nil, err
 	}
 	return rs, nil
