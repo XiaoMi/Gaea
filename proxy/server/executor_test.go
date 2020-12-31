@@ -260,7 +260,7 @@ encrypt_key=1234abcd5678efg*
             "rw_split": 1
         }
     ],
-    "default_slice": "slice-0",
+	"default_slice": "slice-0",
 	"max_sql_execute_time": 0
 }`
 
