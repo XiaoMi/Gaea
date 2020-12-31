@@ -535,7 +535,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			for j := 0; j < len(pcsUnCompleted); j++ {
 				<-done
 			}
-			return nil, fmt.Errorf("%v: %dms", errors.ErrTimeLimitExceeded, maxExecuteTime)
+			return nil, fmt.Errorf("%v %dms", errors.ErrTimeLimitExceeded, maxExecuteTime)
 		}
 	}
 

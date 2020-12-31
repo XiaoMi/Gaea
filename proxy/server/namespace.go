@@ -67,7 +67,7 @@ type Namespace struct {
 	defaultCharset     string
 	defaultCollationID mysql.CollationID
 	openGeneralLog     bool
-	maxSqlExecuteTime  int64 // session max sql execute time,millisecond
+	maxSqlExecuteTime  int // session max sql execute time,millisecond
 
 	slowSQLCache         *cache.LRUCache
 	errorSQLCache        *cache.LRUCache
@@ -237,7 +237,7 @@ func (n *Namespace) GetUserProperty(user string) int {
 	return n.userProperties[user].OtherProperty
 }
 
-func (n *Namespace) GetMaxExecuteTime() int64 {
+func (n *Namespace) GetMaxExecuteTime() int {
 	return n.maxSqlExecuteTime
 }
 
