@@ -1,14 +1,12 @@
 package backend
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
 func checkRoundRobin(rb []int, weights []int, gcd int) bool {
-	fmt.Println(rb, weights)
 	ret := make(map[int]int)
 	for _, node := range rb {
 		ret[node]++

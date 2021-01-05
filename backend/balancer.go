@@ -57,19 +57,19 @@ func gcd(ary []int) int {
 	return min
 }
 
-func newBalancer(SlaveWeights []int, total int) *balancer {
+func newBalancer(nodeWeights []int, total int) *balancer {
 	var sum int
 	var s balancer
 	s.total = total
 	s.lastIndex = 0
-	gcd := gcd(SlaveWeights)
+	gcd := gcd(nodeWeights)
 
-	for _, weight := range SlaveWeights {
+	for _, weight := range nodeWeights {
 		sum += weight / gcd
 	}
 
 	s.roundRobinQ = make([]int, 0, sum)
-	for index, weight := range SlaveWeights {
+	for index, weight := range nodeWeights {
 		for j := 0; j < weight/gcd; j++ {
 			s.roundRobinQ = append(s.roundRobinQ, index)
 		}
