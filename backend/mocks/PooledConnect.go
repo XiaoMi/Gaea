@@ -3,7 +3,6 @@
 package mocks
 
 import (
-	backend "github.com/XiaoMi/Gaea/backend"
 	mock "github.com/stretchr/testify/mock"
 
 	mysql "github.com/XiaoMi/Gaea/mysql"
@@ -116,22 +115,6 @@ func (_m *PooledConnect) GetConnectionID() int64 {
 		r0 = rf()
 	} else {
 		r0 = ret.Get(0).(int64)
-	}
-
-	return r0
-}
-
-// GetPool provides a mock function with given fields:
-func (_m *PooledConnect) GetPool() backend.ConnectionPool {
-	ret := _m.Called()
-
-	var r0 backend.ConnectionPool
-	if rf, ok := ret.Get(0).(func() backend.ConnectionPool); ok {
-		r0 = rf()
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(backend.ConnectionPool)
-		}
 	}
 
 	return r0
