@@ -61,10 +61,8 @@ type Slice struct {
 	StatisticSlave         []ConnectionPool
 	statisticSlaveBalancer *balancer
 
-	charset             string
-	collationID         mysql.CollationID
-	healthCheckInterval int
-	stopHealthCheck     chan struct{}
+	charset     string
+	collationID mysql.CollationID
 }
 
 // GetSliceName return name of slice
@@ -95,6 +93,10 @@ func (s *Slice) GetConn(fromSlave bool, userType int) (pc PooledConnect, err err
 		return
 	}
 	return
+}
+
+func (s *Slice) GetDirectConn(addr string) (*DirectConnection, error) {
+	return NewDirectConnection(addr, s.Cfg.UserName, s.Cfg.Password, "", s.charset, s.collationID)
 }
 
 // GetMasterConn return a connection in master pool

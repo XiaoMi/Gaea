@@ -469,13 +469,13 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 	}
 
 	// Control go routine execution
-	done := make(chan int64, parallel)
+	done := make(chan string, parallel)
 	defer close(done)
 
 	// This map is not thread safe.
-	pcsUnCompleted := make(map[int64]backend.PooledConnect, parallel)
-	for _, pc := range pcs {
-		pcsUnCompleted[pc.GetConnectionID()] = pc
+	pcsUnCompleted := make(map[string]backend.PooledConnect, parallel)
+	for sliceName, pc := range pcs {
+		pcsUnCompleted[sliceName] = pc
 	}
 
 	resultCount := 0
@@ -485,7 +485,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 		}
 	}
 	rs := make([]interface{}, resultCount)
-	f := func(reqCtx *util.RequestContext, rs []interface{}, i int, execSqls map[string][]string, pc backend.PooledConnect) {
+	f := func(reqCtx *util.RequestContext, rs []interface{}, i int, sliceName string, execSqls map[string][]string, pc backend.PooledConnect) {
 		for db, sqls := range execSqls {
 			err := initBackendConn(pc, db, se.GetCharset(), se.GetCollationID(), se.GetVariables())
 			if err != nil {
@@ -504,13 +504,13 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 				i++
 			}
 		}
-		done <- pc.GetConnectionID()
+		done <- sliceName
 	}
 
 	offset := 0
 	for sliceName, pc := range pcs {
 		s := sqls[sliceName] //map[string][]string
-		go f(reqCtx, rs, offset, s, pc)
+		go f(reqCtx, rs, offset, sliceName, s, pc)
 		for _, sqlDB := range sqls[sliceName] {
 			offset += len(sqlDB)
 		}
@@ -518,19 +518,20 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 
 	for i := 0; i < parallel; i++ {
 		select {
-		case connectionID := <-done:
-			delete(pcsUnCompleted, connectionID)
+		case sliceName := <-done:
+			delete(pcsUnCompleted, sliceName)
 		case <-ctx.Done():
-			for connID, pc := range pcsUnCompleted {
-				killPc, err := pc.GetPool().Get(context.TODO())
+			for sliceName, pc := range pcsUnCompleted {
+				connID := pc.GetConnectionID()
+				dc, err := se.manager.GetNamespace(se.namespace).GetSlice(sliceName).GetDirectConn(pc.GetAddr())
 				if err != nil {
 					log.Warn("kill thread id: %d failed, get connection err: %v", connID, err.Error())
 					continue
 				}
-				if _, err = killPc.Execute(fmt.Sprintf("kill %d", connID)); err != nil {
+				if _, err = dc.Execute(fmt.Sprintf("kill %d", connID)); err != nil {
 					log.Warn("kill thread id: %d failed, err: %v", connID, err.Error())
 				}
-				se.recycleBackendConn(killPc, false)
+				dc.Close()
 			}
 			for j := 0; j < len(pcsUnCompleted); j++ {
 				<-done
