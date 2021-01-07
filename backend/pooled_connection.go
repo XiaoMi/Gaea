@@ -45,10 +45,6 @@ func (pc *pooledConnectImpl) Reconnect() error {
 	return nil
 }
 
-func (pc *pooledConnectImpl) GetPool() ConnectionPool {
-	return pc.pool
-}
-
 // Close implement util.Resource interface
 func (pc *pooledConnectImpl) Close() {
 	pc.directConnection.Close()

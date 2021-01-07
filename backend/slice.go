@@ -51,8 +51,7 @@ const (
 // Slice means one slice of the mysql cluster
 type Slice struct {
 	sync.RWMutex
-	Namespace string
-	Cfg       models.Slice
+	Cfg models.Slice
 
 	Master        ConnectionPool
 	Slave         []ConnectionPool
