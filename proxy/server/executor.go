@@ -528,7 +528,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 					log.Warn("kill thread id: %d failed, get connection err: %v", connID, err.Error())
 					continue
 				}
-				if _, err = dc.Execute(fmt.Sprintf("kill %d", connID)); err != nil {
+				if _, err = dc.Execute(fmt.Sprintf("KILL QUERY %d", connID)); err != nil {
 					log.Warn("kill thread id: %d failed, err: %v", connID, err.Error())
 				}
 				dc.Close()
