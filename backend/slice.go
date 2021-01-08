@@ -50,15 +50,20 @@ const (
 
 // Slice means one slice of the mysql cluster
 type Slice struct {
-	sync.RWMutex
 	Cfg models.Slice
 
-	Master        ConnectionPool
-	Slave         []ConnectionPool
-	slaveBalancer *balancer
+	sync.RWMutex
+	Master ConnectionPool
 
-	StatisticSlave         []ConnectionPool
-	statisticSlaveBalancer *balancer
+	Slave          []ConnectionPool
+	LastSlaveIndex int
+	RoundRobinQ    []int
+	SlaveWeights   []int
+
+	StatisticSlave            []ConnectionPool
+	LastStatisticSlaveIndex   int
+	StatisticSlaveRoundRobinQ []int
+	StatisticSlaveWeights     []int
 
 	charset     string
 	collationID mysql.CollationID
@@ -94,10 +99,6 @@ func (s *Slice) GetConn(fromSlave bool, userType int) (pc PooledConnect, err err
 	return
 }
 
-func (s *Slice) GetDirectConn(addr string) (*DirectConnection, error) {
-	return NewDirectConnection(addr, s.Cfg.UserName, s.Cfg.Password, "", s.charset, s.collationID)
-}
-
 // GetMasterConn return a connection in master pool
 func (s *Slice) GetMasterConn() (PooledConnect, error) {
 	ctx := context.TODO()
@@ -107,25 +108,25 @@ func (s *Slice) GetMasterConn() (PooledConnect, error) {
 // GetSlaveConn return a connection in slave pool
 func (s *Slice) GetSlaveConn() (PooledConnect, error) {
 	s.Lock()
-	index, err := s.slaveBalancer.next()
+	cp, err := s.getNextSlave()
 	s.Unlock()
 	if err != nil {
 		return nil, err
 	}
 	ctx := context.TODO()
-	return s.Slave[index].Get(ctx)
+	return cp.Get(ctx)
 }
 
 // GetStatisticSlaveConn return a connection in statistic slave pool
 func (s *Slice) GetStatisticSlaveConn() (PooledConnect, error) {
 	s.Lock()
-	index, err := s.statisticSlaveBalancer.next()
+	cp, err := s.getNextStatisticSlave()
 	s.Unlock()
 	if err != nil {
 		return nil, err
 	}
 	ctx := context.TODO()
-	return s.StatisticSlave[index].Get(ctx)
+	return cp.Get(ctx)
 }
 
 // Close close the pool in slice
@@ -174,7 +175,7 @@ func (s *Slice) ParseSlave(slaves []string) error {
 
 	count := len(slaves)
 	s.Slave = make([]ConnectionPool, 0, count)
-	slaveWeights := make([]int, 0, count)
+	s.SlaveWeights = make([]int, 0, count)
 
 	//parse addr and weight
 	for i := 0; i < count; i++ {
@@ -187,7 +188,7 @@ func (s *Slice) ParseSlave(slaves []string) error {
 		} else {
 			weight = 1
 		}
-		slaveWeights = append(slaveWeights, weight)
+		s.SlaveWeights = append(s.SlaveWeights, weight)
 		idleTimeout, err := util.Int2TimeDuration(s.Cfg.IdleTimeout)
 		if err != nil {
 			return err
@@ -196,7 +197,7 @@ func (s *Slice) ParseSlave(slaves []string) error {
 		cp.Open()
 		s.Slave = append(s.Slave, cp)
 	}
-	s.slaveBalancer = newBalancer(slaveWeights, len(s.Slave))
+	s.initBalancer()
 	return nil
 }
 
@@ -212,7 +213,7 @@ func (s *Slice) ParseStatisticSlave(statisticSlaves []string) error {
 
 	count := len(statisticSlaves)
 	s.StatisticSlave = make([]ConnectionPool, 0, count)
-	statisticSlaveWeights := make([]int, 0, count)
+	s.StatisticSlaveWeights = make([]int, 0, count)
 
 	//parse addr and weight
 	for i := 0; i < count; i++ {
@@ -225,7 +226,7 @@ func (s *Slice) ParseStatisticSlave(statisticSlaves []string) error {
 		} else {
 			weight = 1
 		}
-		statisticSlaveWeights = append(statisticSlaveWeights, weight)
+		s.StatisticSlaveWeights = append(s.StatisticSlaveWeights, weight)
 		idleTimeout, err := util.Int2TimeDuration(s.Cfg.IdleTimeout)
 		if err != nil {
 			return err
@@ -234,7 +235,7 @@ func (s *Slice) ParseStatisticSlave(statisticSlaves []string) error {
 		cp.Open()
 		s.StatisticSlave = append(s.StatisticSlave, cp)
 	}
-	s.statisticSlaveBalancer = newBalancer(statisticSlaveWeights, len(s.StatisticSlave))
+	s.initStatisticSlaveBalancer()
 	return nil
 }
 
