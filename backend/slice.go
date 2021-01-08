@@ -99,6 +99,10 @@ func (s *Slice) GetConn(fromSlave bool, userType int) (pc PooledConnect, err err
 	return
 }
 
+func (s *Slice) GetDirectConn(addr string) (*DirectConnection, error) {
+	return NewDirectConnection(addr, s.Cfg.UserName, s.Cfg.Password, "", s.charset, s.collationID)
+}
+
 // GetMasterConn return a connection in master pool
 func (s *Slice) GetMasterConn() (PooledConnect, error) {
 	ctx := context.TODO()
