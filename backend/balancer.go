@@ -21,6 +21,13 @@ import (
 	"github.com/XiaoMi/Gaea/core/errors"
 )
 
+type balancer struct {
+	total       int
+	lastIndex   int
+	roundRobinQ []int
+	nodeWeights []int
+}
+
 // calculate gcd ?
 func gcd(ary []int) int {
 	var i int
@@ -51,108 +58,55 @@ func gcd(ary []int) int {
 	return min
 }
 
-// initBalancer init balancer of slaves
-func (s *Slice) initBalancer() {
+func newBalancer(nodeWeights []int, total int) *balancer {
 	var sum int
-	s.LastSlaveIndex = 0
-	gcd := gcd(s.SlaveWeights)
+	var s balancer
+	s.total = total
+	s.lastIndex = 0
+	gcd := gcd(nodeWeights)
 
-	for _, weight := range s.SlaveWeights {
+	for _, weight := range nodeWeights {
 		sum += weight / gcd
 	}
 
-	s.RoundRobinQ = make([]int, 0, sum)
-	for index, weight := range s.SlaveWeights {
+	s.roundRobinQ = make([]int, 0, sum)
+	for index, weight := range nodeWeights {
 		for j := 0; j < weight/gcd; j++ {
-			s.RoundRobinQ = append(s.RoundRobinQ, index)
+			s.roundRobinQ = append(s.roundRobinQ, index)
 		}
 	}
 
 	//random order
-	if 1 < len(s.SlaveWeights) {
+	if 1 < len(s.nodeWeights) {
 		r := rand.New(rand.NewSource(time.Now().UnixNano()))
 		for i := 0; i < sum; i++ {
 			x := r.Intn(sum)
-			temp := s.RoundRobinQ[x]
+			temp := s.roundRobinQ[x]
 			other := sum % (x + 1)
-			s.RoundRobinQ[x] = s.RoundRobinQ[other]
-			s.RoundRobinQ[other] = temp
+			s.roundRobinQ[x] = s.roundRobinQ[other]
+			s.roundRobinQ[other] = temp
 		}
 	}
+	return &s
 }
 
-// initStatisticSlaveBalancer init balancer of statistic slaves
-func (s *Slice) initStatisticSlaveBalancer() {
-	var sum int
-	s.LastStatisticSlaveIndex = 0
-	gcd := gcd(s.StatisticSlaveWeights)
-
-	for _, weight := range s.StatisticSlaveWeights {
-		sum += weight / gcd
-	}
-
-	s.StatisticSlaveRoundRobinQ = make([]int, 0, sum)
-	for index, weight := range s.StatisticSlaveWeights {
-		for j := 0; j < weight/gcd; j++ {
-			s.StatisticSlaveRoundRobinQ = append(s.StatisticSlaveRoundRobinQ, index)
-		}
-	}
-
-	//random order
-	if 1 < len(s.StatisticSlaveWeights) {
-		r := rand.New(rand.NewSource(time.Now().UnixNano()))
-		for i := 0; i < sum; i++ {
-			x := r.Intn(sum)
-			temp := s.StatisticSlaveRoundRobinQ[x]
-			other := sum % (x + 1)
-			s.StatisticSlaveRoundRobinQ[x] = s.StatisticSlaveRoundRobinQ[other]
-			s.StatisticSlaveRoundRobinQ[other] = temp
-		}
-	}
-}
-
-// getNextSlave return connection pool of calculated ip
-func (s *Slice) getNextSlave() (ConnectionPool, error) {
+func (b *balancer) next() (int, error) {
 	var index int
-	queueLen := len(s.RoundRobinQ)
+	queueLen := len(b.roundRobinQ)
 	if queueLen == 0 {
-		return nil, errors.ErrNoDatabase
+		return 0, errors.ErrNoDatabase
 	}
 	if queueLen == 1 {
-		index = s.RoundRobinQ[0]
-		return s.Slave[index], nil
+		index = b.roundRobinQ[0]
+		return index, nil
 	}
 
-	s.LastSlaveIndex = s.LastSlaveIndex % queueLen
-	index = s.RoundRobinQ[s.LastSlaveIndex]
-	if len(s.Slave) <= index {
-		return nil, errors.ErrNoDatabase
+	b.lastIndex = b.lastIndex % queueLen
+	index = b.roundRobinQ[b.lastIndex]
+	if index >= b.total {
+		return 0, errors.ErrNoDatabase
 	}
-	cp := s.Slave[index]
-	s.LastSlaveIndex++
-	s.LastSlaveIndex = s.LastSlaveIndex % queueLen
-	return cp, nil
-}
-
-// getNextStatisticSlave return connection pool of calculated ip
-func (s *Slice) getNextStatisticSlave() (ConnectionPool, error) {
-	var index int
-	queueLen := len(s.StatisticSlaveRoundRobinQ)
-	if queueLen == 0 {
-		return nil, errors.ErrNoDatabase
-	}
-	if queueLen == 1 {
-		index = s.StatisticSlaveRoundRobinQ[0]
-		return s.StatisticSlave[index], nil
-	}
-
-	s.LastSlaveIndex = s.LastStatisticSlaveIndex % queueLen
-	index = s.StatisticSlaveRoundRobinQ[s.LastStatisticSlaveIndex]
-	if len(s.StatisticSlave) <= index {
-		return nil, errors.ErrNoDatabase
-	}
-	cp := s.StatisticSlave[index]
-	s.LastStatisticSlaveIndex++
-	s.LastStatisticSlaveIndex = s.LastStatisticSlaveIndex % queueLen
-	return cp, nil
+	b.lastIndex++
+	b.lastIndex = b.lastIndex % queueLen
+	return index, nil
 }
