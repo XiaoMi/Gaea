@@ -112,3 +112,7 @@ func (pc *pooledConnectImpl) SetSessionVariables(frontend *mysql.SessionVariable
 func (pc *pooledConnectImpl) WriteSetStatement() error {
 	return pc.directConnection.WriteSetStatement()
 }
+
+func (pc *pooledConnectImpl) GetConnectionID() int64 {
+	return int64(pc.directConnection.conn.ConnectionID)
+}

@@ -235,5 +235,6 @@
         }
     ],
     "default_slice": "slice-0",
-    "global_sequences": []
+    "global_sequences": [],
+    "max_sql_execute_time": 0
 }
