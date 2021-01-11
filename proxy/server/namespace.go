@@ -41,7 +41,8 @@ const (
 	defaultSQLCacheCapacity  = 64
 	defaultPlanCacheCapacity = 128
 
-	defaultSlowSQLTime = 1000 // millisecond
+	defaultSlowSQLTime       = 1000 // millisecond
+	defaultMaxSqlExecuteTime = 0    // 默认为0，不开启
 )
 
 // UserProperty means runtime user properties
@@ -66,6 +67,7 @@ type Namespace struct {
 	defaultCharset     string
 	defaultCollationID mysql.CollationID
 	openGeneralLog     bool
+	maxSqlExecuteTime  int // session max sql execute time,millisecond
 
 	slowSQLCache         *cache.LRUCache
 	errorSQLCache        *cache.LRUCache
@@ -107,6 +109,13 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 	namespace.slowSQLTime, err = parseSlowSQLTime(namespaceConfig.SlowSQLTime)
 	if err != nil {
 		return nil, fmt.Errorf("parse slowSQLTime error: %v", err)
+	}
+
+	// init session slow sql max execute time
+	if namespaceConfig.MaxSqlExecuteTime <= 0 {
+		namespace.maxSqlExecuteTime = defaultMaxSqlExecuteTime
+	} else {
+		namespace.maxSqlExecuteTime = namespaceConfig.MaxSqlExecuteTime
 	}
 
 	allowDBs := make(map[string]bool, len(namespaceConfig.AllowedDBS))
@@ -226,6 +235,10 @@ func (n *Namespace) IsStatisticUser(user string) bool {
 // GetUserProperty return user information
 func (n *Namespace) GetUserProperty(user string) int {
 	return n.userProperties[user].OtherProperty
+}
+
+func (n *Namespace) GetMaxExecuteTime() int {
+	return n.maxSqlExecuteTime
 }
 
 // IsSQLAllowed check black sql

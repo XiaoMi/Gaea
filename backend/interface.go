@@ -23,6 +23,7 @@ type PooledConnect interface {
 	GetAddr() string
 	SetSessionVariables(frontend *mysql.SessionVariables) (bool, error)
 	WriteSetStatement() error
+	GetConnectionID() int64
 }
 
 type ConnectionPool interface {

@@ -85,6 +85,7 @@ func TestExecute(t *testing.T) {
 	//slice-0
 	ctx := context.Background()
 	slice0MasterConn := new(mocks.PooledConnect)
+	slice0MasterConn.On("GetConnectionID").Return(int64(1))
 	slice0MasterPool.On("Get", ctx).Return(slice0MasterConn, nil).Once()
 	slice0MasterConn.On("UseDB", "db_mycat_0").Return(nil)
 	slice0MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
@@ -95,6 +96,7 @@ func TestExecute(t *testing.T) {
 
 	//slice-1
 	slice1MasterConn := new(mocks.PooledConnect)
+	slice1MasterConn.On("GetConnectionID").Return(int64(2))
 	slice1MasterPool.On("Get", ctx).Return(slice1MasterConn, nil).Once()
 	slice1MasterConn.On("UseDB", "db_mycat_2").Return(nil)
 	slice1MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
@@ -258,7 +260,8 @@ encrypt_key=1234abcd5678efg*
             "rw_split": 1
         }
     ],
-    "default_slice": "slice-0"
+    "default_slice": "slice-0",
+    "max_sql_execute_time": 0
 }`
 
 	//加载proxy配置

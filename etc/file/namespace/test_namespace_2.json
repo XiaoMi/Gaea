@@ -35,5 +35,6 @@
         }
     ],
     "default_slice": "slice-0",
-    "global_sequences": null
+    "global_sequences": null,
+    "max_sql_execute_time": 0
 }

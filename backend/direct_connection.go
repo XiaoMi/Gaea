@@ -206,10 +206,14 @@ func (dc *DirectConnection) readInitialHandshake() error {
 		return fmt.Errorf("invalid protocol version %d, must >= 10", data[0])
 	}
 
-	//skip mysql version and connection id
+	//skip mysql version
 	//mysql version end with 0x00
-	//connection id length is 4
-	pos := 1 + bytes.IndexByte(data[1:], 0x00) + 1 + 4
+	pos := 1 + bytes.IndexByte(data[1:], 0x00) + 1
+
+	// get connection id
+	dc.conn.ConnectionID = binary.LittleEndian.Uint32(data[pos : pos+4])
+
+	pos += 4
 
 	dc.salt = append(dc.salt, data[pos:pos+8]...)
 
