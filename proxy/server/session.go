@@ -224,6 +224,7 @@ func (cc *Session) Run() {
 		cc.c.SetSequence(0)
 		data, err := cc.c.ReadEphemeralPacket()
 		if err != nil {
+			cc.c.RecycleReadPacket()
 			return
 		}
 

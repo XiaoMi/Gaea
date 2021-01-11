@@ -98,4 +98,5 @@ var (
 	ErrNamespaceNotPrepared = errors.New("namespace is not prepared")
 
 	ErrTimeLimitExceeded = errors.New("sql execute time exceeded")
+	ErrRowsLimitExceeded = errors.New("sql result set size exceeded")
 )

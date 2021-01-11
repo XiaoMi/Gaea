@@ -494,7 +494,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			}
 			for _, v := range sqls {
 				startTime := time.Now()
-				r, err := pc.Execute(v)
+				r, err := pc.Execute(v,  se.manager.GetNamespace(se.namespace).GetMaxResultSize())
 				se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, v, pc.GetAddr(), startTime, err)
 				if err != nil {
 					rs[i] = err
@@ -528,7 +528,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 					log.Warn("kill thread id: %d failed, get connection err: %v", connID, err.Error())
 					continue
 				}
-				if _, err = dc.Execute(fmt.Sprintf("KILL QUERY %d", connID)); err != nil {
+				if _, err = dc.Execute(fmt.Sprintf("KILL QUERY %d", connID), 0); err != nil {
 					log.Warn("kill thread id: %d failed, err: %v", connID, err.Error())
 				}
 				dc.Close()

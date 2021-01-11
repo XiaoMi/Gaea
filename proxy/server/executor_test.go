@@ -91,7 +91,7 @@ func TestExecute(t *testing.T) {
 	slice0MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice0MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice0MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice0MasterConn.On("Execute", "SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(expectResult1, nil)
+	slice0MasterConn.On("Execute", "SELECT * FROM `tbl_mycat` WHERE `k`=0", defaultMaxSqlResultSize).Return(expectResult1, nil)
 	slice0MasterConn.On("Recycle").Return(nil)
 
 	//slice-1
@@ -102,7 +102,7 @@ func TestExecute(t *testing.T) {
 	slice1MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice1MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice1MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice1MasterConn.On("Execute", "SELECT * FROM `tbl_mycat` WHERE `k`=0").Return(expectResult2, nil)
+	slice1MasterConn.On("Execute", "SELECT * FROM `tbl_mycat` WHERE `k`=0", defaultMaxSqlResultSize).Return(expectResult2, nil)
 	slice1MasterConn.On("Recycle").Return(nil)
 
 	sqls := map[string]map[string][]string{
@@ -261,7 +261,7 @@ encrypt_key=1234abcd5678efg*
         }
     ],
     "default_slice": "slice-0",
-    "max_sql_execute_time": 0
+	"max_sql_execute_time": 0
 }`
 
 	//加载proxy配置

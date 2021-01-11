@@ -204,15 +204,14 @@ func (c *Conn) ReadEphemeralPacket() ([]byte, error) {
 	if c.currentEphemeralPolicy != ephemeralUnused {
 		panic(fmt.Errorf("ReadEphemeralPacket: unexpected currentEphemeralPolicy: %v", c.currentEphemeralPolicy))
 	}
+	c.currentEphemeralPolicy = ephemeralRead
 
 	r := c.getReader()
-
 	length, err := c.readHeaderFrom(r)
 	if err != nil {
 		return nil, err
 	}
 
-	c.currentEphemeralPolicy = ephemeralRead
 	if length == 0 {
 		// This can be caused by the packet after a packet of
 		// exactly size MaxPacketSize.

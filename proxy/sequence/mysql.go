@@ -81,7 +81,7 @@ func (s *MySQLSequence) getSeqFromDB() error {
 		return err
 	}
 
-	r, err := conn.Execute(s.sql)
+	r, err := conn.Execute(s.sql, 0)
 	if err != nil {
 		return err
 	}
