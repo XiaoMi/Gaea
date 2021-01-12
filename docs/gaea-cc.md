@@ -61,7 +61,12 @@ Namespace结构参考：https://github.com/XiaoMi/Gaea/blob/master/docs/configur
 | 字段      | 类型      | 说明                        | 是否必传 |
 | :-------- | :-------- | :-------------------------- | :------- |
 | cluster   | string    |                             | Y        |
-| namespace | Namespace | 在body中传递namespace的json | Y        |
+
+- 请求body
+
+| 字段      | 类型      | 说明                           | 是否必传 |
+| :-------- | :-------- | :--------------------------    | :------- |
+| namespace | json      | 在body中传递namespace的配置信息 | Y        |
 
 Namespace结构参考：https://github.com/XiaoMi/Gaea/blob/master/docs/configuration.md
 
