@@ -248,6 +248,15 @@
           "refId": "A",
           "step": 2,
           "target": ""
+        },
+        {
+          "expr": "sum(avg(delta(gaea_proxy_backend_sql_timings_sum{namespace=\"gaea_test_namespace\"}[10s])) without (slave) / avg(delta(gaea_proxy_backend_sql_timings_sum{namespace=\"gaea_test_namespace\"}[10s])) without (slave)) by (namespace, operation)",
+          "format": "time_series",
+          "intervalFactor": 2,
+          "legendFormat": "mysql_{{operation}}",
+          "refId": "B",
+          "step": 2,
+          "target": ""
         }
       ],
       "thresholds": [],

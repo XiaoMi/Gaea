@@ -73,6 +73,11 @@ namespace的配置格式为json，包含分表、非分表、实例等配置信�
 | slices          | map数组    | 一主多从的物理实例，slice里map的具体字段可参照slice配置 |
 | shard_rules     | map数组    | 分库、分表、特殊表的配置内容，具体字段可参照shard配置    |
 | users           | map数组    | 应用端连接gaea所需要的用户配置，具体字段可参照users配置 |
+| global_sequences| map       | 生成全局唯一序列号的配置, 具体字段可参考全局序列号配置    |
+| default_slice   | string    | show语句默认的执行分片                              |
+| open_general_log   | bool    | 是否开启审计日志, [如何开启](https://github.com/XiaoMi/Gaea/issues/109)|                              |
+| max_sql_execute_time  | int | 应用端查询最大执行时间, 超时后会被自动kill, 为0默认不开启此功能 |
+| max_sql_result_size   | int | gaea从后端mysql接收结果集的最大值, 限制单分片查询行数, 默认值10000, 为0不开启|
 
 ### slice配置
 
@@ -140,7 +145,12 @@ namespace的配置格式为json，包含分表、非分表、实例等配置信�
     "default_phy_dbs": {
         "db_ks": "db_ks",
         "db_mycat": "db_mycat_0"
-    },
+    }, 
+    "slow_sql_time": "1000",
+    "black_sql": [
+        ""
+    ],
+    "allowed_ip": null, 
     "slices": [
         {
             "name": "slice-0",
@@ -377,8 +387,11 @@ namespace的配置格式为json，包含分表、非分表、实例等配置信�
             "rw_flag": 2,
             "rw_split": 1
         }
-    ],
-    "default_slice": "slice-0"
+    ], 
+    "default_slice": "slice-0",
+    "open_general_log": false,
+    "max_sql_execute_time": 5000,
+    "max_sql_result_size": 10
 }
 ```
 

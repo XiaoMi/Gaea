@@ -64,6 +64,28 @@ admin_addr=0.0.0.0:13307
 admin_user=admin
 admin_password=admin
 ```
+增加Prometheus Recoding Rules
+```
+groups:
+  - name: gaea_proxy_rule
+    rules:
+    - record: gaea_proxy_sql_timings_count_rate_each_namespace
+      expr: sum(avg(rate(gaea_proxy_sql_timings_count[20s])) without (slave)) by (namespace)
+    - record: gaea_proxy_sql_timings_count_rate_total
+      expr: sum(sum(avg(rate(gaea_proxy_sql_timings_count[20s])) without (slave)) by (namespace))
+    - record: gaea_proxy_flow_counts_rate_namespace_flowdirection
+      expr: sum(avg(rate(gaea_proxy_flow_counts[20s])) without (slave)) by (namespace, flowdirection)
+    - record: gaea_proxy_flow_counts_rate_namespace
+      expr: sum(avg(rate(gaea_proxy_flow_counts[20s])) without (slave)) by (namespace)
+    - record: gaea_proxy_flow_counts_rate_total
+      expr: sum(sum(avg(rate(gaea_proxy_flow_counts[20s])) without (slave)) by (namespace))
+    - record: gaea_proxy_sql_timings_rate_namespace_operation
+      expr: sum(delta(gaea_proxy_sql_timings_sum[20s])) by (namespace,operation) / sum(delta(gaea_proxy_sql_timings_count[20s])) by (namespace,operation)
+    - record: gaea_proxy_sql_timings_rate_namespace
+      expr: sum(delta(gaea_proxy_sql_timings_sum[20s])) by (namespace) / sum(delta(gaea_proxy_sql_timings_count[20s])) by (namespace)
+    - record: gaea_proxy_sql_error_counts_rate_namespace
+      expr: sum(avg(rate(gaea_proxy_sql_error_counts[20s])) without (instance)) by (namespace)
+``` 
 ##  
 
  
