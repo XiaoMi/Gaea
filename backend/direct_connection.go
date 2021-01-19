@@ -22,6 +22,7 @@ import (
 	"net"
 	"strings"
 
+	sqlerr "github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util/sync2"
@@ -123,7 +124,7 @@ func (dc *DirectConnection) connect() error {
 
 	// we must always use autocommit
 	if !dc.IsAutoCommit() {
-		if _, err := dc.exec("set autocommit = 1"); err != nil {
+		if _, err := dc.exec("set autocommit = 1", 0); err != nil {
 			dc.conn.Close()
 
 			return err
@@ -408,38 +409,38 @@ func (dc *DirectConnection) GetAddr() string {
 }
 
 // Execute send ComQuery or ComStmtPrepare/ComStmtExecute/ComStmtClose to backend mysql
-func (dc *DirectConnection) Execute(sql string) (*mysql.Result, error) {
-	return dc.exec(sql)
+func (dc *DirectConnection) Execute(sql string, maxRows int) (*mysql.Result, error) {
+	return dc.exec(sql, maxRows)
 }
 
 // Begin send ComQuery with 'begin' to backend mysql to start transaction
 func (dc *DirectConnection) Begin() error {
-	_, err := dc.exec("begin")
+	_, err := dc.exec("begin", 0)
 	return err
 }
 
 // Commit send ComQuery with 'commit' to backend mysql to commit transaction
 func (dc *DirectConnection) Commit() error {
-	_, err := dc.exec("commit")
+	_, err := dc.exec("commit", 0)
 	return err
 }
 
 // Rollback send ComQuery with 'rollback' to backend mysql to rollback transaction
 func (dc *DirectConnection) Rollback() error {
-	_, err := dc.exec("rollback")
+	_, err := dc.exec("rollback", 0)
 	return err
 }
 
 // SetAutoCommit trun on/off autocommit
 func (dc *DirectConnection) SetAutoCommit(v uint8) error {
 	if v == 0 {
-		if _, err := dc.exec("set autocommit = 0"); err != nil {
+		if _, err := dc.exec("set autocommit = 0", 0); err != nil {
 			dc.conn.Close()
 
 			return err
 		}
 	} else {
-		if _, err := dc.exec("set autocommit = 1"); err != nil {
+		if _, err := dc.exec("set autocommit = 1", 0); err != nil {
 			dc.conn.Close()
 
 			return err
@@ -522,7 +523,7 @@ func (dc *DirectConnection) WriteSetStatement() error {
 	if setSQL == "" {
 		return nil
 	}
-	if _, err := dc.exec(setSQL); err != nil {
+	if _, err := dc.exec(setSQL, 0); err != nil {
 		return err
 	}
 	return nil
@@ -558,16 +559,16 @@ func (dc *DirectConnection) FieldList(table string, wildcard string) ([]*mysql.F
 }
 
 // execute ComQuery command
-func (dc *DirectConnection) exec(query string) (*mysql.Result, error) {
+func (dc *DirectConnection) exec(query string, maxRows int) (*mysql.Result, error) {
 	if err := dc.writeComQuery(query); err != nil {
 		return nil, err
 	}
 
-	return dc.readResult(false)
+	return dc.readResult(false, maxRows)
 }
 
 // read resultset from mysql
-func (dc *DirectConnection) readResultset(data []byte, binary bool) (*mysql.Result, error) {
+func (dc *DirectConnection) readResultSet(data []byte, binary bool, maxRows int) (*mysql.Result, error) {
 	result := &mysql.Result{
 		Status:       0,
 		InsertID:     0,
@@ -591,7 +592,7 @@ func (dc *DirectConnection) readResultset(data []byte, binary bool) (*mysql.Resu
 		return nil, err
 	}
 
-	if err := dc.readResultRows(result, binary); err != nil {
+	if err := dc.readResultRows(result, binary, maxRows); err != nil {
 		return nil, err
 	}
 
@@ -641,7 +642,7 @@ func (dc *DirectConnection) readResultColumns(result *mysql.Result) (err error) 
 }
 
 // readResultRows read result rows
-func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool) (err error) {
+func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool, maxRows int) (err error) {
 	var data []byte
 
 	for {
@@ -667,19 +668,44 @@ func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool) 
 		}
 
 		result.RowDatas = append(result.RowDatas, data)
+		if maxRows > 0 && len(result.RowDatas) >= maxRows {
+			if err := dc.drainResults(); err != nil {
+				return fmt.Errorf("%v %d, drain error: %v", sqlerr.ErrRowsLimitExceeded, maxRows, err)
+			}
+			return fmt.Errorf("%v %d", sqlerr.ErrRowsLimitExceeded, maxRows)
+		}
 	}
 
 	result.Values = make([][]interface{}, len(result.RowDatas))
-
 	for i := range result.Values {
 		result.Values[i], err = result.RowDatas[i].Parse(result.Fields, isBinary)
-
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// drainResults will read all packets for a result set and ignore them.
+func (dc *DirectConnection) drainResults() error {
+	for {
+		data, err := dc.conn.ReadEphemeralPacket()
+		if err != nil {
+			dc.conn.RecycleReadPacket()
+			return err
+		}
+
+		if dc.isEOFPacket(data) {
+			dc.conn.RecycleReadPacket()
+			return nil
+		} else if data[0] == mysql.ErrHeader {
+			err := dc.handleErrorPacket(data)
+			dc.conn.RecycleReadPacket()
+			return err
+		}
+		dc.conn.RecycleReadPacket()
+	}
 }
 
 func (dc *DirectConnection) isEOFPacket(data []byte) bool {
@@ -732,7 +758,7 @@ func (dc *DirectConnection) handleErrorPacket(data []byte) error {
 	return e
 }
 
-func (dc *DirectConnection) readResult(binary bool) (*mysql.Result, error) {
+func (dc *DirectConnection) readResult(binary bool, maxRows int) (*mysql.Result, error) {
 	data, err := dc.readPacket()
 	if err != nil {
 		return nil, err
@@ -745,7 +771,7 @@ func (dc *DirectConnection) readResult(binary bool) (*mysql.Result, error) {
 		return nil, mysql.ErrMalformPacket
 	}
 
-	return dc.readResultset(data, binary)
+	return dc.readResultSet(data, binary, maxRows)
 }
 
 // IsAutoCommit check if autocommit

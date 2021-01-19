@@ -45,13 +45,13 @@ func (_m *PooledConnect) Commit() error {
 	return r0
 }
 
-// Execute provides a mock function with given fields: sql
-func (_m *PooledConnect) Execute(sql string) (*mysql.Result, error) {
-	ret := _m.Called(sql)
+// Execute provides a mock function with given fields: sql, maxRows
+func (_m *PooledConnect) Execute(sql string, maxRows int) (*mysql.Result, error) {
+	ret := _m.Called(sql, maxRows)
 
 	var r0 *mysql.Result
-	if rf, ok := ret.Get(0).(func(string) *mysql.Result); ok {
-		r0 = rf(sql)
+	if rf, ok := ret.Get(0).(func(string, int) *mysql.Result); ok {
+		r0 = rf(sql, maxRows)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*mysql.Result)
@@ -59,8 +59,8 @@ func (_m *PooledConnect) Execute(sql string) (*mysql.Result, error) {
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(string) error); ok {
-		r1 = rf(sql)
+	if rf, ok := ret.Get(1).(func(string, int) error); ok {
+		r1 = rf(sql, maxRows)
 	} else {
 		r1 = ret.Error(1)
 	}

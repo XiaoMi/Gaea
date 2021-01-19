@@ -13,7 +13,7 @@ type PooledConnect interface {
 	Close()
 	IsClosed() bool
 	UseDB(db string) error
-	Execute(sql string) (*mysql.Result, error)
+	Execute(sql string, maxRows int) (*mysql.Result, error)
 	SetAutoCommit(v uint8) error
 	Begin() error
 	Commit() error
