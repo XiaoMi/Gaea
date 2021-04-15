@@ -14,7 +14,7 @@ git clone git@github.com:XiaoMi/Gaea.git
 # export GOPROXY=https://athens.azurefd.net
 
 # 编译二进制包
-cd Gaea && make
+cd Gaea && make build
 ```
 
 ## 执行
