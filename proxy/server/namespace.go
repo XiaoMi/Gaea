@@ -121,7 +121,7 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 	}
 
 	// init session slow sql max result size
-	if namespaceConfig.MaxSqlResultSize <= 0 {
+	if namespaceConfig.MaxSqlResultSize <= 0 && namespaceConfig.MaxSqlResultSize != -1 {
 		namespace.maxSqlResultSize = defaultMaxSqlResultSize
 	} else {
 		namespace.maxSqlResultSize = namespaceConfig.MaxSqlResultSize
