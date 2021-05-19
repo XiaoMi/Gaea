@@ -1666,7 +1666,7 @@ Gaea启动地址为127.0.0.1:13307
     ],
     "users": [
         {
-            "user_name": "mycatMurmur",
+            "user_name": "test",
             "password": "1234",
             "namespace": "test_mycat_murmur",
             "rw_flag": 2,
@@ -1945,7 +1945,7 @@ Gaea启动地址为127.0.0.1:13307
     ],
     "users": [
         {
-            "user_name": "testMycatString",
+            "user_name": "test",
             "password": "1234",
             "namespace": "test_mycat_string",
             "rw_flag": 2,
