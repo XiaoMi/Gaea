@@ -295,7 +295,8 @@ func (cc *ClientConn) writeResultset(status uint16, r *mysql.Resultset) error {
 func (cc *ClientConn) writeFieldList(status uint16, fs []*mysql.Field) error {
 	var err error
 	for _, f := range fs {
-		err = cc.writeColumnDefinition(f)
+		err = cc.Conn.WritePacket(f.Dump())
+		//err = cc.writeColumnDefinition(f)
 		if err != nil {
 			return err
 		}
