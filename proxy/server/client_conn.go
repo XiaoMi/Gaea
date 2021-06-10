@@ -28,6 +28,8 @@ type ClientConn struct {
 
 	manager *Manager
 
+	capability uint32
+
 	namespace string // TODO: remove it when refactor is done
 }
 
@@ -148,6 +150,7 @@ func (cc *ClientConn) readHandshakeResponse() (HandshakeResponseInfo, error) {
 		return info, fmt.Errorf("readHandshakeResponse: only support protocol 4.1")
 	}
 
+	cc.capability = capability
 	// Max packet size. Don't do anything with this now.
 	_, pos, ok = mysql.ReadUint32(data, pos)
 	if !ok {
