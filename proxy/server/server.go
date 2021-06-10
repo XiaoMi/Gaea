@@ -135,7 +135,13 @@ func (s *Server) onConn(c net.Conn) {
 
 	// added into time wheel
 	s.tw.Add(s.sessionTimeout, cc, cc.Close)
-
+	log.Notice("Connected conn_id=%d, %s@%s (%s) namespace:%s capability: %d",
+		cc.c.ConnectionID,
+		cc.executor.user,
+		cc.executor.clientAddr,
+		cc.executor.db,
+		cc.executor.namespace,
+		cc.c.capability)
 	cc.Run()
 }
 
