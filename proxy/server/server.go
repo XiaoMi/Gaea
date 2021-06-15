@@ -43,6 +43,7 @@ type Server struct {
 	adminServer    *AdminServer
 	manager        *Manager
 	EncryptKey     string
+	ServerVersion string
 }
 
 // NewServer create new server
@@ -54,6 +55,8 @@ func NewServer(cfg *models.Proxy, manager *Manager) (*Server, error) {
 	s.EncryptKey = cfg.EncryptKey
 
 	s.manager = manager
+
+	s.ServerVersion = cfg.ServerVersion
 
 	// if error occurs, recycle the resources during creation.
 	defer func() {
