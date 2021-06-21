@@ -1605,7 +1605,7 @@ Gaea启动地址为127.0.0.1:13307
 ### namespace配置
 ```json
 {
-    "name": "test_mycat_string",
+    "name": "test_mycat_murmur",
     "online": true,
     "read_only": false,
     "allowed_dbs": {
@@ -1647,8 +1647,8 @@ Gaea启动地址为127.0.0.1:13307
         {
             "db": "db_mycat",
             "table": "tbl_mycat",
-            "type": "mycat_string",
-            "key": "col1",
+            "type": "mycat_murmur",
+            "key": "id",
             "locations": [
                 2,
                 2
@@ -1660,16 +1660,15 @@ Gaea启动地址为127.0.0.1:13307
             "databases": [
                 "db_mycat_[0-3]"
             ],
-            "partition_count": "4",
-            "partition_length": "256",
-            "hash_slice": "-3:0"
+            "seed": "0",
+            "virtual_bucket_times": "160"
         }
     ],
     "users": [
         {
-            "user_name": "test",
+            "user_name": "mycatMurmur",
             "password": "1234",
-            "namespace": "test_mycat_string",
+            "namespace": "test_mycat_murmur",
             "rw_flag": 2,
             "rw_split": 1,
             "other_property": 0
@@ -1884,7 +1883,7 @@ Gaea启动地址为127.0.0.1:13307
 ### namespace配置
 ```json
 {
-    "name": "test_mycat_mod",
+    "name": "test_mycat_string",
     "online": true,
     "read_only": false,
     "allowed_dbs": {
@@ -1926,8 +1925,8 @@ Gaea启动地址为127.0.0.1:13307
         {
             "db": "db_mycat",
             "table": "tbl_mycat",
-            "type": "mycat_mod",
-            "key": "id",
+            "type": "mycat_string",
+            "key": "col1",
             "locations": [
                 2,
                 2
@@ -1938,14 +1937,17 @@ Gaea启动地址为127.0.0.1:13307
             ],
             "databases": [
                 "db_mycat_[0-3]"
-            ]
+            ],
+            "partition_count": "4",
+            "partition_length": "256",
+            "hash_slice": ":"
         }
     ],
     "users": [
         {
-            "user_name": "test",
+            "user_name": "testMycatString",
             "password": "1234",
-            "namespace": "test_mycat_mod",
+            "namespace": "test_mycat_string",
             "rw_flag": 2,
             "rw_split": 1,
             "other_property": 0
@@ -1954,6 +1956,7 @@ Gaea启动地址为127.0.0.1:13307
     "default_slice": "slice-1",
     "global_sequences": null
 }
+
 ```
 
 ### 创建数据库表
