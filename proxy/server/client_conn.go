@@ -330,7 +330,7 @@ func (cc *ClientConn) writeColumnDefinition(field *mysql.Field) error {
 		1 + // decimals
 		2 // filler
 	if field.DefaultValue != nil {
-		length += mysql.LenEncIntSize(uint64(len(field.DefaultValue))) + len(field.DefaultValue)
+		length += 8 + len(field.DefaultValue)
 	}
 
 	data := cc.StartEphemeralPacket(length)
@@ -366,7 +366,7 @@ func (cc *ClientConn) writeColumnDefinition(field *mysql.Field) error {
 	pos = mysql.WriteUint16(data, pos, uint16(0x0000))
 
 	if field.DefaultValue != nil {
-		pos = mysql.WriteLenEncInt(data, pos, field.DefaultValueLength)
+		pos = mysql.WriteUint64(data, pos, field.DefaultValueLength)
 		copy(data[pos:], field.DefaultValue)
 		pos += len(field.DefaultValue)
 	}
