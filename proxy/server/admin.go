@@ -161,6 +161,10 @@ func (s *AdminServer) registerURL() {
 	})
 }
 
+// @Summary 获取proxy prometheus指标信息
+// @Description 获取gaea proxy prometheus指标信息
+// @Security BasicAuth
+// @Router /api/metric/metrics [get]
 func (s *AdminServer) registerMetric() {
 	metricGroup := s.engine.Group("/api/metric", gin.BasicAuth(gin.Accounts{s.adminUser: s.adminPassword}))
 	for path, handler := range s.proxy.manager.GetStatisticManager().GetHandlers() {
@@ -254,10 +258,22 @@ func (s *AdminServer) unregisterProxy() error {
 	return nil
 }
 
+// @Summary 获取proxy admin接口状态
+// @Description  获取proxy admin接口状态
+// @Success 200 {string} string "OK"
+// @Security BasicAuth
+// @Router /api/proxy/ping [get]
 func (s *AdminServer) ping(c *gin.Context) {
 	c.JSON(http.StatusOK, "OK")
 }
 
+// @Summary prepare namespace配置
+// @Description 通过管理接口, 二阶段提交, prepare namespace配置
+// @Produce  json
+// @Param name path string true "namespace name"
+// @Success 200 {string} string "OK"
+// @Security BasicAuth
+// @Router /api/proxy/config/prepare/{name} [put]
 func (s *AdminServer) prepareConfig(c *gin.Context) {
 	name := strings.TrimSpace(c.Param("name"))
 	if name == "" {
@@ -275,6 +291,13 @@ func (s *AdminServer) prepareConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, "OK")
 }
 
+// @Summary commit namespace配置
+// @Description 通过管理接口, 二阶段提交, commit namespace配置, 使etcd配置生效
+// @Produce  json
+// @Param name path string true "namespace name"
+// @Success 200 {string} string "OK"
+// @Security BasicAuth
+// @Router /api/proxy/config/commit/{name} [put]
 func (s *AdminServer) commitConfig(c *gin.Context) {
 	name := strings.TrimSpace(c.Param("name"))
 	if name == "" {
@@ -289,6 +312,13 @@ func (s *AdminServer) commitConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, "OK")
 }
 
+// @Summary 删除namespace配置
+// @Description 通过管理接口删除指定namespace配置
+// @Produce  json
+// @Param name path string true "namespace name"
+// @Success 200 {string} string "OK"
+// @Security BasicAuth
+// @Router /api/proxy/config/delete/{name} [put]
 func (s *AdminServer) deleteNamespace(c *gin.Context) {
 	name := strings.TrimSpace(c.Param("name"))
 	if name == "" {
@@ -304,11 +334,23 @@ func (s *AdminServer) deleteNamespace(c *gin.Context) {
 	c.JSON(http.StatusOK, "OK")
 }
 
+// @Summary 返回配置指纹
+// @Description 返回配置指纹, 指纹随配置变化而变化
+// @Produce  json
+// @Success 200 {string} string "Config Fingerprint"
+// @Security BasicAuth
+// @Router /api/proxy/config/fingerprint [get]
 func (s *AdminServer) configFingerprint(c *gin.Context) {
 	c.JSON(http.StatusOK, s.proxy.manager.ConfigFingerprint())
 }
 
-// getNamespaceSessionSQLFingerprint return namespace sql fingerprint information
+// @Summary 获取Porxy 慢SQL、错误SQL信息
+// @Description 通过管理接口获取Porxy 慢SQL、错误SQL信息
+// @Produce  json
+// @Param namespace path string true "namespace name"
+// @Success 200 {object} SQLFingerprint
+// @Security BasicAuth
+// @Router /api/proxy/stats/sessionsqlfingerprint/{namespace} [get]
 func (s *AdminServer) getNamespaceSessionSQLFingerprint(c *gin.Context) {
 	ns := strings.TrimSpace(c.Param("namespace"))
 	namespace := s.proxy.manager.GetNamespace(ns)
@@ -324,6 +366,13 @@ func (s *AdminServer) getNamespaceSessionSQLFingerprint(c *gin.Context) {
 	c.JSON(http.StatusOK, ret)
 }
 
+// @Summary 获取后端节点慢SQL、错误SQL信息
+// @Description 通过管理接口获取后端节点慢SQL、错误SQL信息
+// @Produce  json
+// @Param namespace path string true "namespace name"
+// @Success 200 {object} SQLFingerprint
+// @Security BasicAuth
+// @Router /api/proxy/stats/backendsqlfingerprint/{namespace} [get]
 func (s *AdminServer) getNamespaceBackendSQLFingerprint(c *gin.Context) {
 	ns := strings.TrimSpace(c.Param("namespace"))
 	namespace := s.proxy.manager.GetNamespace(ns)
@@ -339,6 +388,13 @@ func (s *AdminServer) getNamespaceBackendSQLFingerprint(c *gin.Context) {
 	c.JSON(http.StatusOK, ret)
 }
 
+// @Summary 清空Porxy节点慢SQL、错误SQL信息
+// @Description 通过管理接口清空Porxy慢SQL、错误SQL信息
+// @Produce  json
+// @Param namespace path string true "namespace name"
+// @Success 200 {object} SQLFingerprint
+// @Security BasicAuth
+// @Router /api/proxy/stats/sessionsqlfingerprint/{namespace} [delete]
 func (s *AdminServer) clearNamespaceSessionSQLFingerprint(c *gin.Context) {
 	ns := strings.TrimSpace(c.Param("namespace"))
 	namespace := s.proxy.manager.GetNamespace(ns)
@@ -353,6 +409,13 @@ func (s *AdminServer) clearNamespaceSessionSQLFingerprint(c *gin.Context) {
 	c.JSON(http.StatusOK, "OK")
 }
 
+// @Summary 清空后端节点慢SQL、错误SQL信息
+// @Description 通过管理接口清空后端节点慢SQL、错误SQL信息
+// @Produce  json
+// @Param namespace path string true "namespace name"
+// @Success 200 {object} SQLFingerprint
+// @Security BasicAuth
+// @Router /api/proxy/stats/backendsqlfingerprint/{namespace} [delete]
 func (s *AdminServer) clearNamespaceBackendSQLFingerprint(c *gin.Context) {
 	ns := strings.TrimSpace(c.Param("namespace"))
 	namespace := s.proxy.manager.GetNamespace(ns)
