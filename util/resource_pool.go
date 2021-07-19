@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/XiaoMi/Gaea/util/sync2"
@@ -54,14 +55,21 @@ type ResourcePool struct {
 	capacity    sync2.AtomicInt64
 	idleTimeout sync2.AtomicDuration
 	idleTimer   *timer.Timer
+	capTimer    *timer.Timer
 
 	// stats
-	available  sync2.AtomicInt64
-	active     sync2.AtomicInt64
-	inUse      sync2.AtomicInt64
-	waitCount  sync2.AtomicInt64
-	waitTime   sync2.AtomicDuration
-	idleClosed sync2.AtomicInt64
+	available    sync2.AtomicInt64
+	active       sync2.AtomicInt64
+	inUse        sync2.AtomicInt64
+	waitCount    sync2.AtomicInt64
+	waitTime     sync2.AtomicDuration
+	idleClosed   sync2.AtomicInt64
+	baseCapacity sync2.AtomicInt64
+	maxCapacity  sync2.AtomicInt64
+	lock         *sync.Mutex
+	scaleOutTime int64
+	scaleInTodo  chan int8
+	Dynamic      bool
 }
 
 type resourceWrapper struct {
@@ -86,11 +94,15 @@ func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Dur
 		panic(errors.New("invalid/out of range capacity"))
 	}
 	rp := &ResourcePool{
-		resources:   make(chan resourceWrapper, maxCap),
-		factory:     factory,
-		available:   sync2.NewAtomicInt64(int64(capacity)),
-		capacity:    sync2.NewAtomicInt64(int64(capacity)),
-		idleTimeout: sync2.NewAtomicDuration(idleTimeout),
+		resources:    make(chan resourceWrapper, maxCap),
+		factory:      factory,
+		available:    sync2.NewAtomicInt64(int64(capacity)),
+		capacity:     sync2.NewAtomicInt64(int64(capacity)),
+		idleTimeout:  sync2.NewAtomicDuration(idleTimeout),
+		baseCapacity: sync2.NewAtomicInt64(int64(capacity)),
+		maxCapacity:  sync2.NewAtomicInt64(int64(maxCap)),
+		lock:         &sync.Mutex{},
+		scaleInTodo:  make(chan int8, 1),
 	}
 	for i := 0; i < capacity; i++ {
 		rp.resources <- resourceWrapper{}
@@ -100,6 +112,8 @@ func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Dur
 		rp.idleTimer = timer.NewTimer(idleTimeout / 10)
 		rp.idleTimer.Start(rp.closeIdleResources)
 	}
+	rp.capTimer = timer.NewTimer(5 * time.Second)
+	rp.capTimer.Start(rp.scaleInResources)
 	return rp
 }
 
@@ -111,7 +125,14 @@ func (rp *ResourcePool) Close() {
 	if rp.idleTimer != nil {
 		rp.idleTimer.Stop()
 	}
-	_ = rp.SetCapacity(0)
+	if rp.capTimer != nil {
+		rp.capTimer.Stop()
+	}
+	_ = rp.ScaleCapacity(0)
+}
+
+func (rp *ResourcePool) SetDynamic(value bool) {
+	rp.Dynamic = value
 }
 
 // IsClosed returns true if the resource pool is closed.
@@ -169,6 +190,9 @@ func (rp *ResourcePool) get(ctx context.Context, wait bool) (resource Resource, 
 	select {
 	case wrapper, ok = <-rp.resources:
 	default:
+		if rp.Dynamic {
+			rp.scaleOutResources()
+		}
 		if !wait {
 			return nil, nil
 		}
@@ -218,14 +242,23 @@ func (rp *ResourcePool) Put(resource Resource) {
 	rp.available.Add(1)
 }
 
+func (rp *ResourcePool) SetCapacity(capacity int) error {
+	oldcap := rp.baseCapacity.Get()
+	rp.baseCapacity.CompareAndSwap(oldcap, int64(capacity))
+	if int(oldcap) < capacity {
+		rp.ScaleCapacity(capacity)
+	}
+	return nil
+}
+
 // SetCapacity changes the capacity of the pool.
 // You can use it to shrink or expand, but not beyond
 // the max capacity. If the change requires the pool
 // to be shrunk, SetCapacity waits till the necessary
 // number of resources are returned to the pool.
 // A SetCapacity of 0 is equivalent to closing the ResourcePool.
-func (rp *ResourcePool) SetCapacity(capacity int) error {
-	if capacity < 0 || capacity > cap(rp.resources) {
+func (rp *ResourcePool) ScaleCapacity(capacity int) error {
+	if capacity < 0 || capacity > int(rp.maxCapacity.Get()) {
 		return fmt.Errorf("capacity %d is out of range", capacity)
 	}
 
@@ -264,6 +297,33 @@ func (rp *ResourcePool) SetCapacity(capacity int) error {
 		close(rp.resources)
 	}
 	return nil
+}
+
+// 扩容
+func (rp *ResourcePool) scaleOutResources() {
+	rp.lock.Lock()
+	defer rp.lock.Unlock()
+	if rp.capacity.Get() < rp.maxCapacity.Get() {
+		rp.ScaleCapacity(int(rp.capacity.Get()) + 1)
+		rp.scaleOutTime = time.Now().Unix()
+	}
+}
+
+// 缩容
+func (rp *ResourcePool) scaleInResources() {
+	rp.lock.Lock()
+	defer rp.lock.Unlock()
+	if rp.capacity.Get() > rp.baseCapacity.Get() && time.Now().Unix()-rp.scaleOutTime > 60 {
+		select {
+		case rp.scaleInTodo <- 0:
+			go func() {
+				rp.ScaleCapacity(int(rp.capacity.Get()) - 1)
+				<-rp.scaleInTodo
+			}()
+		default:
+			return
+		}
+	}
 }
 
 func (rp *ResourcePool) recordWait(start time.Time) {
