@@ -69,6 +69,7 @@ type ResourcePool struct {
 	lock         *sync.Mutex
 	scaleOutTime int64
 	scaleInTodo  chan int8
+	Dynamic      bool
 }
 
 type resourceWrapper struct {
@@ -130,6 +131,10 @@ func (rp *ResourcePool) Close() {
 	_ = rp.ScaleCapacity(0)
 }
 
+func (rp *ResourcePool) SetDynamic(value bool) {
+	rp.Dynamic = value
+}
+
 // IsClosed returns true if the resource pool is closed.
 func (rp *ResourcePool) IsClosed() (closed bool) {
 	return rp.capacity.Get() == 0
@@ -185,7 +190,9 @@ func (rp *ResourcePool) get(ctx context.Context, wait bool) (resource Resource, 
 	select {
 	case wrapper, ok = <-rp.resources:
 	default:
-		rp.scaleOutResources()
+		if rp.Dynamic {
+			rp.scaleOutResources()
+		}
 		if !wait {
 			return nil, nil
 		}
