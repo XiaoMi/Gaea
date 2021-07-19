@@ -112,7 +112,7 @@ func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Dur
 		rp.idleTimer = timer.NewTimer(idleTimeout / 10)
 		rp.idleTimer.Start(rp.closeIdleResources)
 	}
-	rp.capTimer = timer.NewTimer(5)
+	rp.capTimer = timer.NewTimer(5 * time.Second)
 	rp.capTimer.Start(rp.scaleInResources)
 	return rp
 }
