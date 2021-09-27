@@ -195,6 +195,105 @@ func TestOpen(t *testing.T) {
 	}
 }
 
+func TestOpenDynamic(t *testing.T) {
+	ctx := context.Background()
+	lastID.Set(0)
+	count.Set(0)
+	p := NewResourcePool(PoolFactory, 6, 10, time.Second)
+	p.ScaleCapacity(5)
+	p.SetDynamic(true)
+	var resources [10]Resource
+
+	// Test Get
+	for i := 0; i < 7; i++ {
+		r, err := p.Get(ctx)
+		resources[i] = r
+		if err != nil {
+			t.Errorf("Unexpected error %v", err)
+		}
+		if i < 5 {
+			if p.Available() != int64(5-i-1) {
+				t.Errorf("expecting %d, received %d", 5-i-1, p.Available())
+			}
+		} else {
+			if p.Available() != 0 {
+				t.Errorf("expecting %d, received %d", 0, p.Available())
+			}
+		}
+
+		if p.WaitCount() != 0 {
+			t.Errorf("expecting 0, received %d", p.WaitCount())
+		}
+		if p.WaitTime() != 0 {
+			t.Errorf("expecting 0, received %d", p.WaitTime())
+		}
+		if lastID.Get() != int64(i+1) {
+			t.Errorf("Expecting %d, received %d", i+1, lastID.Get())
+		}
+		if count.Get() != int64(i+1) {
+			t.Errorf("Expecting %d, received %d", i+1, count.Get())
+		}
+	}
+
+	// Test that Get waits
+	ch := make(chan bool)
+	go func() {
+		for i := 0; i < 7; i++ {
+			r, err := p.Get(ctx)
+			if err != nil {
+				t.Errorf("Get failed: %v", err)
+			}
+			resources[i] = r
+		}
+		for i := 0; i < 7; i++ {
+			p.Put(resources[i])
+		}
+		ch <- true
+	}()
+	for i := 0; i < 7; i++ {
+		// Sleep to ensure the goroutine waits
+		time.Sleep(10 * time.Millisecond)
+		p.Put(resources[i])
+	}
+	<-ch
+	if p.WaitCount() != 4 {
+		t.Errorf("Expecting 4, received %d", p.WaitCount())
+	}
+	if p.WaitTime() == 0 {
+		t.Errorf("Expecting non-zero")
+	}
+	if lastID.Get() != 10 {
+		t.Errorf("Expecting 10, received %d", lastID.Get())
+	}
+
+	// Test Close resource
+	r, err := p.Get(ctx)
+	if err != nil {
+		t.Errorf("Unexpected error %v", err)
+	}
+	r.Close()
+	p.Put(nil)
+	if count.Get() != 9 {
+		t.Errorf("Expecting 9, received %d", count.Get())
+	}
+	for i := 0; i < 5; i++ {
+		r, err := p.Get(ctx)
+		if err != nil {
+			t.Errorf("Get failed: %v", err)
+		}
+		resources[i] = r
+	}
+	for i := 0; i < 5; i++ {
+		p.Put(resources[i])
+	}
+	if count.Get() != 9 {
+		t.Errorf("Expecting 9, received %d", count.Get())
+	}
+	if lastID.Get() != 10 {
+		t.Errorf("Expecting 10, received %d", lastID.Get())
+	}
+}
+
 func TestShrinking(t *testing.T) {
 	ctx := context.Background()
 	lastID.Set(0)

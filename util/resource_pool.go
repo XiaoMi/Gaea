@@ -103,6 +103,7 @@ func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Dur
 		maxCapacity:  sync2.NewAtomicInt64(int64(maxCap)),
 		lock:         &sync.Mutex{},
 		scaleInTodo:  make(chan int8, 1),
+		Dynamic:      true, // 动态扩展连接池
 	}
 	for i := 0; i < capacity; i++ {
 		rp.resources <- resourceWrapper{}
@@ -202,7 +203,10 @@ func (rp *ResourcePool) get(ctx context.Context, wait bool) (resource Resource, 
 		case <-ctx.Done():
 			return nil, ErrTimeout
 		}
-		rp.recordWait(startTime)
+		endTime := time.Now()
+		if int64(startTime.UnixNano()/100000) != int64(endTime.UnixNano()/100000) {
+			rp.recordWait(startTime)
+		}
 	}
 	if !ok {
 		return nil, ErrClosed
