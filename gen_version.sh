@@ -15,6 +15,10 @@ else
   tree_status="Modified"
 fi
 
+# Check for git branch and git dirty
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+GIT_DIRTY=$(git diff --no-ext-diff 2> /dev/null | wc -l)
+
 # XXX This needs to be updated to accomodate tags added after building, rather than prior to builds
 RELEASE_TAG=$(git describe --match '[0-9]*\.[0-9]*\.[0-9]*' --exact-match --tags 2> /dev/null || echo "")
 
@@ -26,10 +30,12 @@ elif [[ -n ${MY_VERSION} ]]; then
   VERSION="${MY_VERSION}"
 fi
 
-# used by pkg/version
+# used by core/version
 echo buildVersion       "${VERSION}"
 echo buildGitRevision   "${BUILD_GIT_REVISION}"
 echo buildUser          "$(whoami)"
 echo buildHost          "$(hostname -f)"
 echo buildStatus        "${tree_status}"
 echo buildTime          "$(date +%Y-%m-%d--%T)"
+echo buildBranch        "${BRANCH}"
+echo buildGitDirty      "${GIT_DIRTY}"

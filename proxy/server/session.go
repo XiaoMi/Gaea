@@ -97,7 +97,7 @@ func (cc *Session) IsAllowConnect() bool {
 // step3: server send ok/err packets to client
 func (cc *Session) Handshake() error {
 	// First build and send the server handshake packet.
-	if err := cc.c.writeInitialHandshakeV10(); err != nil {
+	if err := cc.c.writeInitialHandshakeV10(cc.proxy.ServerVersion); err != nil {
 		clientHost, _, innerErr := net.SplitHostPort(cc.c.RemoteAddr().String())
 		if innerErr != nil {
 			log.Warn("[server] Session parse host error: %v", innerErr)
