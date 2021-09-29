@@ -16,9 +16,9 @@ package server
 
 import (
 	"fmt"
-
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/mysql"
+	"strings"
 )
 
 // ClientConn session client connection
@@ -28,6 +28,8 @@ type ClientConn struct {
 	salt []byte
 
 	manager *Manager
+
+	capability uint32
 
 	namespace string // TODO: remove it when refactor is done
 }
@@ -51,10 +53,24 @@ func NewClientConn(c *mysql.Conn, manager *Manager) *ClientConn {
 	}
 }
 
-func (cc *ClientConn) writeInitialHandshakeV10() error {
+func (cc *ClientConn) CompactVersion(sv string ) string {
+	version := strings.Trim(sv, " ")
+	if version != "" {
+		v := strings.Split(sv, ".")
+		if len(v) < 3 {
+			return mysql.ServerVersion
+		}
+		return version
+	} else {
+		return mysql.ServerVersion
+	}
+}
+
+func (cc *ClientConn) writeInitialHandshakeV10(sv string) error {
+	ServerVersion:= cc.CompactVersion(sv)
 	length :=
 		1 + // protocol version
-			mysql.LenNullString(mysql.ServerVersion) +
+			mysql.LenNullString(ServerVersion) +
 			4 + // connection ID
 			8 + // first part of salt data
 			1 + // filler byte
@@ -75,7 +91,7 @@ func (cc *ClientConn) writeInitialHandshakeV10() error {
 
 	// Copy server version.
 	// server version data with terminate character 0x00, type: string[NUL].
-	pos = mysql.WriteNullString(data, pos, mysql.ServerVersion)
+	pos = mysql.WriteNullString(data, pos, ServerVersion)
 
 	// Add connectionID in.
 	// connection id type: 4 bytes.
@@ -149,6 +165,7 @@ func (cc *ClientConn) readHandshakeResponse() (HandshakeResponseInfo, error) {
 		return info, fmt.Errorf("readHandshakeResponse: only support protocol 4.1")
 	}
 
+	cc.capability = capability
 	// Max packet size. Don't do anything with this now.
 	_, pos, ok = mysql.ReadUint32(data, pos)
 	if !ok {
@@ -330,7 +347,7 @@ func (cc *ClientConn) writeColumnDefinition(field *mysql.Field) error {
 		1 + // decimals
 		2 // filler
 	if field.DefaultValue != nil {
-		length += 8 + len(field.DefaultValue)
+		length += mysql.LenEncIntSize(uint64(len(field.DefaultValue))) + len(field.DefaultValue)
 	}
 
 	data := cc.StartEphemeralPacket(length)
@@ -366,7 +383,7 @@ func (cc *ClientConn) writeColumnDefinition(field *mysql.Field) error {
 	pos = mysql.WriteUint16(data, pos, uint16(0x0000))
 
 	if field.DefaultValue != nil {
-		pos = mysql.WriteUint64(data, pos, field.DefaultValueLength)
+		pos = mysql.WriteLenEncInt(data, pos, field.DefaultValueLength)
 		copy(data[pos:], field.DefaultValue)
 		pos += len(field.DefaultValue)
 	}
