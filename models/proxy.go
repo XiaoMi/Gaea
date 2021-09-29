@@ -61,6 +61,8 @@ type Proxy struct {
 	StatsInterval int    `ini:"stats_interval"` // set stats interval of connect pool
 
 	EncryptKey string `ini:"encrypt_key"`
+
+	ServerVersion string `ini:"server_version"`
 }
 
 // ParseProxyConfigFromFile parser proxy config from file

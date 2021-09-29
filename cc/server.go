@@ -80,7 +80,13 @@ type ListNamespaceResp struct {
 	Data      []string   `json:"data"`
 }
 
-// return names of all namespace
+// @Summary 返回所有namespace名称
+// @Description 获取集群名称, 返回所有namespace名称, 未传入为默认集群
+// @Produce  json
+// @Param cluster header string false "cluster name"
+// @Success 200 {object} ListNamespaceResp
+// @Security BasicAuth
+// @Router /api/cc/namespace/list [get]
 func (s *Server) listNamespace(c *gin.Context) {
 	var err error
 	r := &ListNamespaceResp{RetHeader: &RetHeader{RetCode: -1, RetMessage: ""}}
@@ -109,6 +115,15 @@ type QueryNamespaceResp struct {
 	Data      []*models.Namespace `json:"data"`
 }
 
+// @Summary 返回namespace配置详情, 已废弃
+// @Description 获取集群名称, 返回多个指定namespace配置详情, 未传入为默认集群, 已废弃
+// @Accept  json
+// @Produce  json
+// @Param cluster header string false "cluster name"
+// @Param names body json true "{"names":["namespace_1","namespace_2"]}"
+// @Success 200 {object} QueryNamespaceResp
+// @Security BasicAuth
+// @Router /api/cc/namespace [get]
 func (s *Server) queryNamespace(c *gin.Context) {
 	var err error
 	var req QueryReq
@@ -136,6 +151,14 @@ func (s *Server) queryNamespace(c *gin.Context) {
 	return
 }
 
+// @Summary 返回namespace配置详情
+// @Description 获取集群名称, 返回指定namespace配置详情, 未传入为默认集群
+// @Produce  json
+// @Param cluster header string false "cluster name"
+// @Param name path string true "namespace Name"
+// @Success 200 {object} QueryNamespaceResp
+// @Security BasicAuth
+// @Router /api/cc/namespace/detail/{name} [get]
 func (s *Server) detailNamespace(c *gin.Context) {
 	var err error
 	var names []string
@@ -164,6 +187,15 @@ func (s *Server) detailNamespace(c *gin.Context) {
 	return
 }
 
+// @Summary 创建修改namespace配置
+// @Description 获取集群名称, 根据json body创建或修改namespace配置, 未传入为默认集群
+// @Accept  json
+// @Produce  json
+// @Param cluster header string false "cluster name"
+// @Param name body json true "namespace"
+// @Success 200 {object} RetHeader
+// @Security BasicAuth
+// @Router /api/cc/namespace/modify [put]
 func (s *Server) modifyNamespace(c *gin.Context) {
 	var err error
 	var namespace models.Namespace
@@ -190,6 +222,14 @@ func (s *Server) modifyNamespace(c *gin.Context) {
 	return
 }
 
+// @Summary 删除namespace配置
+// @Description 获取集群名称, 根据namespace name删除namespace, 未传入为默认集群
+// @Produce  json
+// @Param cluster header string false "cluster name"
+// @Param name path string true "namespace name"
+// @Success 200 {object} RetHeader
+// @Security BasicAuth
+// @Router /api/cc/namespace/delete/{name} [put]
 func (s *Server) delNamespace(c *gin.Context) {
 	var err error
 	h := &RetHeader{RetCode: -1, RetMessage: ""}
@@ -219,6 +259,14 @@ type sqlFingerprintResp struct {
 	SlowSQLs  map[string]string `json:"slow_sqls"`
 }
 
+// @Summary 获取namespce慢SQL、错误SQL
+// @Description 获取集群名称, 根据namespace name获取该namespce慢SQL、错误SQL, 未传入为默认集群
+// @Produce  json
+// @Param cluster header string false "cluster name"
+// @Param name path string true "namespace name"
+// @Success 200 {object} sqlFingerprintResp
+// @Security BasicAuth
+// @Router /api/cc/namespace/sqlfingerprint/{name} [get]
 func (s *Server) sqlFingerprint(c *gin.Context) {
 	var err error
 	r := &sqlFingerprintResp{RetHeader: &RetHeader{RetCode: -1, RetMessage: ""}}
@@ -246,6 +294,13 @@ type proxyConfigFingerprintResp struct {
 	Data      map[string]string `json:"data"` // key: ip:port value: md5 of config
 }
 
+// @Summary 获取集群管理地址
+// @Description 获取集群名称, 返回集群管理地址, 未传入为默认集群
+// @Produce  json
+// @Param cluster header string false "cluster name"
+// @Success 200 {object} proxyConfigFingerprintResp
+// @Security BasicAuth
+// @Router /api/cc/proxy/config/fingerprint [get]
 func (s *Server) proxyConfigFingerprint(c *gin.Context) {
 	var err error
 	r := &proxyConfigFingerprintResp{RetHeader: &RetHeader{RetCode: -1, RetMessage: ""}}
