@@ -28,6 +28,8 @@ var (
 	buildHost        = "unknown"
 	buildStatus      = "unknown"
 	buildTime        = "unknown"
+	buildBranch      = "unknown"
+	buildGitDirty    = "0"
 )
 
 // BuildInfo describes version information about the binary build.
@@ -39,6 +41,8 @@ type BuildInfo struct {
 	GolangVersion string `json:"golang_version"`
 	BuildStatus   string `json:"status"`
 	BuildTime     string `json:"time"`
+	BuildBranch   string `json:"build_branch"`
+	BuildGitDirty string `json:"build_git_dirty"`
 }
 
 var (
@@ -54,13 +58,15 @@ var (
 // user@host-<version>-<git revision>-<build status>
 // ```
 func (b BuildInfo) String() string {
-	return fmt.Sprintf("%v@%v-%v-%v-%v-%v",
+	return fmt.Sprintf("%v@%v-%v-%v-%v-%v-%v-%v",
 		b.User,
 		b.Host,
 		b.Version,
 		b.GitRevision,
 		b.BuildStatus,
-		b.BuildTime)
+		b.BuildTime,
+		b.BuildBranch,
+		b.BuildGitDirty)
 }
 
 // LongForm returns a multi-line version information
@@ -81,6 +87,8 @@ User: %v@%v
 GolangVersion: %v
 BuildStatus: %v
 BuildTime: %v
+BuildBranch: %v
+BuildGitDirty: %v
 `,
 		b.Version,
 		b.GitRevision,
@@ -88,7 +96,9 @@ BuildTime: %v
 		b.Host,
 		b.GolangVersion,
 		b.BuildStatus,
-		b.BuildTime)
+		b.BuildTime,
+		b.BuildBranch,
+		b.BuildGitDirty)
 }
 
 func init() {
@@ -100,5 +110,7 @@ func init() {
 		GolangVersion: runtime.Version(),
 		BuildStatus:   buildStatus,
 		BuildTime:     buildTime,
+		BuildBranch:   buildBranch,
+		BuildGitDirty: buildGitDirty,
 	}
 }
