@@ -140,6 +140,12 @@ func WriteByte(data []byte, pos int, value byte) int {
 	return pos + 1
 }
 
+// WriteBytes write byte to []byte
+func WriteBytes(data []byte, pos int, value []byte) int {
+	pos += copy(data[pos:], value)
+	return pos
+}
+
 // WriteUint16 write uint16 to []byte
 func WriteUint16(data []byte, pos int, value uint16) int {
 	data[pos] = byte(value)
@@ -268,6 +274,15 @@ func ReadNullString(data []byte, pos int) (string, int, bool) {
 		return "", 0, false
 	}
 	return string(data[pos : pos+end]), pos + end + 1, true
+}
+
+// ReadNullString read Null terminated string from []byte, return byet,pos,if end.
+func ReadNullByte(data []byte, pos int) ([]byte, int, bool) {
+	end := bytes.IndexByte(data[pos:], 0)
+	if end == -1 {
+		return []byte{}, 0, false
+	}
+	return data[pos : pos+end], pos + end + 1, true
 }
 
 // ReadUint16 read uint32 from []byte
