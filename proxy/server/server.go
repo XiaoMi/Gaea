@@ -43,7 +43,8 @@ type Server struct {
 	adminServer    *AdminServer
 	manager        *Manager
 	EncryptKey     string
-	ServerVersion string
+	ServerVersion  string
+	AuthPlugin     string
 }
 
 // NewServer create new server
@@ -53,10 +54,12 @@ func NewServer(cfg *models.Proxy, manager *Manager) (*Server, error) {
 
 	// init key
 	s.EncryptKey = cfg.EncryptKey
-
 	s.manager = manager
-
 	s.ServerVersion = cfg.ServerVersion
+	s.AuthPlugin = cfg.AuthPlugin
+	if len(s.AuthPlugin) > 0 {
+		DefaultCapability |= mysql.ClientPluginAuth
+	}
 
 	// if error occurs, recycle the resources during creation.
 	defer func() {
