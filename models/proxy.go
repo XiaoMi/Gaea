@@ -63,6 +63,7 @@ type Proxy struct {
 	EncryptKey string `ini:"encrypt_key"`
 
 	ServerVersion string `ini:"server_version"`
+	AuthPlugin    string `ini:"auth_plugin"`
 }
 
 // ParseProxyConfigFromFile parser proxy config from file

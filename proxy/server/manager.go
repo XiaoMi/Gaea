@@ -274,6 +274,12 @@ func (m *Manager) CheckPassword(user string, salt, auth []byte) (bool, string) {
 	return m.users[current].CheckPassword(user, salt, auth)
 }
 
+// CheckPassword check if right password with specific user
+func (m *Manager) CheckSha2Password(user string, salt, auth []byte) (bool, string) {
+	current, _, _ := m.switchIndex.Get()
+	return m.users[current].CheckSha2Password(user, salt, auth)
+}
+
 // GetStatisticManager return proxy status to record status
 func (m *Manager) GetStatisticManager() *StatisticManager {
 	return m.statistics
@@ -584,6 +590,17 @@ func (u *UserManager) CheckUser(user string) bool {
 func (u *UserManager) CheckPassword(user string, salt, auth []byte) (bool, string) {
 	for _, password := range u.users[user] {
 		checkAuth := mysql.CalcPassword(salt, []byte(password))
+		if bytes.Equal(auth, checkAuth) {
+			return true, password
+		}
+	}
+	return false, ""
+}
+
+// CheckPassword check if right password with specific user
+func (u *UserManager) CheckSha2Password(user string, salt, auth []byte) (bool, string) {
+	for _, password := range u.users[user] {
+		checkAuth := mysql.CalcCachingSha2Password(salt, password)
 		if bytes.Equal(auth, checkAuth) {
 			return true, password
 		}

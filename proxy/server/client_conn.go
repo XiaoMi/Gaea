@@ -32,6 +32,8 @@ type ClientConn struct {
 	capability uint32
 
 	namespace string // TODO: remove it when refactor is done
+
+	proxy *Server
 }
 
 // HandshakeResponseInfo handshake response information
@@ -41,6 +43,7 @@ type HandshakeResponseInfo struct {
 	AuthResponse []byte
 	Salt         []byte
 	Database     string
+	AuthPlugin   string
 }
 
 // NewClientConn constructor of ClientConn
@@ -53,7 +56,7 @@ func NewClientConn(c *mysql.Conn, manager *Manager) *ClientConn {
 	}
 }
 
-func (cc *ClientConn) CompactVersion(sv string ) string {
+func (cc *ClientConn) CompactVersion(sv string) string {
 	version := strings.Trim(sv, " ")
 	if version != "" {
 		v := strings.Split(sv, ".")
@@ -66,8 +69,8 @@ func (cc *ClientConn) CompactVersion(sv string ) string {
 	}
 }
 
-func (cc *ClientConn) writeInitialHandshakeV10(sv string) error {
-	ServerVersion:= cc.CompactVersion(sv)
+func (cc *ClientConn) writeInitialHandshakeV10() error {
+	ServerVersion := cc.CompactVersion(cc.proxy.ServerVersion)
 	length :=
 		1 + // protocol version
 			mysql.LenNullString(ServerVersion) +
@@ -82,6 +85,9 @@ func (cc *ClientConn) writeInitialHandshakeV10(sv string) error {
 			10 + // reserved (0)
 			13 // auth-plugin-data
 	// mysql.LenNullString(mysql.MysqlNativePassword) // auth-plugin-name
+	if cc.proxy.AuthPlugin != "" {
+		length += mysql.LenNullString(cc.proxy.AuthPlugin)
+	}
 
 	data := cc.StartEphemeralPacket(length)
 	pos := 0
@@ -126,6 +132,12 @@ func (cc *ClientConn) writeInitialHandshakeV10(sv string) error {
 	pos += copy(data[pos:], cc.salt[8:])
 	data[pos] = 0
 	pos++
+	//authentication plugin
+	if cc.proxy.AuthPlugin != "" {
+		pos += copy(data[pos:], cc.proxy.AuthPlugin)
+		data[pos] = 0
+		pos++
+	}
 
 	// Copy authPluginName. We always start with mysql_native_password.
 	// pos = mysql.WriteNullString(data, pos, mysql.MysqlNativePassword)
@@ -197,9 +209,13 @@ func (cc *ClientConn) readHandshakeResponse() (HandshakeResponseInfo, error) {
 	if !ok {
 		return info, fmt.Errorf("readHandshakeResponse: can't read auth-response variable length")
 	}
-	authResponse, pos, ok = mysql.ReadBytesCopy(data, pos, int(l))
+
+	if capability&mysql.ClientPluginAuthLenencClientData > 0 || capability&mysql.ClientSecureConnection > 0 {
+		authResponse, pos, ok = mysql.ReadBytesCopy(data, pos, int(l))
+	} else {
+		authResponse, pos, ok = mysql.ReadNullByte(data, pos)
+	}
 	if !ok {
-		return info, fmt.Errorf("readHandshakeResponse: can't read auth-response")
 	}
 
 	info.AuthResponse = authResponse
@@ -212,6 +228,20 @@ func (cc *ClientConn) readHandshakeResponse() (HandshakeResponseInfo, error) {
 			return info, fmt.Errorf("readHandshakeResponse: can't read db")
 		}
 		info.Database = db
+	}
+	if capability&mysql.ClientPluginAuth > 0 {
+		var authPlugin string
+		authPlugin, pos, ok = mysql.ReadNullString(data, pos)
+		if ok && (authPlugin != cc.proxy.AuthPlugin) {
+			info.AuthPlugin = cc.proxy.AuthPlugin
+			cc.RecycleReadPacket()
+			cc.WriteAuthSwitchRequest(info.AuthPlugin)
+			// readAuthSwitchRequestResponse
+			info.AuthResponse, err = cc.ReadEphemeralPacketDirect()
+			if err != nil {
+				return info, fmt.Errorf("readHandshakeResponse: can't read auth switch response")
+			}
+		}
 	}
 
 	// TODO auth plugin name、client conn attrs .etc
@@ -450,4 +480,15 @@ func (cc *ClientConn) writePrepareResponse(status uint16, s *Stmt) error {
 	}
 
 	return nil
+}
+
+func (cc *ClientConn) WriteAuthSwitchRequest(authMethod string) error {
+	l := 1 + len(authMethod) + 1 + len(cc.salt) + 1
+	data := cc.StartEphemeralPacket(l)
+	pos := 0
+	pos = mysql.WriteByte(data, pos, mysql.AuthSwitchHeader)
+	pos = mysql.WriteNullString(data, pos, authMethod)
+	pos = mysql.WriteBytes(data, pos, cc.salt)
+	mysql.WriteByte(data, pos, 0)
+	return cc.WriteEphemeralPacket()
 }

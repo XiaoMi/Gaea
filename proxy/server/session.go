@@ -32,6 +32,9 @@ var DefaultCapability = mysql.ClientLongPassword | mysql.ClientLongFlag |
 	mysql.ClientConnectWithDB | mysql.ClientProtocol41 |
 	mysql.ClientTransactions | mysql.ClientSecureConnection
 
+//下面的会根据配置文件参数加进去
+//mysql.ClientPluginAuth
+
 var baseConnID uint32 = 10000
 
 const initClientConnStatus = mysql.ServerStatusAutocommit
@@ -68,6 +71,7 @@ func newSession(s *Server, co net.Conn) *Session {
 	cc.manager = s.manager
 
 	cc.c.SetConnectionID(atomic.AddUint32(&baseConnID, 1))
+	cc.c.proxy = s
 
 	cc.executor = newSessionExecutor(s.manager)
 	cc.executor.clientAddr = co.RemoteAddr().String()
@@ -97,7 +101,7 @@ func (cc *Session) IsAllowConnect() bool {
 // step3: server send ok/err packets to client
 func (cc *Session) Handshake() error {
 	// First build and send the server handshake packet.
-	if err := cc.c.writeInitialHandshakeV10(cc.proxy.ServerVersion); err != nil {
+	if err := cc.c.writeInitialHandshakeV10(); err != nil {
 		clientHost, _, innerErr := net.SplitHostPort(cc.c.RemoteAddr().String())
 		if innerErr != nil {
 			log.Warn("[server] Session parse host error: %v", innerErr)
@@ -146,6 +150,8 @@ func (cc *Session) Handshake() error {
 
 func (cc *Session) handleHandshakeResponse(info HandshakeResponseInfo) error {
 	// check and set user
+	var password string
+	var succ bool
 	user := info.User
 	if !cc.manager.CheckUser(user) {
 		return mysql.NewDefaultError(mysql.ErrAccessDenied, user, cc.c.RemoteAddr().String(), "Yes")
@@ -153,7 +159,18 @@ func (cc *Session) handleHandshakeResponse(info HandshakeResponseInfo) error {
 	cc.executor.user = user
 
 	// check password
-	succ, password := cc.manager.CheckPassword(user, info.Salt, info.AuthResponse)
+	if len(info.AuthPlugin) == 0 {
+		if len(info.AuthResponse) == 32 {
+			succ, password = cc.manager.CheckSha2Password(user, info.Salt, info.AuthResponse)
+		} else {
+			succ, password = cc.manager.CheckPassword(user, info.Salt, info.AuthResponse)
+		}
+	} else if info.AuthPlugin == mysql.CachingSHA2Password {
+		succ, password = cc.manager.CheckSha2Password(user, info.Salt, info.AuthResponse)
+	} else {
+		succ, password = cc.manager.CheckPassword(user, info.Salt, info.AuthResponse)
+	}
+
 	if !succ {
 		return mysql.NewDefaultError(mysql.ErrAccessDenied, user, cc.c.RemoteAddr().String(), "Yes")
 	}
