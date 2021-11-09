@@ -32,7 +32,7 @@ const (
 	// ServerVersion server version
 	ServerVersion string = "5.6.20-gaea"
 	// MysqlNativePassword uses a salt and transmits a hash on the wire.
-	MyqlNativePassword  = "mysql_native_password"
+	MysqlNativePassword  = "mysql_native_password"
 	CachingSHA2Password = "caching_sha2_password"
 	// ProtocolVersion is the current version of the protocol.
 	// Always 10.
