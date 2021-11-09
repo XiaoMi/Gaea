@@ -30,6 +30,7 @@ package mysql
 
 import (
 	"crypto/sha1"
+	"crypto/sha256"
 	"math/rand"
 	"time"
 	"unicode/utf8"
@@ -68,6 +69,31 @@ func CalcPassword(scramble, password []byte) []byte {
 		scramble[i] ^= stage1[i]
 	}
 	return scramble
+}
+
+func CalcCachingSha2Password(salt []byte, password string) []byte {
+	if len(password) == 0 {
+		return nil
+	}
+	// XOR(SHA256(password), SHA256(SHA256(SHA256(password)), salt))
+	crypt := sha256.New()
+	crypt.Write([]byte(password))
+	message1 := crypt.Sum(nil)
+
+	crypt.Reset()
+	crypt.Write(message1)
+	message1Hash := crypt.Sum(nil)
+
+	crypt.Reset()
+	crypt.Write(message1Hash)
+	crypt.Write(salt)
+	message2 := crypt.Sum(nil)
+
+	for i := range message1 {
+		message1[i] ^= message2[i]
+	}
+
+	return message1
 }
 
 // RandomBuf return random salt, seed must be in the range of ascii

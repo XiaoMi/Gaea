@@ -60,3 +60,13 @@ func TestCalcPassword(t *testing.T) {
 	hexScramble := hex.EncodeToString(scramble)
 	t.Logf("scramble: %s equal %s, pass: %v", "fbc71db5ac3d7b51048d1a1d88c1677f34bcca11", hexScramble, "fbc71db5ac3d7b51048d1a1d88c1677f34bcca11" == hexScramble)
 }
+
+func TestCalcPassword2(t *testing.T) {
+	seed := hack.Slice("D?Y.SZC@v,P${ GdT0e{")
+	hexSeed := hex.EncodeToString(seed)
+	t.Logf("seed: %s equal %s, pass: %v", "443f592e535a4340762c50247b2047645430657b", hexSeed, "443f592e535a4340762c50247b2047645430657b" == hexSeed)
+	scramble := CalcCachingSha2Password(seed, "123456")
+
+	hexScramble := hex.EncodeToString(scramble)
+	t.Logf("scramble: %s equal %s, pass: %v", "896d208c92429f5d1d5cb67f1ca3a639d7abdf335b05f58894e7f11d90608ca4", hexScramble, "896d208c92429f5d1d5cb67f1ca3a639d7abdf335b05f58894e7f11d90608ca4" == hexScramble)
+}
