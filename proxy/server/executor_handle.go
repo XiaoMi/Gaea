@@ -129,7 +129,9 @@ func (se *SessionExecutor) handleQueryWithoutPlan(reqCtx *util.RequestContext, s
 	case *ast.CommitStmt:
 		return nil, se.handleCommit()
 	case *ast.RollbackStmt:
-		return nil, se.handleRollback()
+		return nil, se.handleRollback(stmt)
+	case *ast.SavepointStmt:
+		return nil, se.handleSavepoint(stmt)
 	case *ast.UseStmt:
 		return nil, se.handleUseDB(stmt.DBName)
 	default:

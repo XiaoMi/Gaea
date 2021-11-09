@@ -431,6 +431,18 @@ func (dc *DirectConnection) Rollback() error {
 	return err
 }
 
+// Rollback send ComQuery with 'rollback' to backend mysql to rollback transaction
+func (dc *DirectConnection) RollbackSavepoint(savepoint string) error {
+	_, err := dc.exec("rollback to "+savepoint, 0)
+	return err
+}
+
+// Rollback send ComQuery with 'rollback' to backend mysql to rollback transaction
+func (dc *DirectConnection) Savepoint(savepoint string) error {
+	_, err := dc.exec("savepoint "+savepoint, 0)
+	return err
+}
+
 // SetAutoCommit trun on/off autocommit
 func (dc *DirectConnection) SetAutoCommit(v uint8) error {
 	if v == 0 {
