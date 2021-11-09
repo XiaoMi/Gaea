@@ -426,6 +426,7 @@ var tokenMap = map[string]int{
 	"ROW":                      row,
 	"ROW_COUNT":                rowCount,
 	"ROW_FORMAT":               rowFormat,
+	"SAVEPOINT":                savepoint,
 	"SCHEMA":                   database,
 	"SCHEMAS":                  databases,
 	"SECOND":                   second,
@@ -540,6 +541,9 @@ var tokenMap = map[string]int{
 	"ZEROFILL":                 zerofill,
 	"BINDING":                  binding,
 	"BINDINGS":                 bindings,
+	"WORK":                     work,
+	"CHAIN":                    chain,
+	"RELEASE":                  release,
 }
 
 // See https://dev.mysql.com/doc/refman/5.7/en/function-resolution.html for details

@@ -43,6 +43,7 @@ const (
 	StmtOther
 	StmtUnknown
 	StmtComment
+	StmtSavepoint
 )
 
 // Preview analyzes the beginning of the query using a simpler and faster
@@ -96,6 +97,8 @@ func Preview(sql string) int {
 		return StmtUse
 	case "analyze", "describe", "desc", "explain", "repair", "optimize":
 		return StmtOther
+	case "savepoint":
+		return StmtSavepoint
 	}
 	if strings.Index(trimmed, "/*!") == 0 {
 		return StmtComment
@@ -126,6 +129,8 @@ func StmtType(stmtType int) string {
 		return "COMMIT"
 	case StmtRollback:
 		return "ROLLBACK"
+	case StmtSavepoint:
+		return "SAVEPOINT"
 	case StmtSet:
 		return "SET"
 	case StmtShow:

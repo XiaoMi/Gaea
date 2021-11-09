@@ -384,6 +384,7 @@ import (
 	routine		"ROUTINE"
 	rowCount	"ROW_COUNT"
 	rowFormat	"ROW_FORMAT"
+	savepoint	"SAVEPOINT"
 	second		"SECOND"
 	security	"SECURITY"
 	separator 	"SEPARATOR"
@@ -431,6 +432,9 @@ import (
 	identSQLErrors	"ERRORS"
 	week		"WEEK"
 	yearType	"YEAR"
+	work        "WORK"
+	chain       "CHAIN"
+	release     "RELEASE"
 
 	/* The following tokens belong to NotKeywordToken. */
 	addDate			"ADDDATE"
@@ -612,6 +616,7 @@ import (
 	RevokeStmt			"Revoke statement"
 	RevokeRoleStmt      "Revoke role statement"
 	RollbackStmt			"ROLLBACK statement"
+	SavepointStmt			"SAVEPOINT statement"
 	SetStmt				"Set variable statement"
 	SetRoleStmt				"Set active role statement"
 	SetDefaultRoleStmt			"Set default statement for some user"
@@ -649,6 +654,7 @@ import (
 	ColumnNameListOptWithBrackets 	"column name list opt with brackets"
 	ColumnSetValue			"insert statement set value by column name"
 	ColumnSetValueList		"insert statement set value by column name list"
+	CommitOpt           "Commit options"
 	CompareOp			"Compare opcode"
 	ColumnOption			"column definition option"
 	ColumnOptionList		"column definition option list"
@@ -1513,8 +1519,58 @@ ColumnNameListOptWithBrackets:
 		$$ = $2.([]*ast.ColumnName)
 	}
 
+CommitOpt:
+	"WORK"
+	{
+		$$ = $1
+	}
+|	"WORK" "AND" "NO" "CHAIN" "NO" "RELEASE"
+	{
+		$$ = ""
+	}
+|	"WORK" "AND" "CHAIN" "NO" "RELEASE"
+	{
+		$$ = ""
+	}
+|	"WORK" "AND" "NO" "CHAIN" "RELEASE"
+	{
+		$$ = ""
+	}
+|	"WORK" "NO" "RELEASE"
+	{
+		$$ = ""
+	}
+|	"WORK" "RELEASE"
+	{
+		$$ = ""
+	}
+|	"AND" "NO" "CHAIN" "NO" "RELEASE"
+	{
+		$$ = ""
+	}
+|	"AND" "CHAIN" "NO" "RELEASE"
+	{
+		$$ = ""
+	}
+|	"AND" "NO" "CHAIN" "RELEASE"
+	{
+		$$ = ""
+	}
+|	"NO" "RELEASE"
+	{
+		$$ = ""
+	}
+|	"RELEASE"
+	{
+		$$ = ""
+	}
+
 CommitStmt:
 	"COMMIT"
+	{
+		$$ = &ast.CommitStmt{}
+	}
+|	"COMMIT" CommitOpt
 	{
 		$$ = &ast.CommitStmt{}
 	}
@@ -3033,7 +3089,7 @@ UnReservedKeyword:
 | "COLUMNS" | "COMMIT" | "COMPACT" | "COMPRESSED" | "CONSISTENT" | "CURRENT" | "DATA" | "DATE" %prec lowerThanStringLitToken| "DATETIME" | "DAY" | "DEALLOCATE" | "DO" | "DUPLICATE"
 | "DYNAMIC"| "END" | "ENGINE" | "ENGINES" | "ENUM" | "ERRORS" | "ESCAPE" | "EXECUTE" | "FIELDS" | "FIRST" | "FIXED" | "FLUSH" | "FOLLOWING" | "FORMAT" | "FULL" |"GLOBAL"
 | "HASH" | "HOUR" | "LESS" | "LOCAL" | "LAST" | "NAMES" | "OFFSET" | "PASSWORD" %prec lowerThanEq | "PREPARE" | "QUICK" | "REDUNDANT"
-| "ROLE" |"ROLLBACK" | "SESSION" | "SIGNED" | "SNAPSHOT" | "START" | "STATUS" | "SUBPARTITIONS" | "SUBPARTITION" | "TABLES" | "TABLESPACE" | "TEXT" | "THAN" | "TIME" %prec lowerThanStringLitToken
+| "ROLE" | "ROLLBACK" | "SAVEPOINT" | "SESSION" | "SIGNED" | "SNAPSHOT" | "START" | "STATUS" | "SUBPARTITIONS" | "SUBPARTITION" | "TABLES" | "TABLESPACE" | "TEXT" | "THAN" | "TIME" %prec lowerThanStringLitToken
 | "TIMESTAMP" %prec lowerThanStringLitToken | "TRACE" | "TRANSACTION" | "TRUNCATE" | "UNBOUNDED" | "UNKNOWN" | "VALUE" | "WARNINGS" | "YEAR" | "MODE"  | "WEEK"  | "ANY" | "SOME" | "USER" | "IDENTIFIED"
 | "COLLATION" | "COMMENT" | "AVG_ROW_LENGTH" | "CONNECTION" | "CHECKSUM" | "COMPRESSION" | "KEY_BLOCK_SIZE" | "MASTER" | "MAX_ROWS"
 | "MIN_ROWS" | "NATIONAL" | "ROW_FORMAT" | "QUARTER" | "GRANTS" | "TRIGGERS" | "DELAY_KEY_WRITE" | "ISOLATION" | "JSON"
@@ -4517,11 +4573,36 @@ DeallocateSym:
 
 /****************************Prepared Statement End*******************************/
 
-
 RollbackStmt:
 	"ROLLBACK"
 	{
 		$$ = &ast.RollbackStmt{}
+	}
+|	"ROLLBACK" CommitOpt
+	{
+		$$ = &ast.RollbackStmt{}
+	}
+|	"ROLLBACK" "WORK" "TO" "SAVEPOINT" StringName
+	{
+		$$ = &ast.RollbackStmt{Savepoint: $5.(string)}
+	}
+|	"ROLLBACK" "WORK" "TO" StringName
+	{
+		$$ = &ast.RollbackStmt{Savepoint: $4.(string)}
+	}
+|	"ROLLBACK" "TO" "SAVEPOINT" StringName
+	{
+		$$ = &ast.RollbackStmt{Savepoint: $4.(string)}
+	}
+|	"ROLLBACK" "TO" StringName
+	{
+		$$ = &ast.RollbackStmt{Savepoint: $3.(string)}
+	}
+
+SavepointStmt:
+	"SAVEPOINT" StringName
+	{
+		$$ = &ast.SavepointStmt{Savepoint : $2.(string)}
 	}
 
 SelectStmtBasic:
@@ -6492,6 +6573,7 @@ Statement:
 |	ReplaceIntoStmt
 |	RevokeStmt
 |	RevokeRoleStmt
+|	SavepointStmt
 |	SelectStmt
 |	UnionStmt
 |	SetStmt

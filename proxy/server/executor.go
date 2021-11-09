@@ -270,7 +270,7 @@ func (se *SessionExecutor) GetDatabase() string {
 func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 	switch cmd {
 	case mysql.ComQuit:
-		se.handleRollback()
+		se.handleRollback(nil)
 		// https://dev.mysql.com/doc/internals/en/com-quit.html
 		// either a connection close or a OK_Packet, OK_Packet will cause client RST sometimes, but doesn't affect sql execute
 		return CreateNoopResponse()
@@ -494,7 +494,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			}
 			for _, v := range sqls {
 				startTime := time.Now()
-				r, err := pc.Execute(v,  se.manager.GetNamespace(se.namespace).GetMaxResultSize())
+				r, err := pc.Execute(v, se.manager.GetNamespace(se.namespace).GetMaxResultSize())
 				se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, v, pc.GetAddr(), startTime, err)
 				if err != nil {
 					rs[i] = err
@@ -560,6 +560,7 @@ func canHandleWithoutPlan(stmtType int) bool {
 		stmtType == parser.StmtBegin ||
 		stmtType == parser.StmtCommit ||
 		stmtType == parser.StmtRollback ||
+		stmtType == parser.StmtSavepoint ||
 		stmtType == parser.StmtUse
 }
 
@@ -695,8 +696,12 @@ func (se *SessionExecutor) handleCommit() (err error) {
 
 }
 
-func (se *SessionExecutor) handleRollback() (err error) {
-	return se.rollback()
+func (se *SessionExecutor) handleRollback(stmt *ast.RollbackStmt) (err error) {
+	if stmt != nil {
+		return se.rollback()
+	} else {
+		return se.rollbackSavepoint(stmt.Savepoint)
+	}
 }
 
 func (se *SessionExecutor) commit() (err error) {
@@ -719,17 +724,30 @@ func (se *SessionExecutor) commit() (err error) {
 func (se *SessionExecutor) rollback() (err error) {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
-
 	se.status &= ^mysql.ServerStatusInTrans
-
 	for _, pc := range se.txConns {
-		if e := pc.Rollback(); e != nil {
-			err = e
-		}
+		err = pc.Rollback()
 		pc.Recycle()
 	}
-
 	se.txConns = make(map[string]backend.PooledConnect)
+	return
+}
+
+func (se *SessionExecutor) rollbackSavepoint(savepoint string) (err error) {
+	se.txLock.Lock()
+	defer se.txLock.Unlock()
+	for _, pc := range se.txConns {
+		err = pc.RollbackSavepoint(savepoint)
+	}
+	return
+}
+
+func (se *SessionExecutor) handleSavepoint(stmt *ast.SavepointStmt) (err error) {
+	se.txLock.Lock()
+	defer se.txLock.Unlock()
+	for _, pc := range se.txConns {
+		err = pc.Savepoint(stmt.Savepoint)
+	}
 	return
 }
 

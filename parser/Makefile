@@ -1,8 +1,18 @@
 .PHONY: all parser clean
 
-ARCH:="`uname -s`"
+ARCH:="$(shell uname -s)"
 MAC:="Darwin"
 LINUX:="Linux"
+GOYACCBIN:=""
+ifeq ($(ARCH), $(LINUX))
+	GOYACCBIN=./goyacc
+else
+	ifeq ($(ARCH), $(MAC))
+		GOYACCBIN=./goyacc
+	else
+		GOYACCBIN=./goyacc
+	endif
+endif
 
 all: parser.go fmt
 
@@ -13,8 +23,8 @@ parser.go: parser.y
 	make parser
 
 parser: goyacc
-	./goyacc -o /dev/null parser.y
-	./goyacc -o parser.go parser.y 2>&1 | egrep "(shift|reduce)/reduce" | awk '{print} END {if (NR > 0) {print "Find conflict in parser.y. Please check y.output for more information."; exit 1;}}'
+	${GOYACCBIN} -o /dev/null parser.y
+	$(GOYACCBIN) -o parser.go parser.y 2>&1 | egrep "(shift|reduce)/reduce" | awk '{print} END {if (NR > 0) {print "Find conflict in parser.y. Please check y.output for more information."; exit 1;}}'
 	rm -f y.output
 
 	@if [ $(ARCH) = $(LINUX) ]; \
