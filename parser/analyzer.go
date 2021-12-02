@@ -43,6 +43,7 @@ const (
 	StmtOther
 	StmtUnknown
 	StmtComment
+	StmtSavepoint
 )
 
 // Preview analyzes the beginning of the query using a simpler and faster
@@ -80,10 +81,6 @@ func Preview(sql string) int {
 	switch strings.ToLower(trimmedNoComments) {
 	case "begin", "start transaction":
 		return StmtBegin
-	case "commit":
-		return StmtCommit
-	case "rollback":
-		return StmtRollback
 	}
 	switch loweredFirstWord {
 	case "create", "alter", "rename", "drop", "truncate", "flush":
@@ -96,6 +93,12 @@ func Preview(sql string) int {
 		return StmtUse
 	case "analyze", "describe", "desc", "explain", "repair", "optimize":
 		return StmtOther
+	case "commit":
+		return StmtCommit
+	case "rollback":
+		return StmtRollback
+	case "savepoint":
+		return StmtSavepoint
 	}
 	if strings.Index(trimmed, "/*!") == 0 {
 		return StmtComment
@@ -126,6 +129,8 @@ func StmtType(stmtType int) string {
 		return "COMMIT"
 	case StmtRollback:
 		return "ROLLBACK"
+	case StmtSavepoint:
+		return "SAVEPOINT"
 	case StmtSet:
 		return "SET"
 	case StmtShow:
