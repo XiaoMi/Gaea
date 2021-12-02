@@ -88,6 +88,16 @@ func (pc *pooledConnectImpl) Rollback() error {
 	return pc.directConnection.Rollback()
 }
 
+// Rollback wrapper of direct connection, rollback transaction
+func (pc *pooledConnectImpl) RollbackSavepoint(savepoint string) error {
+	return pc.directConnection.RollbackSavepoint(savepoint)
+}
+
+// Rollback wrapper of direct connection, rollback transaction
+func (pc *pooledConnectImpl) Savepoint(savepoint string) error {
+	return pc.directConnection.Savepoint(savepoint)
+}
+
 // SetCharset wrapper of direct connection, set charset of connection
 func (pc *pooledConnectImpl) SetCharset(charset string, collation mysql.CollationID) (bool, error) {
 	return pc.directConnection.SetCharset(charset, collation)
