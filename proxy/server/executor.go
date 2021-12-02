@@ -697,7 +697,7 @@ func (se *SessionExecutor) handleCommit() (err error) {
 }
 
 func (se *SessionExecutor) handleRollback(stmt *ast.RollbackStmt) (err error) {
-	if stmt != nil {
+	if stmt == nil || stmt.Savepoint == "" {
 		return se.rollback()
 	} else {
 		return se.rollbackSavepoint(stmt.Savepoint)
