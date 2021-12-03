@@ -22,7 +22,8 @@ const (
 	// StmtType stmt type
 	StmtType = "stmtType" // SQL类型, 值类型为int (对应parser.Preview()得到的值)
 	// FromSlave if read from slave
-	FromSlave = "fromSlave" // 读写分离标识, 值类型为int, false = 0, true = 1
+	FromSlave    = "fromSlave"    // 读写分离标识, 值类型为int, false = 0, true = 1
+	DefaultSlice = "defaultSlice" // 默认分片标识 string 类型
 )
 
 // RequestContext means request scope context with values
