@@ -125,3 +125,7 @@ func (r *Router) GetRule(db, table string) Rule {
 		return rule
 	}
 }
+
+func (r *Router) GetDefaultRule() Rule {
+	return r.defaultRule
+}
