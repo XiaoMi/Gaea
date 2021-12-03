@@ -405,7 +405,8 @@ type RollbackStmt struct {
 func (n *RollbackStmt) Restore(ctx *format.RestoreCtx) error {
 	ctx.WriteKeyWord("ROLLBACK")
 	if n.Savepoint != "" {
-		ctx.WriteKeyWord(" TO SAVEPOINT " + n.Savepoint)
+		ctx.WriteKeyWord(" TO SAVEPOINT ")
+		ctx.WritePlain(n.Savepoint)
 	}
 	return nil
 }
@@ -423,12 +424,16 @@ func (n *RollbackStmt) Accept(v Visitor) (Node, bool) {
 type SavepointStmt struct {
 	stmtNode
 	Savepoint string
+	Release   bool
 }
 
 // Restore implements Node interface.
 func (n *SavepointStmt) Restore(ctx *format.RestoreCtx) error {
-	ctx.WriteKeyWord("SAVEPOINT")
-	ctx.WriteString(" " + n.Savepoint)
+	if n.Release {
+		ctx.WriteKeyWord("RELEASE ")
+	}
+	ctx.WriteKeyWord("SAVEPOINT ")
+	ctx.WritePlain(n.Savepoint)
 	return nil
 }
 

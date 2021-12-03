@@ -100,6 +100,9 @@ func Preview(sql string) int {
 	case "savepoint":
 		return StmtSavepoint
 	}
+	if strings.Index(trimmedNoComments, "release savepoint") == 0 {
+		return StmtSavepoint
+	}
 	if strings.Index(trimmed, "/*!") == 0 {
 		return StmtComment
 	}
