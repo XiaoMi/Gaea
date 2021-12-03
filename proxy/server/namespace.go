@@ -70,6 +70,7 @@ type Namespace struct {
 	openGeneralLog     bool
 	maxSqlExecuteTime  int // session max sql execute time,millisecond
 	maxSqlResultSize   int
+	defaultSlice       string
 
 	slowSQLCache         *cache.LRUCache
 	errorSQLCache        *cache.LRUCache
@@ -96,6 +97,7 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 		backendSlowSQLCache:  cache.NewLRUCache(defaultSQLCacheCapacity),
 		backendErrorSQLCache: cache.NewLRUCache(defaultSQLCacheCapacity),
 		planCache:            cache.NewLRUCache(defaultPlanCacheCapacity),
+		defaultSlice:         namespaceConfig.DefaultSlice,
 	}
 
 	defer func() {
@@ -304,6 +306,10 @@ func (n *Namespace) GetPhysicalDBs() map[string]string {
 // GetDefaultCharset return default charset
 func (n *Namespace) GetDefaultCharset() string {
 	return n.defaultCharset
+}
+
+func (n *Namespace) GetDefaultSlice() string {
+	return n.defaultSlice
 }
 
 // GetDefaultCollationID return default collation id
