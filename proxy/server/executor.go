@@ -737,7 +737,7 @@ func (se *SessionExecutor) rollbackSavepoint(savepoint string) (err error) {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 	for _, pc := range se.txConns {
-		err = pc.RollbackSavepoint(savepoint)
+		_, err = pc.Execute("rollback to "+savepoint, 0)
 	}
 	return
 }
@@ -745,8 +745,14 @@ func (se *SessionExecutor) rollbackSavepoint(savepoint string) (err error) {
 func (se *SessionExecutor) handleSavepoint(stmt *ast.SavepointStmt) (err error) {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
-	for _, pc := range se.txConns {
-		err = pc.Savepoint(stmt.Savepoint)
+	if stmt.Release {
+		for _, pc := range se.txConns {
+			_, err = pc.Execute("release savepoint "+stmt.Savepoint, 0)
+		}
+	} else {
+		for _, pc := range se.txConns {
+			_, err = pc.Execute("savepoint "+stmt.Savepoint, 0)
+		}
 	}
 	return
 }
