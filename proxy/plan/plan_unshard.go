@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/ast"
 	"github.com/XiaoMi/Gaea/parser/format"
@@ -106,7 +105,7 @@ func CreateSelectLastInsertIDPlan() *SelectLastInsertIDPlan {
 
 // ExecuteIn implement Plan
 func (p *UnshardPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysql.Result, error) {
-	r, err := se.ExecuteSQL(reqCtx, backend.DefaultSlice, p.db, p.sql)
+	r, err := se.ExecuteSQL(reqCtx, reqCtx.Get(util.DefaultSlice).(string), p.db, p.sql)
 	if err != nil {
 		return nil, err
 	}

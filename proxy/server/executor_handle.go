@@ -101,6 +101,7 @@ func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*my
 		reqCtx.Set(util.FromSlave, 1)
 	}
 
+	reqCtx.Set(util.DefaultSlice, se.GetNamespace().GetDefaultSlice())
 	r, err := p.ExecuteIn(reqCtx, se)
 	if err != nil {
 		log.Warn("execute select: %s", err.Error())
@@ -180,7 +181,7 @@ func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string, s
 		}
 		fallthrough
 	default:
-		r, err := se.ExecuteSQL(reqCtx, backend.DefaultSlice, se.db, sql)
+		r, err := se.ExecuteSQL(reqCtx, se.GetNamespace().GetDefaultSlice(), se.db, sql)
 		if err != nil {
 			return nil, fmt.Errorf("execute sql error, sql: %s, err: %v", sql, err)
 		}

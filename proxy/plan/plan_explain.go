@@ -16,7 +16,6 @@ package plan
 
 import (
 	"fmt"
-	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/ast"
 	"github.com/XiaoMi/Gaea/proxy/router"
@@ -74,7 +73,7 @@ func buildExplainPlan(stmt *ast.ExplainStmt, phyDBs map[string]string, db, sql s
 			pl.db = phyDB
 		}
 		dbSQLs[pl.db] = []string{pl.sql}
-		ep.sqls[backend.DefaultSlice] = dbSQLs
+		ep.sqls[r.GetDefaultRule().GetSlice(0)] = dbSQLs
 		return ep, nil
 	default:
 		return nil, fmt.Errorf("unsupport plan to explain, type: %T", p)
