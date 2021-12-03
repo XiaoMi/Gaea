@@ -4604,6 +4604,10 @@ SavepointStmt:
 	{
 		$$ = &ast.SavepointStmt{Savepoint : $2.(string)}
 	}
+|	"RELEASE" "SAVEPOINT" StringName
+    {
+        $$ = &ast.SavepointStmt{Savepoint : $3.(string), Release: true}
+    }
 
 SelectStmtBasic:
 	"SELECT" SelectStmtOpts SelectStmtFieldList

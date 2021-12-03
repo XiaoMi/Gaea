@@ -166,34 +166,6 @@ func (_m *PooledConnect) Rollback() error {
 	return r0
 }
 
-// Rollback provides a mock function with given fields:
-func (_m *PooledConnect) RollbackSavepoint(savepoint string) error {
-	ret := _m.Called()
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func() error); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// Rollback provides a mock function with given fields:
-func (_m *PooledConnect) Savepoint(savepoint string) error {
-	ret := _m.Called()
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func() error); ok {
-		r0 = rf()
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
 // SetAutoCommit provides a mock function with given fields: v
 func (_m *PooledConnect) SetAutoCommit(v uint8) error {
 	ret := _m.Called(v)
