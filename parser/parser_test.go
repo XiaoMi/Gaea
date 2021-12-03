@@ -2439,6 +2439,16 @@ func (s *testParserSuite) TestPrepare(c *C) {
 	s.RunTest(c, table)
 }
 
+func (s *testParserSuite) TestSavePoint(c *C) {
+	table := []testCase{
+		{"SAVEPOINT id1", true, "SAVEPOINT id1"},
+		{"ROLLBACK TO SAVEPOINT id1", true, "ROLLBACK TO SAVEPOINT id1"},
+		{"RELEASE SAVEPOINT id1", true, "RELEASE SAVEPOINT id1"},
+		{"RELEASE  SAVEPOINT id1", true, "RELEASE SAVEPOINT id1"},
+	}
+	s.RunTest(c, table)
+}
+
 func (s *testParserSuite) TestDeallocate(c *C) {
 	table := []testCase{
 		{"DEALLOCATE PREPARE test", true, "DEALLOCATE PREPARE `test`"},
