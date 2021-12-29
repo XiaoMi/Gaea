@@ -26,6 +26,7 @@ import (
 
 const (
 	getConnTimeout = 2 * time.Second
+	PING_PEROID    = 5 * time.Second
 )
 
 var (
@@ -114,7 +115,7 @@ func (cp *connectionPoolImpl) tryReuse(pc *pooledConnectImpl) error {
 }
 
 // Get return a connection, you should call PooledConnect's Recycle once done
-func (cp *connectionPoolImpl) Get(ctx context.Context) (PooledConnect, error) {
+func (cp *connectionPoolImpl) Get(ctx context.Context) (pc PooledConnect, err error) {
 	p := cp.pool()
 	if p == nil {
 		return nil, ErrConnectionPoolClosed
@@ -126,7 +127,16 @@ func (cp *connectionPoolImpl) Get(ctx context.Context) (PooledConnect, error) {
 	if err != nil {
 		return nil, err
 	}
-	return r.(*pooledConnectImpl), nil
+
+	pc = r.(*pooledConnectImpl)
+	
+	//do ping when over the ping time. if error happen, create new one
+	if !pc.GetReturnTime().IsZero() && time.Until(pc.GetReturnTime().Add(PING_PEROID)) < 0 { 
+		if err = pc.Ping(); err != nil {
+			err = pc.Reconnect()
+		}
+	}
+	return pc, err
 }
 
 // Put recycle a connection into the pool
