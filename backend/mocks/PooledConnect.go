@@ -3,6 +3,8 @@
 package mocks
 
 import (
+	"time"
+	
 	mysql "github.com/XiaoMi/Gaea/mysql"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -248,4 +250,21 @@ func (_m *PooledConnect) WriteSetStatement() error {
 	}
 
 	return r0
+}
+
+func (_m *PooledConnect) Ping() error {
+	ret := _m.Called()
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func() error); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+func (_m *PooledConnect) GetReturnTime() time.Time {
+	return time.Now()
 }
