@@ -15,6 +15,8 @@
 package backend
 
 import (
+	"time"
+
 	"github.com/XiaoMi/Gaea/mysql"
 )
 
@@ -22,14 +24,21 @@ import (
 type pooledConnectImpl struct {
 	directConnection *DirectConnection
 	pool             *connectionPoolImpl
+	returnTime       time.Time
 }
 
 // Recycle return PooledConnect to the pool
 func (pc *pooledConnectImpl) Recycle() {
+	//if has error,the connection can’t be recycled
+	if pc.directConnection.pkgErr != nil {
+		pc.Close()
+	}
+
 	if pc.IsClosed() {
 		pc.pool.Put(nil)
 	} else {
 		pc.pool.Put(pc)
+		pc.returnTime = time.Now()
 	}
 }
 
@@ -63,6 +72,9 @@ func (pc *pooledConnectImpl) UseDB(db string) error {
 	return pc.directConnection.UseDB(db)
 }
 
+func (pc *pooledConnectImpl) Ping() error {
+	return pc.directConnection.Ping()
+}
 // Execute wrapper of direct connection, execute sql
 func (pc *pooledConnectImpl) Execute(sql string, maxRows int) (*mysql.Result, error) {
 	return pc.directConnection.Execute(sql, maxRows)
@@ -115,4 +127,8 @@ func (pc *pooledConnectImpl) WriteSetStatement() error {
 
 func (pc *pooledConnectImpl) GetConnectionID() int64 {
 	return int64(pc.directConnection.conn.ConnectionID)
+}
+
+func (pc *pooledConnectImpl) GetReturnTime() time.Time {
+	return pc.returnTime
 }

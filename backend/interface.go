@@ -18,12 +18,14 @@ type PooledConnect interface {
 	Begin() error
 	Commit() error
 	Rollback() error
+	Ping() error
 	SetCharset(charset string, collation mysql.CollationID) (bool, error)
 	FieldList(table string, wildcard string) ([]*mysql.Field, error)
 	GetAddr() string
 	SetSessionVariables(frontend *mysql.SessionVariables) (bool, error)
 	WriteSetStatement() error
 	GetConnectionID() int64
+	GetReturnTime() time.Time
 }
 
 type ConnectionPool interface {
