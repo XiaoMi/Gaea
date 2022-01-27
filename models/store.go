@@ -17,6 +17,7 @@ package models
 import (
 	"encoding/json"
 	"fmt"
+	etcdclientv3 "github.com/XiaoMi/Gaea/models/etcdv3"
 	"path/filepath"
 	"strings"
 	"time"
@@ -28,8 +29,9 @@ import (
 
 // config type
 const (
-	ConfigFile = "file"
-	ConfigEtcd = "etcd"
+	ConfigFile   = "file"
+	ConfigEtcd   = "etcd"
+	ConfigEtcdV3 = "etcdv3"
 )
 
 // Client client interface
@@ -54,6 +56,7 @@ type Store struct {
 func NewClient(configType, addr, username, password, root string) Client {
 	switch configType {
 	case ConfigFile:
+		// 使用文档 File 去读取设定值
 		c, err := fileclient.New(root)
 		if err != nil {
 			log.Warn("create fileclient failed, %s", addr)
@@ -61,10 +64,18 @@ func NewClient(configType, addr, username, password, root string) Client {
 		}
 		return c
 	case ConfigEtcd:
-		// etcd
+		// 使用 Etcd V3 API 去读取设定值
 		c, err := etcdclient.New(addr, time.Minute, username, password, root)
 		if err != nil {
-			log.Fatal("create etcdclient to %s failed, %v", addr, err)
+			log.Fatal("create etcdclient v2 to %s failed, %v", addr, err)
+			return nil
+		}
+		return c
+	case ConfigEtcdV3:
+		// 使用 Etcd V3 API 去读取设定值
+		c, err := etcdclientv3.New(addr, time.Minute, username, password, root)
+		if err != nil {
+			log.Fatal("create etcdclient v3 to %s failed, %v", addr, err)
 			return nil
 		}
 		return c
@@ -108,6 +119,7 @@ func (s *Store) ProxyPath(token string) string {
 
 // CreateProxy create proxy model
 func (s *Store) CreateProxy(p *ProxyInfo) error {
+	// 就在这里，会在 etcd 服务器上新增一个 key /gaea_cluster/proxy/proxy-127.0.0.1:13306
 	return s.client.Update(s.ProxyPath(p.Token), p.Encode())
 }
 
