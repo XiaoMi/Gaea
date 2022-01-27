@@ -64,7 +64,7 @@ func NewClient(configType, addr, username, password, root string) Client {
 		}
 		return c
 	case ConfigEtcd:
-		// 使用 Etcd V3 API 去读取设定值
+		// 使用 Etcd V2 API 去读取设定值
 		c, err := etcdclient.New(addr, time.Minute, username, password, root)
 		if err != nil {
 			log.Fatal("create etcdclient v2 to %s failed, %v", addr, err)
