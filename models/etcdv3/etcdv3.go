@@ -116,14 +116,9 @@ func (c *EtcdClientV3) contextWithTimeout() (context.Context, context.CancelFunc
 }*/
 
 // Mkdir create directory (v2 的版本也没在用这函式)
-/*func (c *EtcdClientV3) Mkdir(dir string) error {
-	c.Lock()
-	defer c.Unlock()
-	if c.closed {
-		return ErrClosedEtcdClient
-	}
-	return c.mkdir(dir)
-}*/
+func (c *EtcdClientV3) Mkdir(dir string) error {
+	return nil
+}
 
 // mkdir create directory (v2 的版本也没在用这函式)
 /*func (c *EtcdClientV3) mkdir(dir string) error {
@@ -143,23 +138,9 @@ func (c *EtcdClientV3) contextWithTimeout() (context.Context, context.CancelFunc
 }*/
 
 // Create create path with data (v2 的版本也没在用这函式)
-/*func (c *EtcdClientV3) Create(path string, data []byte) error {
-	c.Lock()
-	defer c.Unlock()
-	if c.closed {
-		return ErrClosedEtcdClient
-	}
-	cntx, canceller := c.contextWithTimeout()
-	defer canceller()
-	log.Debug("etcd create node %s", path)
-	_, err := c.kapi.Put(cntx, path, string(data), nil) // 找不太到参数
-	if err != nil {
-		log.Debug("etcd create node %s failed: %s", path, err)
-		return err
-	}
-	log.Debug("etcd create node OK")
+func (c *EtcdClientV3) Create(path string, data []byte) error {
 	return nil
-}*/
+}
 
 // 参考文件在 https://etcd.io/docs/v3.5/tutorials/how-to-get-key-by-prefix/
 // 1 WithLease 是用来定时删除 key
