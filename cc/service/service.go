@@ -32,7 +32,7 @@ func getCoordinatorRoot(cluster string) string {
 
 // ListNamespace return names of all namespace
 func ListNamespace(cfg *models.CCConfig, cluster string) ([]string, error) {
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	return mConn.ListNamespace()
@@ -40,7 +40,7 @@ func ListNamespace(cfg *models.CCConfig, cluster string) ([]string, error) {
 
 // QueryNamespace return information of namespace specified by names
 func QueryNamespace(names []string, cfg *models.CCConfig, cluster string) (data []*models.Namespace, err error) {
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	for _, v := range names {
@@ -71,7 +71,7 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig, cluster 
 	}
 
 	// sink namespace
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
 	storeConn := models.NewStore(client)
 	defer storeConn.Close()
 
@@ -108,7 +108,7 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig, cluster 
 
 // DelNamespace delete namespace
 func DelNamespace(name string, cfg *models.CCConfig, cluster string) error {
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 
@@ -139,7 +139,7 @@ func SQLFingerprint(name string, cfg *models.CCConfig, cluster string) (slowSQLs
 	slowSQLs = make(map[string]string, 16)
 	errSQLs = make(map[string]string, 16)
 	// list proxy
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	proxies, err := mConn.ListProxyMonitorMetrics()
@@ -183,7 +183,7 @@ func SQLFingerprint(name string, cfg *models.CCConfig, cluster string) (slowSQLs
 // ProxyConfigFingerprint return fingerprints of all proxy
 func ProxyConfigFingerprint(cfg *models.CCConfig, cluster string) (r map[string]string, err error) {
 	// list proxy
-	client := models.NewClient(models.ConfigEtcd, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	proxies, err := mConn.ListProxyMonitorMetrics()
