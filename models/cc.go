@@ -28,6 +28,7 @@ type CCConfig struct {
 	ProxyUserName string `ini:"proxy_username"`
 	ProxyPassword string `ini:"proxy_password"`
 	// etcd 相关配置
+	CoordinatorType string `ini:"coordinator_type"`
 	CoordinatorAddr string `ini:"coordinator_addr"`
 	CoordinatorRoot string `ini:"coordinator_root"`
 	UserName        string `ini:"username"`
@@ -55,6 +56,9 @@ func ParseCCConfig(cfgFile string) (*CCConfig, error) {
 	err = cfg.MapTo(ccConfig)
 	if ccConfig.DefaultCluster == "" && ccConfig.CoordinatorRoot != "" {
 		ccConfig.DefaultCluster = strings.TrimPrefix(ccConfig.CoordinatorRoot, "/")
+	}
+	if ccConfig.CoordinatorType == "" {
+		ccConfig.CoordinatorType = ConfigEtcd
 	}
 	return ccConfig, err
 }
