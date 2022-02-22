@@ -95,7 +95,7 @@ func (c *EtcdClientV3) contextWithTimeout() (context.Context, context.CancelFunc
 	return context.WithTimeout(context.Background(), c.timeout)
 }
 
-// isErrNodeExists (目前此函式并不支援 v3)
+// isErrNodeExists (目前此函数并不支援 v3)
 /*func isErrNoNode(err error) bool {
 	if err != nil {
 		if e, ok := err.(client.Error); ok {
@@ -105,7 +105,7 @@ func (c *EtcdClientV3) contextWithTimeout() (context.Context, context.CancelFunc
 	return false
 }*/
 
-// isErrNodeExists (v3 版没有在使用此函式)
+// isErrNodeExists (v3 版没有在使用此函数)
 /*func isErrNodeExists(err error) bool {
 	if err != nil {
 		if e, ok := err.(client.Error); ok {
@@ -115,12 +115,12 @@ func (c *EtcdClientV3) contextWithTimeout() (context.Context, context.CancelFunc
 	return false
 }*/
 
-// Mkdir create directory (v2 的版本也没在用这函式)
+// Mkdir create directory (v2 的版本也没在用这函数)
 func (c *EtcdClientV3) Mkdir(dir string) error {
 	return nil
 }
 
-// mkdir create directory (v2 的版本也没在用这函式)
+// mkdir create directory (v2 的版本也没在用这函数)
 /*func (c *EtcdClientV3) mkdir(dir string) error {
 	if dir == "" || dir == "/" {
 		return nil
@@ -137,7 +137,7 @@ func (c *EtcdClientV3) Mkdir(dir string) error {
 	return nil
 }*/
 
-// Create create path with data (v2 的版本也没在用这函式)
+// Create create path with data (v2 的版本也没在用这函数)
 func (c *EtcdClientV3) Create(path string, data []byte) error {
 	return nil
 }
