@@ -10,7 +10,7 @@
 
 类 DcMocker 为仿真连接用的对象，由连接 net.Conn 、缓存连接 bufio.Reader and bufio.Writer、读写完成等待 sync.WaitGroup 和 测试控制 testing.T，如下类图所示
 
-![PipeTest 的类图](./assets/pipeTest 的类图.png)
+![PipeTest的类图](./assets/pipeTest的类图.png)
 
 代码位于 Gaea/util/mocks/pipeTest/pipeTest.go，内容如下
 
@@ -137,7 +137,7 @@ NewDcServerClient 函数会先使用产生 4 个连接 net.Conn，分别为 read
 
 当 mockServer 在 write0 写入要发送的数据，之后 mockClient 就可以在 read0 读取到接收的数据
 
-![PipeTest 的对象图](./assets/pipeTest 的对象图.png)
+![PipeTest的对象图](./assets/pipeTest的对象图.png)
 
 ### 单一连线方向重置
 
@@ -170,7 +170,7 @@ NewDcServerClient 函数会先使用产生 4 个连接 net.Conn，分别为 read
 - 消息经过 reply() 函数，新消息的数值为原始消息加1，观察消息传递消息过程中，数值是否有正常添加，就可以验证整个测试流程是否正确
 - 当等待整个 Pipe 读取和写入完成时，消息就传递到对方，对方就能进行接收和读取动作
 
-![PipeTest 连续测试时序图](./assets/pipeTest 连续测试时序图.png)
+![PipeTest连续测试时序图](./assets/pipeTest连续测试时序图.png)
 
 代码位于 Gaea/util/mocks/pipeTest/pipeTest_test.go，内容如下
 
@@ -202,7 +202,7 @@ func TestPipeTestWorkable(t *testing.T) {
 
 - 整个测试流程不变，但是在中途要 "被测试的函数" 临时接入 Pipe，就可以仿真对方发送过来的消息，再仿真进行回应
 
-![TestPipe 测试临时函数介入时序图](./assets/pipeTest 测试临时函数介入时序图.png)
+![TestPipe测试临时函数介入时序图](./assets/pipeTest测试临时函数介入时序图.png)
 
 代码位于 Gaea/backend/direct_connection_test.go，内容如下
 
@@ -239,7 +239,7 @@ func TestDirectConnWithoutDB(t *testing.T) {
 
 当 mockClient 和 mockServer 接通 Pipe 时，立刻使用 OverwriteBufConn 函数抽换缓存写入，并用 Reset 重置写入连接，之后的仿真过程不变
 
-![PipeTest 测试函数抽换缓存时序图](./assets/PipeTest 测试函数抽换缓存时序图.png)
+![PipeTest测试函数抽换缓存时序图](./assets/PipeTest测试函数抽换缓存时序图.png)
 
 代码位于 Gaea/mysql/conn_test.go，内容如下
 
