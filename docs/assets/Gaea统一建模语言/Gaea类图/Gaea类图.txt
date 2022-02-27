@@ -1,0 +1,139 @@
+@startuml
+
+package mysql {
+    class Conn {
+       - net.Conn conn
+       + uint32 ConnectionID
+       - sync2.AtomicBool closed
+       - *bufio.Reader bufferedReader
+       - *bufio.Writer bufferedWriter
+       - uint8 sequence
+       - int currentEphemeralPolicy
+       - *[]byte currentEphemeralBuffer
+    }
+}
+
+package backend {
+    class DirectConnection {
+        - *mysql.Conn conn
+        - string addr
+        - string user
+        - string password
+        - string db
+        - uint32 capability
+        - *mysql.SessionVariables sessionVariables
+        - uint16 status
+        - mysql.CollationID collation
+        - string charset
+        - []byte salt
+        - mysql.CollationID defaultCollation
+        - string defaultCharset
+        - error pkgErr
+        - sync2.AtomicBool closed
+    }
+
+    class Slice {
+        + models.Slice Cfg
+        - sync.RWMutex
+        + ConnectionPool Master
+        + []ConnectionPool Slave
+        - *balancer slaveBalancer
+        + []ConnectionPool StatisticSlave
+        - *balancer statisticSlaveBalancer
+        - string charset
+        - mysql.CollationID collationID
+        + GetDirectConn(addr string) (*DirectConnection, error)
+    }
+
+    interface ConnectionPool {
+        Open()
+        Addr() string
+        Close()
+        Get(ctx context.Context) (PooledConnect, error)
+        Put(pc PooledConnect)
+        SetCapacity(capacity int) (err error)
+        SetIdleTimeout(idleTimeout time.Duration)
+        StatsJSON() string
+        Capacity() int64
+        Available() int64
+        Active() int64
+        InUse() int64
+        MaxCap() int64
+        WaitCount() int64
+        WaitTime() time.Duration
+        IdleTimeout() time.Duration
+        IdleClosed() int64
+    }
+}
+
+package server {
+    class Namespace {
+        - string name
+        - map[string]bool allowedDBs
+        - map[string]string defaultPhyDBs
+        - map[string]string sqls
+        - int64 slowSQLTime
+        - []util.IPInfo allowips
+        - *router.Router router
+        - *sequence.SequenceManager sequences
+        - map[string]*backend.Slice slices
+        - map[string]*UserProperty userProperties
+        - string defaultCharset
+        - mysql.CollationID defaultCollationID
+        - bool openGeneralLog
+        - int maxSqlExecuteTime
+        - int maxSqlResultSize
+        - string defaultSlice
+        - *cache.LRUCache slowSQLCache
+        - *cache.LRUCache errorSQLCache
+        - *cache.LRUCache backendSlowSQLCache
+        - *cache.LRUCache backendErrorSQLCache
+        - *cache.LRUCache planCache
+    }
+
+    class UserProperty {
+        + int RWFlag
+        + int RWSplit
+        + int OtherProperty
+    }
+}
+
+package router {
+    class Router {
+        map[string]map[string]Rule rules
+        Rule defaultRule
+    }
+
+    interface Rule {
+        GetDB() string
+        GetTable() string
+        GetShardingColumn() string
+        IsLinkedRule() bool
+        GetShard() Shard
+        FindTableIndex(key interface{}) (int, error)
+        GetSlice(i int) string // i is slice index
+        GetSliceIndexFromTableIndex(i int) int
+        GetSlices() []string
+        GetSubTableIndexes() []int
+        GetFirstTableIndex() int
+        GetLastTableIndex() int
+        GetType() string
+        GetDatabaseNameByTableIndex(index int) (string, error)
+    }
+}
+
+package plan {
+}
+
+backend.DirectConnection::conn *-- mysql.Conn::conn
+backend.Slice::GetDirectConn --- DirectConnection : slice produces DirectConnection
+server.Namespace::slices *-- Slice
+server.Namespace::userProperties *-- UserProperty
+server.Namespace::router *-- Router
+router.Router::rules *-- Rule
+router.Router::defaultRule *-- Rule
+Rule --- plan : plan produces rule
+backend.Slice::Slave *-- ConnectionPool
+backend.Slice::StatisticSlave *-- ConnectionPool
+
+@enduml
