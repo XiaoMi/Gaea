@@ -1,0 +1,60 @@
+@startuml
+
+class pipeTest.DcMocker {
+    - testing.T t
+    - *bufio.Reader bufReader
+    - *bufio.Writer bufWriter
+    - Conn connRead
+    - Conn connWrite
+    - sync.WaitGroup wg
+    - ReplyFuncType replyFunc
+    - error err
+    GetConnRead() net.Conn
+    GetConnWrite() net.Conn
+    GetBufReader() *bufio.Reader
+    GetBufWriter() *bufio.Writer
+    OverwriteConnBufRead(connRead net.Conn, bufReader *bufio.Reader) error
+    OverwriteConnBufWrite(connWrite net.Conn, bufWriter *bufio.Writer) error
+    ResetDcMockers(otherSide *DcMocker) error
+    SendOrReceive(data []uint8) *DcMocker
+    Reply(otherSide *DcMocker) (msg []uint8)
+    WaitAndReset(otherSide *DcMocker) error
+}
+
+class testing.T {}
+class bufio.Reader {}
+class bufio.Writer {}
+class net.Conn {}
+class sync.WaitGroup {}
+
+pipeTest.DcMocker "1" o-- "1" testing.T
+pipeTest.DcMocker "1" *-- "1" bufio.Reader
+pipeTest.DcMocker "1" *-- "1" bufio.Writer
+pipeTest.DcMocker "1" *-- "2" net.Conn
+pipeTest.DcMocker "1" *-- "1" sync.WaitGroup
+
+note top of pipeTest.DcMocker
+    DcMocker 为 模拟连用的类
+end note
+
+note bottom of testing.T
+    T 为 测试用的类
+end note
+
+note bottom of bufio.Reader
+    Reader 为有缓存的传送
+end note
+
+note bottom of bufio.Writer
+    Ｗriter 为有缓存的接收
+end note
+
+note bottom of net.Conn
+    Conn 为传送或接收的连接
+end note
+
+note bottom of sync.WaitGroup
+    WaitGroup 用来做等待连接的读写功能全部完成
+end note
+
+@enduml
