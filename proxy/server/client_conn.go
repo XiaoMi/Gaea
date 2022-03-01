@@ -216,6 +216,7 @@ func (cc *ClientConn) readHandshakeResponse() (HandshakeResponseInfo, error) {
 		authResponse, pos, ok = mysql.ReadNullByte(data, pos)
 	}
 	if !ok {
+		return info, fmt.Errorf("readHandshakeResponse: can't read auth-response")
 	}
 
 	info.AuthResponse = authResponse
