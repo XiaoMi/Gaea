@@ -1,0 +1,52 @@
+@startuml
+
+namespace pipeTest {
+    object mockClient
+    object mockServer
+}
+
+mockClient : connRead
+mockClient : connWrite
+mockServer : connRead
+mockServer : connWrite
+
+note top of mockClient
+    DcMocker 类的对象，用来模拟客户端
+end note
+
+note top of mockServer
+    DcMocker 类的对象，用来模拟服务端
+end note
+
+namespace net {
+    object read0
+    object read1
+    object write0
+    object write1
+}
+
+note top of read0
+    read0 为 mockClient 的传送端
+end note
+
+note bottom of write0
+    write0 为 mockServer 的接收端
+end note
+
+note top of read1
+    read1 为 mockServer 的传送端
+end note
+
+note bottom of write1
+    write1 为 mockClient 的接收端
+end note
+
+read0 -- write0
+read1 -- write1
+
+mockClient::connRead *-- read0
+mockClient::connWrite *-- write1
+mockServer::connRead *-- read1
+mockServer::connWrite *-- write0
+
+@enduml
