@@ -23,6 +23,11 @@ import (
 	"github.com/XiaoMi/Gaea/models"
 )
 
+const (
+	PREPARE_RETRY_TIMES = 3
+	COMMIT_RETRY_TIMES  = 1
+)
+
 func getCoordinatorRoot(cluster string) string {
 	if cluster != "" {
 		return "/" + cluster
@@ -87,20 +92,40 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig, cluster 
 		return err
 	}
 
+	wg := sync.WaitGroup{}
 	// prepare phase
 	for _, v := range proxies {
-		err := proxy.PrepareConfig(v.IP+":"+v.AdminPort, namespace.Name, cfg)
-		if err != nil {
-			return err
-		}
+		wg.Add(1)
+		go func(v *models.ProxyMonitorMetric) {
+			for i := 0; i < PREPARE_RETRY_TIMES; i++ {
+				if err = proxy.PrepareConfig(v.IP+":"+v.AdminPort, namespace.Name, cfg); err == nil {
+					break
+				}
+				log.Warn("namespace %s, proxy prepare retry %d", namespace.Name, i)
+			}
+			if err != nil {
+				return
+			}
+			wg.Done()
+		}(v)
 	}
+	wg.Wait()
 
 	// commit phase
 	for _, v := range proxies {
-		err := proxy.CommitConfig(v.IP+":"+v.AdminPort, namespace.Name, cfg)
-		if err != nil {
-			return err
-		}
+		wg.Add(1)
+		go func(v *models.ProxyMonitorMetric) {
+			for i := 0; i < COMMIT_RETRY_TIMES; i++ {
+				if err := proxy.CommitConfig(v.IP+":"+v.AdminPort, namespace.Name, cfg); err == nil {
+					break
+				}
+				log.Warn("namespace %s, proxy prepare retry %d", namespace.Name, i)
+			}
+			if err != nil {
+				return
+			}
+			wg.Done()
+		}(v)
 	}
 
 	return nil
