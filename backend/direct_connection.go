@@ -453,7 +453,7 @@ func (dc *DirectConnection) SetAutoCommit(v uint8) error {
 func (dc *DirectConnection) SetCharset(charset string, collation mysql.CollationID) ( /*changed*/ bool, error) {
 	charset = strings.Trim(charset, "\"'`")
 
-	if collation == 0 {
+	if collation == 0 || collation > 247 {
 		collation = mysql.CollationNames[mysql.Charsets[charset]]
 	}
 
