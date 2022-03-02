@@ -1,0 +1,21 @@
+@startuml
+
+participant backend包DirectConnection对象
+participant mysql包Conn对象
+
+group #LightYellow 执行函数 [DirectConnection对象的readInitialHandshake方法]
+group #LightYellow 执行函数 [DirectConnection对象的readPacket方法]
+    backend包DirectConnection对象->>mysql包Conn对象: 使用 mysql包Conn对象
+group #LightYellow 执行函数 [mysql包Conn对象的ReadPacket方法]
+group #LightYellow 执行函数 [mysql包Conn对象的readPacket方法]
+group #LightYellow 执行函数 [mysql包Conn对象的readOnePacket方法]
+group #LightYellow 执行函数 [mysql包Conn对象的readHeaderFrom方法]
+    mysql包Conn对象->>mysql包Conn对象: 读取 header
+end
+end
+end
+end
+end
+end
+
+@enduml

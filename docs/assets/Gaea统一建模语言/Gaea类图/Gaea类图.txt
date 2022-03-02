@@ -10,8 +10,45 @@ package mysql {
        - uint8 sequence
        - int currentEphemeralPolicy
        - *[]byte currentEphemeralBuffer
+       + StartWriterBuffering()
+       + Flush() error
+       - getWriter() io.Writer
+       - getReader() io.Reader
+       - readHeaderFrom(r io.Reader) (int, error)
+       + ReadEphemeralPacket() ([]byte, error)
+       + ReadEphemeralPacketDirect() ([]byte, error)
+       + RecycleReadPacket()
+       - readOnePacket() ([]byte, error)
+       - readPacket() ([]byte, error)
+       + ReadPacket() ([]byte, error)
+       + WritePacket(data []byte) error
+       + StartEphemeralPacket(length int) []byte
+       + WriteEphemeralPacket() error
+       - recycleWritePacket()
+       - writeComQuit() error
+       + RemoteAddr() net.Addr
+       + GetConnectionID() uint32
+       + SetConnectionID(connectionID uint32)
+       + SetSequence(sequence uint8)
+       + GetSequence() uint8
+       + String() string
+       + Close()
+       + IsClosed() bool
+       + WriteOKPacket(affectedRows, lastInsertID uint64, flags uint16, warnings uint16) error
+       + WriteOKPacketWithEOFHeader(affectedRows, lastInsertID uint64, flags uint16, warnings uint16) error
+       + WriteErrorPacket(errorCode uint16, sqlState string, format string, args ...interface{}) error
+       + WriteErrorPacketFromError(err error) error
+       + WriteEOFPacket(flags uint16, warnings uint16) error
+       - isEOFHeader(data []byte) bool
+       - parseEOFHeader(data []byte) (warnings uint16, more bool, err error)
+       - parseOKHeader(data []byte) (uint64, uint64, uint16, uint16, error)
+       + IsErrorPacket(data []byte) bool
+       + IsOKPacket(data []byte) bool
+       + ParseErrorPacket(data []byte) error
     }
 }
+
+note top of Conn : 连接到 MariaDB 数据库
 
 package backend {
     class DirectConnection {
@@ -96,42 +133,69 @@ package server {
         + int RWSplit
         + int OtherProperty
     }
+    
+    class ClientConn {
+        []byte salt
+        *Manager manager
+        uint32 capability
+        string namespace
+        *Server proxy
+    }
+    
+    class Session {
+        - *ClientConn c
+	    - *Server proxy
+	    - *Manager manager
+	    - string namespace
+        - *SessionExecutor executor
+	    - atomic.Value closed
+    }
 }
 
 package router {
     class Router {
-        map[string]map[string]Rule rules
-        Rule defaultRule
+        - map[string]map[string]Rule rules
+        + Rule defaultRule
     }
 
     interface Rule {
-        GetDB() string
-        GetTable() string
-        GetShardingColumn() string
-        IsLinkedRule() bool
-        GetShard() Shard
-        FindTableIndex(key interface{}) (int, error)
-        GetSlice(i int) string // i is slice index
-        GetSliceIndexFromTableIndex(i int) int
-        GetSlices() []string
-        GetSubTableIndexes() []int
-        GetFirstTableIndex() int
-        GetLastTableIndex() int
-        GetType() string
-        GetDatabaseNameByTableIndex(index int) (string, error)
+        + GetDB() string
+        + GetTable() string
+        + GetShardingColumn() string
+        + IsLinkedRule() bool
+        + GetShard() Shard
+        + FindTableIndex(key interface{}) (int, error)
+        + GetSlice(i int) string // i is slice index
+        + GetSliceIndexFromTableIndex(i int) int
+        + GetSlices() []string
+        + GetSubTableIndexes() []int
+        + GetFirstTableIndex() int
+        + GetLastTableIndex() int
+        + GetType() string
+        + GetDatabaseNameByTableIndex(index int) (string, error)
     }
 }
 
 package plan {
 }
 
-backend.DirectConnection::conn *-- mysql.Conn::conn
+package sync {
+    class Mutex {
+	    - state int32
+	    - sema uint32
+    }
+}
+
+backend.DirectConnection::conn *-- mysql.Conn::conn : 使用 NewConn(conn net.Conn) *Conn 函数建立连接
 backend.Slice::GetDirectConn --- DirectConnection : slice produces DirectConnection
 server.Namespace::slices *-- Slice
 server.Namespace::userProperties *-- UserProperty
 server.Namespace::router *-- Router
 router.Router::rules *-- Rule
 router.Router::defaultRule *-- Rule
+ClientConn --> Conn
+Session --> ClientConn
+Session --> Mutex
 Rule --- plan : plan produces rule
 backend.Slice::Slave *-- ConnectionPool
 backend.Slice::StatisticSlave *-- ConnectionPool
