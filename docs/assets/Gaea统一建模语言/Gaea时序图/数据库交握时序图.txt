@@ -2,20 +2,65 @@
 
 participant backend包DirectConnection对象
 participant mysql包Conn对象
+participant bufio包Reader对象
+participant bufio包Writer对象
 
-group #LightYellow 执行函数 [DirectConnection对象的readInitialHandshake方法]
-group #LightYellow 执行函数 [DirectConnection对象的readPacket方法]
+group #LightYellow 执行函数 [DirectConnection对象的connect函数]
+group #LightYellow 执行函数 [DirectConnection对象的readInitialHandshake函数]
+group #LightYellow 执行函数 [DirectConnection对象的readPacket函数]
     backend包DirectConnection对象->>mysql包Conn对象: 使用 mysql包Conn对象
-group #LightYellow 执行函数 [mysql包Conn对象的ReadPacket方法]
-group #LightYellow 执行函数 [mysql包Conn对象的readPacket方法]
-group #LightYellow 执行函数 [mysql包Conn对象的readOnePacket方法]
-group #LightYellow 执行函数 [mysql包Conn对象的readHeaderFrom方法]
-    mysql包Conn对象->>mysql包Conn对象: 读取 header
+group #LightYellow 执行函数 [mysql包Conn对象的ReadPacket函数]
+group #LightYellow 执行函数 [mysql包Conn对象的readPacket函数]
+group #LightYellow 执行函数 [mysql包Conn对象的readOnePacket函数]
+
+group #LightYellow 执行函数 [mysql包Conn对象的getReader函数]
+    mysql包Conn对象->>bufio包Reader对象: 使用 bufio包Reader对象
+    note left: bufio包Reader对象 实现 io包Reader接口
+end
+
+group #LightYellow 执行函数 [mysql包Conn对象的readHeaderFrom函数]
+    mysql包Conn对象->>bufio包Reader对象: 读取
+    note left: 执行 io包的 ReadFull 函数，得知单一封包长度
+end
+
+    bufio包Reader对象->>bufio包Reader对象: 读取单一封包的内容
+
 end
 end
 end
 end
+
+    backend包DirectConnection对象->>backend包DirectConnection对象: 解析单一封包内容，得知对方数据库的资讯
+
 end
+
+group #LightYellow 执行函数 [DirectConnection对象的writeHandshakeResponse41函数]
+    
+    backend包DirectConnection对象->>backend包DirectConnection对象: 组成组成回应数据库的资料，包含 Password、Character Set 和 Auth 等等
+    
+group #LightYellow 执行函数 [DirectConnection对象的writePacket函数]
+
+    backend包DirectConnection对象->>mysql包Conn对象: 使用 mysql包Conn对象
+    
+group #LightYellow 执行函数 [mysql包Conn对象的WritePacket函数]
+
+group #LightYellow Writer执行函数 [mysql包Conn对象的getWriter函数]
+    mysql包Conn对象->>bufio包Writer对象: 使用 bufio包Writer对象
+    note left: bufio包Writer对象 实现 io包Writer接口
+end
+
+group #LightYellow loop
+    mysql包Conn对象->>bufio包Writer对象: 写入
+    note left: 执行 io包Writer接口的 Writer 函数，写入要传送的资料
+
+end
+
+end
+    
+end
+
+end
+
 end
 
 @enduml
