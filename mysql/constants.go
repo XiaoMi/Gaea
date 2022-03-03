@@ -110,28 +110,74 @@ const (
 )
 
 // Client information.
+// 参考文档位于 https://dev.mysql.com/doc/internals/en/capability-flags.html
+// 和 https://dev.mysql.com/doc/dev/mysql-server/latest/mysql__com_8h.html#ab30febd381c3a66a6f062821e606808b
 const (
+	// ClientLongPassword (New more secure passwords. Value 0x00000001)
+	// ClientLongPassword (用於之前旧密码的优化版本，值为 0x00000001)
 	ClientLongPassword uint32 = 1 << iota
+	// ClientFoundRows (Found instead of affected rows. Value 0x00000002)
+	// ClientFoundRows (用于回应 where 所对应到的行数，值为 0x00000002)
 	ClientFoundRows
+	// ClientLongFlag (Get all column flags. Value 0x00000004)
+	// ClientLongFlag (获得所有数据库的栏位的标记，值为 0x00000004)
 	ClientLongFlag
+	// ClientConnectWithDB (One can specify db on connect. Value 0x00000008)
+	// ClientConnectWithDB (可以指定数据库去连接，值为 0x00000008)
 	ClientConnectWithDB
+	// ClientNoSchema (Do not allow database.table.column. Value 0x00000010)
+	// ClientNoSchema (不允许使用 database.table.column，值为 0x00000010)
 	ClientNoSchema
+	// ClientCompress (Can use compression protocol. Value 0x00000020)
+	// ClientCompress (可以进行压缩协定，值为 0x00000020)
 	ClientCompress
+	// ClientODBC (ODBC client. Value 0x00000040)
+	// ClientODBC (ODBC 驱动客户端，值为 0x00000040)
 	ClientODBC
+	// ClientLocalFiles (Can use LOAD DATA LOCAL. Value 0x00000080)
+	// ClientLocalFiles (可以把文档载入到数据库，值为 0x00000080)
 	ClientLocalFiles
+	// ClientIgnoreSpace (Ignore spaces before ‘(’. Value 0x00000100)
+	// ClientIgnoreSpace (在 ( 前，忽略空白，值为 0x00000100)
 	ClientIgnoreSpace
+	// ClientProtocol41 (New 4.1 protocol. Value 0x00000200)
+	// ClientProtocol41 (支持新版的 4.1 協定，值為 0x00000200)
 	ClientProtocol41
+	// ClientInteractive (This is an interactive client. Value 0x00000400)
+	// ClientInteractive (支援互动式的客户端，值為 0x00000400)
 	ClientInteractive
+	// ClientSSL (Switch to SSL after handshake. Value 0x00000800)
+	// ClientSSL (交握完成后，切换到 SSL，值為 0x00000800)
 	ClientSSL
+	// ClientIgnoreSigpipe (IGNORE sigpipes. Value 0x00001000)
+	// ClientIgnoreSigpipe (忽略对方 Socket 关闭的讯号，值為 0x00001000)
 	ClientIgnoreSigpipe
+	// ClientTransactions (Client knows about transactions. Value 0x00002000)
+	// ClientTransactions (客户端将会操作 Transaction，值為 0x00002000)
 	ClientTransactions
+	// ClientReserved (Old flag for 4.1 protocol. Value 0x00004000)
+	// ClientReserved (支援旧版的 4.1 协定，值為 0x00004000)
 	ClientReserved
+	// ClientSecureConnection (New 4.1 authentication. Value 0x00008000)
+	// ClientSecureConnection (新的 4.1 版的验证机制，值為 0x00008000)
 	ClientSecureConnection
+	// ClientMultiStatements (Enable/disable multi-stmt support. Value 0x00010000)
+	// ClientMultiStatements (支援多笔敘述，值為 0x00010000)
 	ClientMultiStatements
+	// ClientMultiResults (Enable/disable multi-results. Value 0x00020000)
+	// ClientMultiResults (允许多笔回传结果合拼回传，值為 0x00020000)
 	ClientMultiResults
+	// ClientPSMultiResults (Multi-results and OUT parameters in PS-protocol. Value 0x00040000)
+	// ClientMultiResults (在 PS-protocol 允许多笔回传结果合拼回传，值為 0x00040000)
 	ClientPSMultiResults
+	// ClientPluginAuth (Supports authentication plugins. Value 0x00080000)
+	// ClientPluginAuth (支援权限插件，值為 0x00080000)
 	ClientPluginAuth
+	// ClientConnectAtts (Permits connection attributes. Value 0x00100000)
+	// ClientConnectAtts (得到客户端发送连接属性，值為 0x00100000)
 	ClientConnectAtts
+	// ClientPluginAuthLenencClientData (length-encoded integer for auth response data. Value 0x00200000)
+	// ClientPluginAuthLenencClientData (当数据库可以回传更长的权限资料，值為 0x00200000)
 	ClientPluginAuthLenencClientData
 )
 
