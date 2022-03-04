@@ -15,6 +15,7 @@ package backend
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util/mocks/pipeTest"
 	"github.com/stretchr/testify/require"
@@ -43,7 +44,9 @@ func TestAppendSetVariable2(t *testing.T) {
 
 var (
 	// 准备数据库的回应资料
-	mysqlInitHandShakeResponse = []uint8{
+
+	// 第一个交握讯息，由 MariaDB 传送欢迎讯息到 Gaea
+	mysqlInitHandShakeFirstResponseFromMaraiadbToGaea = []uint8{
 		// 资料长度
 		93, 0, 0,
 		// 自增序列号码
@@ -83,21 +86,31 @@ var (
 		105, 118, 101, 95, 112, 97, 115, 115, 119, 111,
 		114, 100, 0,
 	}
+
+	// 第二个交握讯息，由 Gaea 回应欢迎讯息给 MariaDB
+	mysqlInitHandShakeSecondResponseFromGaeaToMaraiadb = []uint8{
+		//
+	}
 )
 
 // TestDirectConnWithoutDB 为测试数据库的后端连线流程，以下测试不使用 MariaDB 的服务器，只是单纯的单元测试
 func TestDirectConnWithoutDB(t *testing.T) {
-	// 开始正式测试
+	// 开始正式测试，把每次的交握连接进行解测试
+
+	// 先产生模拟对象
+	mockGaea, mockMariaDB := pipeTest.NewDcServerClient(t, nil) // 产生 Gaea 和 MariaDB 模拟物件
+	var dc DirectConnection                                     // dc 对象会产生回应欢迎讯息给数据库
+
+	// 交握第一步 Step1
 	t.Run("测试数据库后端连线的初始交握", func(t *testing.T) {
-		// 开始模拟
-		mockGaea, mockMariaDB := pipeTest.NewDcServerClient(t, nil) // 产生 Gaea 和 mockServer 模拟物件
-		mockMariaDB.SendOrReceive(mysqlInitHandShakeResponse)       // mockMariaDB 会回传数据库资讯给 mockGaea，而讯息内容为 mysqlInitHandShakeResponse，内容包含数据库资讯
+		// 开始进行模拟，方向为 MariaDB 欢迎 Gaea
+		mockMariaDB.SendOrReceive(mysqlInitHandShakeFirstResponseFromMaraiadbToGaea) // mockMariaDB 会回传数据库资讯给 mockGaea，而讯息内容为 mysqlInitHandShakeFirstResponseFromMaraiadbToGaea，内容包含数据库资讯
 
 		// 產生 Mysql dc 直連物件 (用以下内容取代 reply() 函数 !)
-		var dc DirectConnection
 		var connForReceivingMsgFromMariadb = mysql.NewConn(mockGaea.GetConnRead()) // 等一下 MariaDB 数据库会把交握讯息传送到这
-		dc.conn = connForReceivingMsgFromMariadb                                   // 这时 dc 的连接 接通 整个测试环境
-		err := dc.readInitialHandshake()                                           // 模拟 Gaea 进行交握解析
+		// mysql.NewConn 会同时初始化 读取连接 net.conn 和 读取缓存 bufferedReader
+		dc.conn = connForReceivingMsgFromMariadb // 这时 dc 的连接 接通 整个测试环境
+		err := dc.readInitialHandshake()         // 模拟 Gaea 进行交握解析
 		require.Equal(t, err, nil)
 
 		// 等待和确认资料已经写入 pipe 并单方向重置模拟物件
@@ -154,7 +167,27 @@ func TestDirectConnWithoutDB(t *testing.T) {
 		require.Equal(t, dc.salt, []uint8{81, 64, 43, 85, 76, 90, 97, 91, 34, 53, 36, 85, 93, 86, 117, 105, 49, 87, 65, 125}) // 检查 Salt
 		require.Equal(t, dc.status, mysql.ServerStatusAutocommit)                                                             // 检查服务器状态
 	})
+
+	// 交握第二步 Step2
 	t.Run("测试数据库后端连线初始交握后的回应", func(t *testing.T) {
-		//
+		// 开始进行模拟，方向为 Gaea 回应 MariaDB 欢迎
+		// 產生 Mysql dc 直連物件 (用以下内容取代 reply() 函数 !)
+		var connForSengingMsgToMariadb = mysql.NewConn(mockGaea.GetConnWrite()) // 等一下会把要回应给 MariaDB 数据库回应的欢迎讯息写入到这里
+		// mysql.NewConn 会同时初始化 写入连接 net.conn 和 写入缓存 bufferReader，但这里 bufferReader 将不会用到，所以不会影响测试
+		dc.conn = connForSengingMsgToMariadb // dc 对象和整个测试进行连接
+		dc.conn.StartWriterBuffering()       // 初始化 Gaea 的 写入缓存 bufferReader
+		// 最好的状况是 Gaea 的 写入缓存 bufferReader 和这个测试整个分离，但目前现有代码的函数不支援，又不想修改现在代码，所以就把 写入缓存 捉进来一起测试
+
+		// 以下代码正确性待确认
+		customFunc := func() {
+			err := dc.writeHandshakeResponse41() // 模拟 Gaea 进行交握解析
+			require.Equal(t, err, nil)
+			err = dc.conn.Flush()
+			require.Equal(t, err, nil)
+			err = mockGaea.GetConnWrite().Close()
+			require.Equal(t, err, nil)
+		}
+
+		fmt.Println(mockGaea.CustomSend(customFunc).ArrivedMsg(mockMariaDB))
 	})
 }

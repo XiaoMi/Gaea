@@ -184,3 +184,40 @@ func (dcM *DcMocker) WaitAndReset(otherSide *DcMocker) error {
 	// 正确回传
 	return nil
 }
+
+// 以下代码正确性待确认
+
+func (dcM *DcMocker) CustomSend(customFunc func()) *DcMocker {
+	// dc 模拟开始
+	dcM.wg.Add(1) // 只要等待直到确认资料有写入 pipe
+
+	// 在这里执行 1传送讯息 或者是 2接收讯息
+	go func() {
+		customFunc()
+
+		// 写入工作完成
+		dcM.wg.Done()
+	}()
+
+	// 重复使用对象
+	return dcM
+}
+
+func (dcM *DcMocker) ArrivedMsg(otherSide *DcMocker) (msg []uint8) {
+	// 读取传送过来的讯息
+	b, _, err := otherSide.bufReader.ReadLine() // 由另一方接收传来的讯息
+	require.Equal(dcM.t, err, nil)
+
+	// 等待和确认资料已经写入 pipe
+	dcM.wg.Wait()
+
+	// 重置模拟对象
+	err = dcM.ResetDcMockers(otherSide)
+	require.Equal(dcM.t, err, nil)
+
+	// 回传回应讯息
+	msg = b
+
+	// 结束
+	return
+}
