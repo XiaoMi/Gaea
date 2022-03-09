@@ -104,7 +104,7 @@ func TestDirectConnWithoutDB(t *testing.T) {
 	// 交握第一步 Step1
 	t.Run("测试数据库后端连线的初始交握", func(t *testing.T) {
 		// 开始进行模拟，方向为 MariaDB 欢迎 Gaea
-		mockMariaDB.SendOrReceive(mysqlInitHandShakeFirstResponseFromMaraiadbToGaea) // mockMariaDB 会回传数据库资讯给 mockGaea，而讯息内容为 mysqlInitHandShakeFirstResponseFromMaraiadbToGaea，内容包含数据库资讯
+		mockMariaDB.SendOrReceiveMsg(mysqlInitHandShakeFirstResponseFromMaraiadbToGaea) // mockMariaDB 会回传数据库资讯给 mockGaea，而讯息内容为 mysqlInitHandShakeFirstResponseFromMaraiadbToGaea，内容包含数据库资讯
 
 		// 產生 Mysql dc 直連物件 (用以下内容取代 reply() 函数 !)
 		var connForReceivingMsgFromMariadb = mysql.NewConn(mockGaea.GetConnRead()) // 等一下 MariaDB 数据库会把交握讯息传送到这
@@ -178,16 +178,30 @@ func TestDirectConnWithoutDB(t *testing.T) {
 		dc.conn.StartWriterBuffering()       // 初始化 Gaea 的 写入缓存 bufferReader
 		// 最好的状况是 Gaea 的 写入缓存 bufferReader 和这个测试整个分离，但目前现有代码的函数不支援，又不想修改现在代码，所以就把 写入缓存 捉进来一起测试
 
-		// 以下代码正确性待确认
-		customFunc := func() {
-			err := dc.writeHandshakeResponse41() // 模拟 Gaea 进行交握解析
-			require.Equal(t, err, nil)
-			err = dc.conn.Flush()
-			require.Equal(t, err, nil)
-			err = mockGaea.GetConnWrite().Close()
-			require.Equal(t, err, nil)
-		}
+		// 填入 Gaea 用户的资讯，包含 密码
+		dc.password = "12345"
 
-		fmt.Println(mockGaea.CustomSend(customFunc).ArrivedMsg(mockMariaDB))
+		// 印出传送到达对方的讯息
+		fmt.Println(
+			// 使用支援使用匿名函式传送讯息
+			mockGaea.UseAnonymousFuncSendMsg(
+				// 自订的匿名函式开始
+				func() {
+					err := dc.writeHandshakeResponse41() // 模拟 Gaea 进行交握解析
+					require.Equal(t, err, nil)
+					err = dc.conn.Flush()
+					require.Equal(t, err, nil)
+					err = mockGaea.GetConnWrite().Close()
+					require.Equal(t, err, nil)
+				},
+				// 自订的匿名函式结束
+			).CheckArrivedMsg(mockMariaDB)) // 对传送到达对方的讯息取出进行确认
 	})
+
+	// 开始计算
+
+	/* 先产生 密码 12345 的 sha1sum 验证码
+
+	 */
+
 }

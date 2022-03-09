@@ -8,31 +8,31 @@ import (
 	"testing"
 )
 
-// ReplyFuncType 回应函数的型态，测试时，当客户端或服务端接收到讯息时，可以利用此函数去建立回传讯息
-type ReplyFuncType func([]uint8) []uint8
+// ReplyMsgFuncType 回应函数的型态，测试时，当客户端或服务端接收到讯息时，可以利用此函数去建立回传讯息
+type ReplyMsgFuncType func([]uint8) []uint8
 
-// TestReplyFunc　，目前是用于验证测试流程是否正确，在这里会处理常接收到什么讯息，要将下来跟着回应什么讯息
+// TestReplyMsgFunc　，目前是用于验证测试流程是否正确，在这里会处理常接收到什么讯息，要将下来跟着回应什么讯息
 // 每次的回应讯息为接收讯息加 1
 //     比如 当接收值为 1，就会回传值为 2 给对方
 //     比如 当接收值为 2，就会回传值为 3 给对方
-func TestReplyFunc(data []uint8) []uint8 {
+func TestReplyMsgFunc(data []uint8) []uint8 {
 	return []uint8{data[0] + 1} // 回应讯息为接收讯息加 1
 }
 
 // DcMocker 用来模拟数据库服务器的读取和回应的类
 type DcMocker struct {
-	t         *testing.T      // 单元测试的类
-	bufReader *bufio.Reader   // 有缓存的读取 (接收端)
-	bufWriter *bufio.Writer   // 有缓存的写入 (传送端)
-	connRead  net.Conn        // pipe 的读取连线 (接收端)
-	connWrite net.Conn        // pipe 的写入连线 (传送端)
-	wg        *sync.WaitGroup // 在测试流程的操作边界等待
-	replyFunc ReplyFuncType   // 设定相对应的回应函数
-	err       error           // 错误
+	t         *testing.T       // 单元测试的类
+	bufReader *bufio.Reader    // 有缓存的读取 (接收端)
+	bufWriter *bufio.Writer    // 有缓存的写入 (传送端)
+	connRead  net.Conn         // pipe 的读取连线 (接收端)
+	connWrite net.Conn         // pipe 的写入连线 (传送端)
+	wg        *sync.WaitGroup  // 在测试流程的操作边界等待
+	replyFunc ReplyMsgFuncType // 设定相对应的回应函数
+	err       error            // 错误
 }
 
 // NewDcServerClient 产生直连 DC 模拟双方对象，包含 客户端对象 和 服务端对象
-func NewDcServerClient(t *testing.T, reply ReplyFuncType) (mockClient *DcMocker, mockServer *DcMocker) {
+func NewDcServerClient(t *testing.T, reply ReplyMsgFuncType) (mockClient *DcMocker, mockServer *DcMocker) {
 	// 先产生两组 Pipe
 	read0, write0 := net.Pipe() // 第一组 Pipe
 	read1, write1 := net.Pipe() // 第二组 Pipe
@@ -46,7 +46,7 @@ func NewDcServerClient(t *testing.T, reply ReplyFuncType) (mockClient *DcMocker,
 }
 
 // NewDcMocker 产生新的直连 dc 模拟对象
-func NewDcMocker(t *testing.T, connRead, connWrite net.Conn, reply ReplyFuncType) *DcMocker {
+func NewDcMocker(t *testing.T, connRead, connWrite net.Conn, reply ReplyMsgFuncType) *DcMocker {
 	return &DcMocker{
 		t:         t,                          // 单元测试的对象
 		bufReader: bufio.NewReader(connRead),  // 服务器的读取 (实现缓存)
@@ -127,9 +127,9 @@ func (dcM *DcMocker) ResetDcMockers(otherSide *DcMocker) error {
 	return nil
 }
 
-// SendOrReceive 为直连 dc 用来模拟接收或传入讯息
+// SendOrReceiveMsg 为直连 dc 用来模拟接收或传入讯息
 // 比如客户端 "传送 Send" 讯息到服务端、客户端再 "接收 Receive" 服务端的回传讯息
-func (dcM *DcMocker) SendOrReceive(data []uint8) *DcMocker {
+func (dcM *DcMocker) SendOrReceiveMsg(data []uint8) *DcMocker {
 	// dc 模拟开始
 	dcM.wg.Add(1) // 只要等待直到确认资料有写入 pipe
 
@@ -150,8 +150,25 @@ func (dcM *DcMocker) SendOrReceive(data []uint8) *DcMocker {
 	return dcM
 }
 
-// Reply 为直连 dc 用来模拟回应数据，大部份接连 SendOrReceive 函数后执行
-func (dcM *DcMocker) Reply(otherSide *DcMocker) (msg []uint8) {
+// UseAnonymousFuncSendMsg 使用匿名函式去傳送訊息
+func (dcM *DcMocker) UseAnonymousFuncSendMsg(customFunc func()) *DcMocker {
+	// dc 模拟开始
+	dcM.wg.Add(1) // 只要等待直到确认资料有写入 pipe
+
+	// 在这里执行 1传送讯息 或者是 2接收讯息
+	go func() {
+		customFunc()
+
+		// 写入工作完成
+		dcM.wg.Done()
+	}()
+
+	// 重复使用对象
+	return dcM
+}
+
+// ReplyMsg 为直连 dc 用来模拟回应数据，大部份接连 SendOrReceiveMsg 函数后执行
+func (dcM *DcMocker) ReplyMsg(otherSide *DcMocker) (msg []uint8) {
 	// 读取传送过来的讯息
 	b, _, err := otherSide.bufReader.ReadLine() // 由另一方接收传来的讯息
 	require.Equal(dcM.t, err, nil)
@@ -172,38 +189,8 @@ func (dcM *DcMocker) Reply(otherSide *DcMocker) (msg []uint8) {
 	return
 }
 
-// WaitAndReset 为直连 dc 用来等待在 Pipe 的整个数据读写操作完成
-func (dcM *DcMocker) WaitAndReset(otherSide *DcMocker) error {
-	// 先等待整个数据读写操作完成
-	dcM.wg.Wait()
-
-	// 单方向完成 Pipe 的连线重置
-	err := dcM.ResetDcMockers(otherSide)
-	require.Equal(dcM.t, err, nil)
-
-	// 正确回传
-	return nil
-}
-
-// 以下代码正确性待确认
-
-func (dcM *DcMocker) CustomSend(customFunc func()) *DcMocker {
-	// dc 模拟开始
-	dcM.wg.Add(1) // 只要等待直到确认资料有写入 pipe
-
-	// 在这里执行 1传送讯息 或者是 2接收讯息
-	go func() {
-		customFunc()
-
-		// 写入工作完成
-		dcM.wg.Done()
-	}()
-
-	// 重复使用对象
-	return dcM
-}
-
-func (dcM *DcMocker) ArrivedMsg(otherSide *DcMocker) (msg []uint8) {
+// CheckArrivedMsg 是用于当模拟时，直连 dc 讯息传送到对方时，立刻对传送到的讯息进行查询，以方便后续的除错和检查
+func (dcM *DcMocker) CheckArrivedMsg(otherSide *DcMocker) (msg []uint8) {
 	// 读取传送过来的讯息
 	b, _, err := otherSide.bufReader.ReadLine() // 由另一方接收传来的讯息
 	require.Equal(dcM.t, err, nil)
@@ -220,4 +207,17 @@ func (dcM *DcMocker) ArrivedMsg(otherSide *DcMocker) (msg []uint8) {
 
 	// 结束
 	return
+}
+
+// WaitAndReset 为直连 dc 用来等待在 Pipe 的整个数据读写操作完成
+func (dcM *DcMocker) WaitAndReset(otherSide *DcMocker) error {
+	// 先等待整个数据读写操作完成
+	dcM.wg.Wait()
+
+	// 单方向完成 Pipe 的连线重置
+	err := dcM.ResetDcMockers(otherSide)
+	require.Equal(dcM.t, err, nil)
+
+	// 正确回传
+	return nil
 }
