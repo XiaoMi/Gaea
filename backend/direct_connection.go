@@ -259,7 +259,7 @@ func (dc *DirectConnection) writeHandshakeResponse41() error {
 		mysql.ClientLongPassword | mysql.ClientTransactions | mysql.ClientLongFlag
 	capability &= dc.capability
 
-	//we only support secure connection
+	// we only support secure connection
 	auth := mysql.CalcPassword(dc.salt, []byte(dc.password))
 
 	length := 4 + // Client capability flags
