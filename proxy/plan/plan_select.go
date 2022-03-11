@@ -78,12 +78,15 @@ func (s *SelectPlan) ExecuteIn(reqCtx *util.RequestContext, sess Executor) (*mys
 		return nil, fmt.Errorf("execute in SelectPlan error: %v", err)
 	}
 
-	r, err := MergeSelectResult(s, s.stmt, rs)
-	if err != nil {
-		return nil, fmt.Errorf("merge select result error: %v", err)
+	if s.isExecOnSingleNode() {
+		return rs[0], nil
+	} else {
+		r, err := MergeSelectResult(s, s.stmt, rs)
+		if err != nil {
+			return nil, fmt.Errorf("merge select result error: %v", err)
+		}
+		return r, nil
 	}
-
-	return r, nil
 }
 
 // GetStmt SelectStmt
@@ -146,6 +149,15 @@ func (s *SelectPlan) GetSQLs() map[string]map[string][]string {
 	return s.sqls
 }
 
+//执行计划是否仅仅涉及一个分片
+func (s *SelectPlan) isExecOnSingleNode() bool {
+	if len(s.result.indexes) == 1 {
+		return true
+	} else {
+		return false
+	}
+}
+
 // HandleSelectStmt build a SelectPlan
 // 处理SelectStmt语法树, 改写其中一些节点, 并获取路由信息和结果聚合函数
 func HandleSelectStmt(p *SelectPlan, stmt *ast.SelectStmt) error {
@@ -167,42 +179,48 @@ func HandleSelectStmt(p *SelectPlan, stmt *ast.SelectStmt) error {
 		p.originColumnCount = len(stmt.Fields.Fields)
 	}
 
-	// group by的处理必须在table处理之后
-	if err := handleGroupBy(p, stmt); err != nil {
-		return fmt.Errorf("handle GroupBy error: %v", err)
-	}
-
-	// order by的处理必须在table处理之后
-	// 与group by补列的顺序没有要求, 只要保证处理返回结果去掉这些补充列时保持相反的顺序, 这里放在group by之后
-	if err := handleOrderBy(p, stmt); err != nil {
-		return fmt.Errorf("handle OrderBy error: %v", err)
-	}
-
-	handleExtraFieldList(p, stmt)
-
-	// 记录补列后的Fields长度, 后面的handler不会补列了
-	if stmt.Fields != nil {
-		p.columnCount = len(stmt.Fields.Fields)
-	}
-
 	if err := handleWhere(p, stmt); err != nil {
 		return fmt.Errorf("handle Where error: %v", err)
 	}
 
-	if err := handleHaving(p, stmt); err != nil {
-		return fmt.Errorf("handle Having error: %v", err)
+	if err := postHandleHintDatabaseFunction(p); err != nil {
+		return fmt.Errorf("handle Hint error: %v", err)
 	}
 
-	if err := handleLimit(p, stmt); err != nil {
-		return fmt.Errorf("handle Limit error: %v", err)
+
+//如果是多节点执行，特殊处理groupby orderby having limit
+	if !p.isExecOnSingleNode() {
+		// group by的处理必须在table处理之后
+		if err := handleGroupBy(p, stmt); err != nil {
+			return fmt.Errorf("handle GroupBy error: %v", err)
+		}
+
+		// order by的处理必须在table处理之后
+		// 与group by补列的顺序没有要求, 只要保证处理返回结果去掉这些补充列时保持相反的顺序, 这里放在group by之后
+		if err := handleOrderBy(p, stmt); err != nil {
+			return fmt.Errorf("handle OrderBy error: %v", err)
+		}
+
+		handleExtraFieldList(p, stmt)
+
+		// 记录补列后的Fields长度, 后面的handler不会补列了
+		if stmt.Fields != nil {
+			p.columnCount = len(stmt.Fields.Fields)
+		}
+
+		
+
+		if err := handleHaving(p, stmt); err != nil {
+			return fmt.Errorf("handle Having error: %v", err)
+		}
+
+		if err := handleLimit(p, stmt); err != nil {
+			return fmt.Errorf("handle Limit error: %v", err)
+		}
 	}
 
 	if err := postHandleGlobalTableRouteResultInQuery(p.StmtInfo); err != nil {
 		return fmt.Errorf("post handle global table error: %v", err)
-	}
-
-	if err := postHandleHintDatabaseFunction(p); err != nil {
-		return fmt.Errorf("handle Hint error: %v", err)
 	}
 
 	sqls, err := generateShardingSQLs(p.stmt, p.result, p.router)
