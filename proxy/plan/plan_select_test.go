@@ -1968,6 +1968,25 @@ func TestMycatSelectLimit(t *testing.T) {
 				},
 			},
 		},
+		{
+			db:  "db_mycat",
+			sql: "select id, user from tbl_mycat where id= 1  group by age having age > 10 order by age desc limit 10, 10",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"SELECT `id`,`user` FROM `tbl_mycat` WHERE `id`=1 GROUP BY `age` HAVING `age`>10 ORDER BY `age` DESC LIMIT 10,10"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select id, user from tbl_mycat where id in(0,1)  group by age having age > 20 order by age desc limit 10, 10",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `id`,`user`,`age`,`age` FROM `tbl_mycat` WHERE `id` IN (0) GROUP BY `age` HAVING `age`>20 ORDER BY `age` DESC LIMIT 20"},
+					"db_mycat_1": {"SELECT `id`,`user`,`age`,`age` FROM `tbl_mycat` WHERE `id` IN (1) GROUP BY `age` HAVING `age`>20 ORDER BY `age` DESC LIMIT 20"},
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -3337,7 +3356,7 @@ func TestSelectMycatGroupByDatabase(t *testing.T) {
 			sqls: map[string]map[string][]string{
 				"slice-0": {
 					"db_mycat_1": {
-						"SELECT DATABASE(),COUNT(`id`),DATABASE() FROM `tbl_mycat` WHERE DATABASE()='db_mycat_1' GROUP BY DATABASE()",
+						"SELECT DATABASE(),COUNT(`id`) FROM `tbl_mycat` WHERE DATABASE()='db_mycat_1' GROUP BY DATABASE()",
 					},
 				},
 			},
