@@ -18,7 +18,7 @@
 | string<8> scramble 1st part     | 第一部份的 Scramble，Scramble 总共需要组成 20 bytes，<br />第一个部份共 8 bytes，其值为 []uint8{81, 64, 43, 85, 76, 90, 97, 91} |
 | string<1> reserved byte         | 数值为 0                                                     |
 | int<2> server capabilities      | 第一部份的功能标志 capability，数值为 []uint8{254, 247}      |
-| int<1> server default collation | 数据库编码 charset 为 33，经<br />以下文 [文档](https://mariadb.com/kb/en/supported-character-sets-and-collations/) 查询<br />或者是 命令 SHOW CHARACTER SET LIKE 'utf8'; 查询，<br />charset 的数值为 utf8_general_ci |
+| int<1> server default collation | 数据库编码 charset 为 33，经<br />以下 [文档](https://mariadb.com/kb/en/supported-character-sets-and-collations/) 查询<br />或者是 命令 SHOW CHARACTER SET LIKE 'utf8'; 查询，<br />charset 的数值为 utf8_general_ci |
 | int<2> status flags             | 服务器状态为 []uint8{2, 0}<br />进行反向排列为[]uint8{0, 2}，再转成二进制为<br />[]uint{0b000000000, 0b00000010}.<br /><br />对照 Gaea/mysql/constants.go 后，得知目前服务器的状况为<br />Autocommit (ServerStatusAutocommit) |
 | int<2> server capabilities      | 延伸的功能标志 capability，数值为 []uint8{255, 129}.         |
 
