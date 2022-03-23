@@ -1,12 +1,10 @@
 # backend 包的直连 direct_connection
 
-
-
 ## 代码说明
 
 ### 第一步 初始交握，传送讯息方向为 MariaDB 至 Gaea
 
-参考官方文档 https://mariadb.com/kb/en/connection/ ，有以下内容
+参考 [官方文档](https://mariadb.com/kb/en/connection/) ，有以下内容
 
 <img src="./assets/image-20220315221559157.png" alt="image-20220315221559157" style="zoom:100%;" /> 
 
@@ -20,7 +18,7 @@
 | string<8> scramble 1st part     | 第一部份的 Scramble，Scramble 总共需要组成 20 bytes，<br />第一个部份共 8 bytes，其值为 []uint8{81, 64, 43, 85, 76, 90, 97, 91} |
 | string<1> reserved byte         | 数值为 0                                                     |
 | int<2> server capabilities      | 第一部份的功能标志 capability，数值为 []uint8{254, 247}      |
-| int<1> server default collation | 數據庫編碼 charset 为 33，经<br />以下文文档查询 [character-sets-and-collations](https://mariadb.com/kb/en/supported-character-sets-and-collations/)<br />或者是 命令 SHOW CHARACTER SET LIKE 'utf8'; 查询，<br />charset 的数值为 utf8_general_ci |
+| int<1> server default collation | 数据库编码 charset 为 33，经<br />以下文 [文档](https://mariadb.com/kb/en/supported-character-sets-and-collations/) 查询<br />或者是 命令 SHOW CHARACTER SET LIKE 'utf8'; 查询，<br />charset 的数值为 utf8_general_ci |
 | int<2> status flags             | 服务器状态为 []uint8{2, 0}<br />进行反向排列为[]uint8{0, 2}，再转成二进制为<br />[]uint{0b000000000, 0b00000010}.<br /><br />对照 Gaea/mysql/constants.go 后，得知目前服务器的状况为<br />Autocommit (ServerStatusAutocommit) |
 | int<2> server capabilities      | 延伸的功能标志 capability，数值为 []uint8{255, 129}.         |
 
@@ -34,7 +32,7 @@
 数值分别为 []uint8{129, 255, 247, 254}
 全部 十进制 转成 二进制，为 []uint8{10000001, 11111111, 11110111, 11111110} (转成十进制数值为 2181036030)
 
-再用文档 https://mariadb.com/kb/en/connection/ 进行对照
+再用 [文档](https://mariadb.com/kb/en/connection/) 进行对照
 比如，功能标志 capability 的第一个值为 0，意思为 CLIENT_MYSQL 值为 0，代表是由服务器发出的讯息
 ```
 
@@ -84,7 +82,7 @@
 
 ### 第二步 计算用于验证密码的验证码 Auth
 
-参考官方文档 https://dev.mysql.com/doc/internals/en/secure-password-authentication.html，有整个完整验证码的计算公式说明
+参考 [官方文档](https://dev.mysql.com/doc/internals/en/secure-password-authentication.html) ，有整个完整验证码的计算公式说明
 
 验证码的公式如下
 
@@ -176,7 +174,7 @@ $ printf "%X" $(( ((0x6345513964)) ^ ((0xa54be1c71a)) ))
 
 ### 第三步 回应交握，传送讯息方向为 Gaea 至 MariaDB
 
-参考官方文档 https://mariadb.com/kb/en/connection/ ，有以下内容
+参考 [官方文档](https://mariadb.com/kb/en/connection/) ，有以下内容
 
 <img src="./assets/image-20220318083633693.png" alt="image-20220318083633693" style="zoom:100%;" /> 
 
@@ -191,15 +189,15 @@ $ printf "%X" $(( ((0x6345513964)) ^ ((0xa54be1c71a)) ))
 | mysql.ClientLongFlag         | 0b0000000000000100 | 4      |
 |                              |                    |        |
 | 总合                         |                    |        |
-| Gaea 支援的 capability       | 0b1010001000000101 | 41477  |
+| Gaea 支持的 capability       | 0b1010001000000101 | 41477  |
 
-计算 Gaea 和 MariaDB 双方共同支援的 capability
+计算 Gaea 和 MariaDB 双方共同支持的 capability
 
 ```
-在前面第一步里，dc 对象的 capability 为 0b10000001111111111111011111111110 (转成十进制数值为 2181036030)，很明显地，这个 capability 并不支援 mysql.ClientLongPassword
+在前面第一步里，dc 对象的 capability 为 0b10000001111111111111011111111110 (转成十进制数值为 2181036030)，很明显地，这个 capability 并不支持 mysql.ClientLongPassword
 
-进行 Gaea支援的capability 和 dc.capability 进行 AND 操作
-Gaea支援的capability & dc.capability = []uint32{41477} & []uint32{2181036030} = []uint32{41476}
+进行 Gaea支持的capability 和 dc.capability 进行 AND 操作
+Gaea支持的capability & dc.capability = []uint32{41477} & []uint32{2181036030} = []uint32{41476}
 ```
 
 <img src="./assets/image-20220319002738908.png" alt="image-20220319002738908" style="zoom:70%;" /> 
@@ -207,8 +205,8 @@ Gaea支援的capability & dc.capability = []uint32{41477} & []uint32{2181036030}
 | 内容                              | 演示范例                                                     |
 | --------------------------------- | ------------------------------------------------------------ |
 | int<4> client capabilities        | 经由上述计算为 []uint32{41476}，但是传输过程中，会反向排列，所以传送的资料为 []uint8{4, 162, 0, 0}<br /><img src="./assets/image-20220319113026919.png" alt="image-20220319113026919" style="zoom:50%;" /> |
-| int<4> max packet size            | 官方文件有提到写入的值都为 0，传送的数值为 []uint8{0, 0, 0, 0} |
-| int<1> client character collation | 在官方文件 https://mariadb.com/kb/en/supported-character-sets-and-collations/ 里有说明，以这个例子为 46 ，意思为 utf8mb4_bin |
+| int<4> max packet size            | 官方文档有提到写入的值都为 0，传送的数值为 []uint8{0, 0, 0, 0} |
+| int<1> client character collation | 在 [官方文档](https://mariadb.com/kb/en/supported-character-sets-and-collations/) 里有说明，以这个例子为 46 ，意思为 utf8mb4_bin |
 | string<19> reserved               | 全部写入为 0  的数值，传送的数值为 []uint8{<br />                                                                                    0, 0, 0, 0, 0,<br />                                                                                    0, 0, 0, 0, 0,<br />                                                                                    0, 0, 0, 0, 0,<br />                                                                                    0, 0, 0, 0,<br />                                                                               } |
 
 根据官方文档，使用范例说明
@@ -223,7 +221,7 @@ Gaea支援的capability & dc.capability = []uint32{41477} & []uint32{2181036030}
 | 项目 | 内容                                                         |
 | ---- | ------------------------------------------------------------ |
 | 公式 | string<NUL> username                                         |
-| 范例 | 写入登入数据库的用户的名称 xiaomi，但最后再多写一个 0 作为中断结尾，<br />写入的资料为 []uint8{120, 105, 97, 111, 109, 105, 0} |
+| 范例 | 写入登录数据库的用户的名称 xiaomi，但最后再多写一个 0 作为中断结尾，<br />写入的资料为 []uint8{120, 105, 97, 111, 109, 105, 0} |
 
 使用 Bash 进行验证
 
@@ -238,28 +236,28 @@ $ echo -n xiaomi | od -td1
 | 项目 | 内容                                                         |
 | ---- | ------------------------------------------------------------ |
 | 公式 | if (server_capabilities & PLUGIN_AUTH_LENENC_CLIENT_DATA)<br/>    string<lenenc> authentication data <br/>else if (server_capabilities & CLIENT_SECURE_CONNECTION)<br/>    int<1> length of authentication response<br/>    string<fix> authentication response (length is indicated by previous field) <br/>else<br/>    string<NUL> authentication response null ended |
-| 范例 | 目前 Gaea 支援 CLIENT_SECURE_CONNECTION，<br /><br />前面已经计算出来，scramble 为 []uint8{128, 18, 212, 25, 163, 228, 214, 83, 203, 204, 27, 235, 147, 219, 179, 198, 14, 176, 254, 126}<br /><br />但是要先告知 MariaDB 服务器 scramble 的长度为 20<br />所以回传的资料为 []uint8{20, 128, 18, 212, 25, 163, 228, 214, 83, 203, 204, 27, 235, 147, 219, 179, 198, 14, 176, 254, 126} |
+| 范例 | 目前 Gaea 支持 CLIENT_SECURE_CONNECTION，<br /><br />前面已经计算出来，scramble 为 []uint8{128, 18, 212, 25, 163, 228, 214, 83, 203, 204, 27, 235, 147, 219, 179, 198, 14, 176, 254, 126}<br /><br />但是要先告知 MariaDB 服务器 scramble 的长度为 20<br />所以回传的资料为 []uint8{20, 128, 18, 212, 25, 163, 228, 214, 83, 203, 204, 27, 235, 147, 219, 179, 198, 14, 176, 254, 126} |
 
 接续上表
 
 | 项目 | 内容                                                         |
 | ---- | ------------------------------------------------------------ |
 | 公式 | if (server_capabilities & CLIENT_CONNECT_WITH_DB)<br/>    string<NUL> default database name |
-| 范例 | 目前 Gaea 支扰的 capabilities 如下<br />mysql.ClientProtocol41<br/>mysql.ClientSecureConnection<br/>mysql.ClientTransactions<br/>mysql.ClientLongFlag<br /><br />并没有支援 CLIENT_CONNECT_WITH_DB，所以略过此步骤 |
+| 范例 | 目前 Gaea 在直连 dc 要处理的 capabilities 如下<br />mysql.ClientProtocol41<br/>mysql.ClientSecureConnection<br/>mysql.ClientTransactions<br/>mysql.ClientLongFlag<br /><br />先略过此步骤 |
 
 接续上表
 
 | 项目 | 内容                                                         |
 | ---- | ------------------------------------------------------------ |
 | 公式 | if (server_capabilities & CLIENT_PLUGIN_AUTH)<br/>    string<NUL> authentication plugin name |
-| 范例 | 目前 Gaea 支扰的 capabilities 如下<br />mysql.ClientProtocol41<br/>mysql.ClientSecureConnection<br/>mysql.ClientTransactions<br/>mysql.ClientLongFlag<br /><br />并没有支援 CLIENT_PLUGIN_AUTH，所以略过此步骤 |
+| 范例 | 目前 Gaea 在直连 dc 要处理的 capabilities 如下<br />mysql.ClientProtocol41<br/>mysql.ClientSecureConnection<br/>mysql.ClientTransactions<br/>mysql.ClientLongFlag<br /><br />先略过此步骤 |
 
 接续上表
 
 | 项目 | 内容                                                         |
 | ---- | ------------------------------------------------------------ |
 | 公式 | if (server_capabilities & CLIENT_CONNECT_ATTRS)<br/>    int<lenenc> size of connection attributes<br/>    while packet has remaining data<br/>        string<lenenc> key<br/>        string<lenenc> value |
-| 范例 | 目前 Gaea 支扰的 capabilities 如下<br />mysql.ClientProtocol41<br/>mysql.ClientSecureConnection<br/>mysql.ClientTransactions<br/>mysql.ClientLongFlag<br /><br />并没有支援 CLIENT_CONNECT_ATTRS，所以略过此步骤 |
+| 范例 | 目前 Gaea 在直连 dc 要处理的 capabilities 如下<br />mysql.ClientProtocol41<br/>mysql.ClientSecureConnection<br/>mysql.ClientTransactions<br/>mysql.ClientLongFlag<br /><br />先略过此步骤 |
 
 ## 测试说明
 
@@ -271,7 +269,7 @@ $ echo -n xiaomi | od -td1
 
 此测试函数内含 匿名函数 customFunc
 
-以下代码，匿名函数 customFunc 内的变量将会取 dc 对象的內存位置，考量后，觉得可以这样写
+以下代码，匿名函数 customFunc 内的变量将会取 dc 对象的内存位置，考量后，觉得可以这样写
 
 主要是担心 错误的变数或者是错误的数值 会进入 匿名函数
 
@@ -297,15 +295,15 @@ $ echo -n xiaomi | od -td1
 
 ## 验证
 
-使用 Linux 命令 或者是 网站 去计算 Sha1sum 时，计算出来的结果为 16 进位，只不过 IDE 工具在取中断点时会显示为 10 进位，以下使用 mysql 包里的 CalcPassword 函式中的 stage1 變量为例
+使用 Linux 命令 或者是 网站 去计算 Sha1sum 时，计算出来的结果为 16 进位，只不过 IDE 工具在取中断点时会显示为 10 进位，以下使用 mysql 包里的 CalcPassword 函数中的 stage1 变量为例
 
 ### 使用工具和网站把密码转换成验证码
 
-使用 Linux Command 去产生 stage1 的 sha1sum 验证码
+使用 Linux 命令 去产生 stage1 的 sha1sum 验证码
 
 <img src="./assets/image-20220314214316673.png" alt="image-20220314214316673" style="zoom:80%;" /> 
 
-使用网站 https://coding.tools/tw/sha1 去计算 stage1 的 sha1sum 验证码
+使用 [网站](https://coding.tools/tw/sha1) 去计算 stage1 的 sha1sum 验证码
 
 <img src="./assets/image-20220314215924425.png" alt="image-20220314215924425" style="zoom:80%;" /> 
 
@@ -317,7 +315,7 @@ $ echo -n xiaomi | od -td1
 
 ### 确认 Sha1sum 验证码的数值
 
-使用下表去对照检查 "中断点去取出相对应 stage1" 和 "Linux Command 去产生 stage1" 的验证码，确认其值为正确的
+使用下表去对照检查 "中断点" 和 "Linux 命令" 产生的 stage1  验证码，确认其值为正确的
 
 | 数组位置 |  二进位  | 十进位 | 十六进位 |
 | :------: | :------: | :----: | :------: |

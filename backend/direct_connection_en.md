@@ -6,7 +6,7 @@
 
 > The first step is to send the initial handshake packet from MariaDB to Gaea.
 
-There are some details about the initial handshake packet in [the official document](https://mariadb.com/kb/en/connection/), and please see the details below.
+There are some details about the initial handshake packet in [the official document](https://mariadb.com/kb/en/connection/) , and please see the details below.
 
 <img src="./assets/image-20220315221559157.png" alt="image-20220315221559157" style="zoom:100%;" /> 
 
@@ -20,7 +20,7 @@ The actual packet demonstrates how this handshake works, and please see details 
 | string<8> scramble 1st part     | The first part of the scramble:<br /><br />MariaDB utilizes the scramble for secure password authentication.<br /><br />The scramble is 20 bytes of data; the first part occupies 8 bytes, []uint8{81, 64, 43, 85, 76, 90, 97, 91}. |
 | string<1> reserved byte         | It occupies 1 byte, []uint8{0}.                              |
 | int<2> server capabilities      | The first part of the capability occupies 2 bytes,  []uint8{254, 247}. |
-| int<1> server default collation | The charset of MariaDB in the current exameple is 33.<br /><br />After checking<br />[character-sets-and-collations](https://mariadb.com/kb/en/supported-character-sets-and-collations/)<br />or<br />using a command "SHOW CHARACTER SET LIKE 'utf8'",<br />finding out that number 33 means "utf8_general_ci". |
+| int<1> server default collation | The charset of MariaDB in the current exameple is 33.<br /><br />After checking<br />[document](https://mariadb.com/kb/en/supported-character-sets-and-collations/) <br />or<br />using a command "SHOW CHARACTER SET LIKE 'utf8'",<br />finding out that number 33 means "utf8_general_ci". |
 | int<2> status flags             | The status of MariaDB in the current exameple is []uint8{2, 0}.<br/><br />Reversing from the status flags to []uint8{0, 2} and then converting them to binary, []uint{0b000000000, 0b00000010}.<br /><br />After referring to "Gaea/mysql/constants.go", the result means "Autocommit." |
 | int<2> server capabilities      | The second part of the capability occupies 2 bytes,  []uint8{255, 129}. |
 
@@ -31,7 +31,7 @@ Gathering two parts of the capability and combining them, the result is []uint8{
 
 After Converting the result to binary, the result becomes []uint8{0b10000001, 0b11111111, 0b11110111, 0b11111110}.
 
-After that, refer to https://mariadb.com/kb/en/connection/ and ensure some details without difficulty.
+After that, refer to [the website](https://mariadb.com/kb/en/connection/) and ensure some details without difficulty.
 
 For example, the first element of the capability is 0, which means the packet came from MariaDB to Gaea.
 ```
@@ -84,7 +84,7 @@ After combining them, the final result is []uint8{81, 64, 43, 85, 76, 90, 97, 91
 
 > The second step is to calculate the auth base on the scramble, combined with two parts of the scramble.
 
-There are some details about the auth formula in [the official document](https://dev.mysql.com/doc/internals/en/secure-password-authentication.html).
+There are some details about the auth formula in [the official document](https://dev.mysql.com/doc/internals/en/secure-password-authentication.html) .
 
 ```
 some formulas for the auth:
@@ -180,7 +180,7 @@ The correct result, auth, is the same as Gaea's.
 
 > The second step is to reply to MariaDB after receiving the initial handshake packet.
 
-There are some details about the response packet in [the official document](https://mariadb.com/kb/en/connection/), and please see the details below.
+There are some details about the response packet in [the official document](https://mariadb.com/kb/en/connection/) , and please see the details below.
 
 <img src="./assets/image-20220318083633693.png" alt="image-20220318083633693" style="zoom:100%;" /> 
 
@@ -214,7 +214,7 @@ Gaea's capability & dc.capability = []uint32{41477} & []uint32{2181036030} = []u
 | --------------------------------- | ------------------------------------------------------------ |
 | int<4> client capabilities        | Gaea reverses from the mutual capability []uint32{41476} to []uint8{4, 162, 0, 0} when sending the packet to MariaDB.<br /><img src="./assets/image-20220319113026919.png" alt="image-20220319113026919" style="zoom:50%;" /> |
 | int<4> max packet size            | It occupies 4 bytes, []uint8{0, 0, 0, 0}.                    |
-| int<1> client character collation | After checking [character-sets-and-collations](https://mariadb.com/kb/en/supported-character-sets-and-collations/), finding out that number 46 means "utf8mb4_bin". |
+| int<1> client character collation | After checking [document](https://mariadb.com/kb/en/supported-character-sets-and-collations/) , finding out that number 46 means "utf8mb4_bin". |
 | string<19> reserved               | It occupies 19 bytes,  []uint8{<br />                                                       0, 0, 0, 0, 0,<br />                                                       0, 0, 0, 0, 0,<br />                                                       0, 0, 0, 0, 0,<br />                                                       0, 0, 0, 0,<br />                                                   } |
 
 The next table follows on from the previous one.
@@ -251,21 +251,21 @@ The next table follows on from the previous one.
 | item    | value                                                        |
 | ------- | ------------------------------------------------------------ |
 | packet  | if (server_capabilities & CLIENT_CONNECT_WITH_DB)<br/>    string<NUL> default database name |
-| example | Gaea supports capabilities that are<br />mysql.ClientProtocol41,<br/>mysql.ClientSecureConnection,<br/>mysql.ClientTransactions,<br/>and mysql.ClientLongFlag.<br /><br />The example skips this one because Gaea doesn't support CLIENT_CONNECT_WITH_DB. |
+| example | Gaea deals with capabilities that are **mysql.ClientProtocol41**, **mysql.ClientSecureConnection**, **mysql.ClientTransactions**, and **mysql.ClientLongFlag** in the dc connection. <br /><br />Gaea ignores this one. |
 
 The next table follows on from the previous one.
 
 | item    | value                                                        |
 | ------- | ------------------------------------------------------------ |
 | packet  | if (server_capabilities & CLIENT_PLUGIN_AUTH)<br/>    string<NUL> authentication plugin name |
-| example | Gaea supports capabilities that are<br />mysql.ClientProtocol41,<br/>mysql.ClientSecureConnection,<br/>mysql.ClientTransactions,<br/>and mysql.ClientLongFlag.<br /><br />The example skips this one because Gaea doesn't support CLIENT_PLUGIN_AUTH. |
+| example | Gaea deals with capabilities that are **mysql.ClientProtocol41**, **mysql.ClientSecureConnection**, **mysql.ClientTransactions**, and **mysql.ClientLongFlag** in the dc connection. <br /><br />Gaea ignores this one. |
 
 The next table follows on from the previous one.
 
 | item    | value                                                        |
 | ------- | ------------------------------------------------------------ |
 | packet  | if (server_capabilities & CLIENT_CONNECT_ATTRS)<br/>    int<lenenc> size of connection attributes<br/>    while packet has remaining data<br/>        string<lenenc> key<br/>        string<lenenc> value |
-| example | Gaea supports capabilities that are<br />mysql.ClientProtocol41,<br/>mysql.ClientSecureConnection,<br/>mysql.ClientTransactions,<br/>and mysql.ClientLongFlag.<br /><br />The example skips this one because Gaea doesn't support CLIENT_CONNECT_ATTRS. |
+| example | Gaea deals with capabilities that are **mysql.ClientProtocol41**, **mysql.ClientSecureConnection**, **mysql.ClientTransactions**, and **mysql.ClientLongFlag** in the dc connection. <br /><br />Gaea ignores this one. |
 
 ## Testing
 
@@ -273,7 +273,7 @@ The next table follows on from the previous one.
 
 ### Considering about Anonymous Function
 
-The function of the unit test whose name is "Response after Handshake," containing an anonymous function.
+The function of the unit test whose name is "response after handshake," containing an anonymous function.
 
 The variables in the anonymous function inside the test will take the address of other variables and bring them inside the function.
 
@@ -309,19 +309,19 @@ However, the IDE tool produces the result in decimal.
 
 ### Linux command
 
-Linux Bash generates the Sha1shum.
+Linux Bash generates the sha1shum.
 
 <img src="./assets/image-20220314214316673.png" alt="image-20220314214316673" style="zoom:80%;" /> 
 
 ### Website
 
-The tool on the website https://coding.tools/tw/sha1 calculates the sha1shum.
+The tool on [the website](https://coding.tools/tw/sha1) calculates the sha1shum.
 
 <img src="./assets/image-20220314215924425.png" alt="image-20220314215924425" style="zoom:80%;" /> 
 
 ### Broken Point
 
-The IDE uses broken point to take a look at the Stage1 variable.
+The IDE uses broken point to take a look at the stage1 variable.
 
 <img src="./assets/image-20220314220921338.png" alt="image-20220314220921338" style="zoom:100%;" /> 
 
