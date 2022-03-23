@@ -50,7 +50,7 @@ var (
 	mysqlInitHandShakeFirstResponseFromMaraiadbToGaea = []uint8{
 		// length. 资料长度
 		93, 0, 0,
-		// the increment numbers. 自增序列号码
+		// the increment numbers. 自增串行号码
 		0,
 
 		// 93 bytes of data. 以下 93 笔数据
@@ -73,7 +73,7 @@ var (
 		0,
 		// capability 取得功能标志
 		254, 247,
-		// charset 數據庫編碼
+		// charset 数据库编码
 		33,
 		// status 服务器状态
 		2, 0,
@@ -100,7 +100,7 @@ func TestDirectConnWithoutDB(t *testing.T) {
 
 	// create the mock object
 	// 先产生模拟对象
-	mockGaea, mockMariaDB := pipeTest.NewDcServerClient(t, nil) // create the mock object for Game and MariaDB. 产生 Gaea 和 MariaDB 模拟物件
+	mockGaea, mockMariaDB := pipeTest.NewDcServerClient(t, nil) // create the mock object for Game and MariaDB. 产生 Gaea 和 MariaDB 模拟对象
 	var dc DirectConnection                                     // create the dc object and receive MariaDB's greet message. 对象 dc 会产生回应欢迎讯息给数据库
 
 	// the first step
@@ -111,7 +111,7 @@ func TestDirectConnWithoutDB(t *testing.T) {
 		mockMariaDB.SendOrReceiveMsg(mysqlInitHandShakeFirstResponseFromMaraiadbToGaea) // This message is mysqlInitHandShakeFirstResponseFromMaraiadbToGaea. 对象 mockMariaDB 会回传数据库资讯给 mockGaea，而讯息内容为 mysqlInitHandShakeFirstResponseFromMaraiadbToGaea，内容包含数据库资讯
 
 		// create MariaDB object
-		// 產生 MariaDB dc 直連对象 (用以下内容取代 reply() 函数 !)
+		// 产生 MariaDB dc 直连对象 (用以下内容取代 reply() 函数 !)
 		var connForReceivingMsgFromMariadb = mysql.NewConn(mockGaea.GetConnRead()) // wait for sending message completely. 等一下 MariaDB 数据库会把交握讯息传送到这
 		// mysql.NewConn initializes net.conn and bufferedReader.
 		// mysql.NewConn 会同时初始化 读取连接 net.conn 和 读取缓存 bufferedReader
@@ -120,7 +120,7 @@ func TestDirectConnWithoutDB(t *testing.T) {
 		require.Equal(t, err, nil)
 
 		// wait for sending messages to the pipe completely and reset the pipe.
-		// 等待和确认资料已经写入 pipe 并单方向重置模拟物件
+		// 等待和确认资料已经写入 pipe 并单方向重置模拟对象
 		err = mockMariaDB.WaitAndReset(mockGaea)
 		require.Equal(t, err, nil)
 
@@ -139,7 +139,7 @@ func TestDirectConnWithoutDB(t *testing.T) {
 		// 开始进行模拟，方向为 Gaea 回应 MariaDB 欢迎
 
 		// create MariaDB object
-		// 產生 Mysql dc 直連物件 (用以下内容取代 reply() 函数 !)
+		// 产生 Mysql dc 直连对象 (用以下内容取代 reply() 函数 !)
 		var connForSengingMsgToMariadb = mysql.NewConn(mockGaea.GetConnWrite()) // make the response to MariaDB's greet message here. 等一下会把要回应给 MariaDB 数据库回应的欢迎讯息写入到这里
 
 		// mysql.NewConn initializes net.conn and bufferReader. However, bufferReader won't affect this result.
@@ -147,20 +147,20 @@ func TestDirectConnWithoutDB(t *testing.T) {
 		dc.conn = connForSengingMsgToMariadb // dc connects to test environment. 对象 dc 和整个测试进行连接
 		dc.conn.StartWriterBuffering()       // initialize Gaea's bufferReader. 初始化 Gaea 的 写入缓存 bufferReader
 		// Isolating bufferReader and no using StartWriterBuffering() in testing will be better. However, I cannot.
-		// 最好的状况是 Gaea 的 写入缓存 bufferReader 和这个测试整个分离，但目前现有代码的函数不支援，又不想修改现在代码，所以就把 写入缓存 捉进来一起测试
+		// 最好的状况是 Gaea 的 写入缓存 bufferReader 和这个测试整个分离，但目前现有代码的函数不支持，又不想修改现在代码，所以就把 写入缓存 捉进来一起测试
 
 		// fulfill the dc object, including user, password, etc.
 		// 填入 Gaea 用户的资讯，包含 密码
 		dc.user = "xiaomi"     // user 帐户名称
 		dc.password = "12345"  // password 密码
 		dc.charset = "utf8mb4" // charset 数据库编码
-		dc.collation = 46      // collation 文字排序
+		dc.collation = 46      // collation 文本排序
 
 		// use the anonymous function to send the message.
-		// 使用支援使用匿名函式传送讯息
+		// 使用支持使用匿名函数传送讯息
 		responseMsg := mockGaea.UseAnonymousFuncSendMsg(
 			// start using anonymous function
-			// 自订的匿名函式开始
+			// 自订的匿名函数开始
 			func() {
 				err := dc.writeHandshakeResponse41() // write the response message. 写入回应讯息
 				require.Equal(t, err, nil)
@@ -170,7 +170,7 @@ func TestDirectConnWithoutDB(t *testing.T) {
 				require.Equal(t, err, nil)
 			},
 			// use anonymous function completely.
-			// 自订的匿名函式结束
+			// 自订的匿名函数结束
 		).CheckArrivedMsg(mockMariaDB) // get the arrived message and check. 对传送到达对方的讯息取出进行确认
 
 		// check result. 确认结果
