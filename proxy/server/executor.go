@@ -58,8 +58,9 @@ type SessionExecutor struct {
 	charset          string
 	sessionVariables *mysql.SessionVariables
 
-	txConns map[string]backend.PooledConnect
-	txLock  sync.Mutex
+	txConns    map[string]backend.PooledConnect
+	savepoints []string
+	txLock     sync.Mutex
 
 	stmtID uint32
 	stmts  map[uint32]*Stmt //prepare相关,client端到proxy的stmt
@@ -386,7 +387,9 @@ func (se *SessionExecutor) getTransactionConn(sliceName string) (pc backend.Pool
 				return
 			}
 		}
-
+		for _, savepoint := range se.savepoints {
+			pc.Execute("savepoint "+savepoint, 0)
+		}
 		se.txConns[sliceName] = pc
 	}
 
@@ -684,6 +687,7 @@ func (se *SessionExecutor) handleBegin() error {
 		}
 	}
 	se.status |= mysql.ServerStatusInTrans
+	se.savepoints = []string{}
 	return nil
 }
 
@@ -691,7 +695,6 @@ func (se *SessionExecutor) handleCommit() (err error) {
 	if err := se.commit(); err != nil {
 		return err
 	}
-
 	return nil
 
 }
@@ -718,6 +721,7 @@ func (se *SessionExecutor) commit() (err error) {
 	}
 
 	se.txConns = make(map[string]backend.PooledConnect)
+	se.savepoints = []string{}
 	return
 }
 
@@ -730,6 +734,7 @@ func (se *SessionExecutor) rollback() (err error) {
 		pc.Recycle()
 	}
 	se.txConns = make(map[string]backend.PooledConnect)
+	se.savepoints = []string{}
 	return
 }
 
@@ -738,6 +743,11 @@ func (se *SessionExecutor) rollbackSavepoint(savepoint string) (err error) {
 	defer se.txLock.Unlock()
 	for _, pc := range se.txConns {
 		_, err = pc.Execute("rollback to "+savepoint, 0)
+	}
+	if err == nil && se.isInTransaction() {
+		if index := util.ArrayFindIndex(se.savepoints, savepoint); index > -1 {
+			se.savepoints = se.savepoints[0:index]
+		}
 	}
 	return
 }
@@ -749,9 +759,20 @@ func (se *SessionExecutor) handleSavepoint(stmt *ast.SavepointStmt) (err error) 
 		for _, pc := range se.txConns {
 			_, err = pc.Execute("release savepoint "+stmt.Savepoint, 0)
 		}
+		if err == nil && se.isInTransaction() {
+			if index := util.ArrayFindIndex(se.savepoints, stmt.Savepoint); index > -1 {
+				se.savepoints = se.savepoints[0 : index+1]
+			}
+		}
 	} else {
 		for _, pc := range se.txConns {
 			_, err = pc.Execute("savepoint "+stmt.Savepoint, 0)
+		}
+		if err == nil && se.isInTransaction() {
+			if util.ArrayFindIndex(se.savepoints, stmt.Savepoint) > -1 {
+				se.savepoints = util.ArrayRemoveItem(se.savepoints, stmt.Savepoint)
+			}
+			se.savepoints = append(se.savepoints, stmt.Savepoint)
 		}
 	}
 	return
