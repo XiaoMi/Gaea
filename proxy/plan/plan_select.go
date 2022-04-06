@@ -187,8 +187,7 @@ func HandleSelectStmt(p *SelectPlan, stmt *ast.SelectStmt) error {
 		return fmt.Errorf("handle Hint error: %v", err)
 	}
 
-
-//如果是多节点执行，特殊处理groupby orderby having limit
+	//如果是多节点执行，特殊处理groupby orderby having limit
 	if !p.isExecOnSingleNode() {
 		// group by的处理必须在table处理之后
 		if err := handleGroupBy(p, stmt); err != nil {
@@ -207,8 +206,6 @@ func HandleSelectStmt(p *SelectPlan, stmt *ast.SelectStmt) error {
 		if stmt.Fields != nil {
 			p.columnCount = len(stmt.Fields.Fields)
 		}
-
-		
 
 		if err := handleHaving(p, stmt); err != nil {
 			return fmt.Errorf("handle Having error: %v", err)
@@ -496,10 +493,13 @@ func rewriteTableNameInTableSource(p *TableAliasStmtInfo, tableSource *ast.Table
 
 	// 这是一个分片表或关联表, 创建一个TableName的装饰器, 并替换原有节点
 	d, err := CreateTableNameDecorator(tableName, rule, p.GetRouteResult())
+	d.Alias = tableSource.AsName.String()
 	if err != nil {
 		return fmt.Errorf("create TableNameDecorator error: %v", err)
 	}
 	tableSource.Source = d
+	tableSource.AsName.L = ""
+	tableSource.AsName.O = ""
 	return nil
 }
 
