@@ -28,6 +28,7 @@ type TableNameDecorator struct {
 	origin *ast.TableName
 	rule   router.Rule
 	result *RouteResult
+	Alias  string
 }
 
 // NeedCreateTableNameDecoratorWithoutAlias check if TableName without alias needs decorate
@@ -111,7 +112,10 @@ func (t *TableNameDecorator) Restore(ctx *format.RestoreCtx) error {
 	} else {
 		ctx.WriteName(fmt.Sprintf("%s_%04d", t.origin.Name.String(), tableIndex))
 	}
-
+	if t.Alias != "" {
+		ctx.WriteKeyWord(" AS ")
+		ctx.WriteName(t.Alias)
+	}
 	for _, value := range t.origin.IndexHints {
 		ctx.WritePlain(" ")
 		if err := value.Restore(ctx); err != nil {

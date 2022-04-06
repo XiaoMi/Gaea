@@ -51,7 +51,7 @@ func (s *SubqueryColumnNameRewriteVisitor) Leave(n ast.Node) (node ast.Node, ok 
 	if rule == nil || rule.GetType() == router.GlobalTableRuleType {
 		return n, true
 	}
- 
+
 	decorator := CreateColumnNameExprDecorator(field, rule, false, s.info.GetRouteResult())
 	return decorator, true
 }
@@ -178,9 +178,12 @@ func rewriteSubqueryTableNameInTableSource(p *TableAliasStmtInfo, tableSource *a
 
 	// 这是一个分片表或关联表, 创建一个TableName的装饰器, 并替换原有节点
 	d, err := CreateTableNameDecorator(tableName, rule, p.GetRouteResult())
+	d.Alias = tableSource.AsName.String()
 	if err != nil {
 		return fmt.Errorf("create TableNameDecorator error: %v", err)
 	}
 	tableSource.Source = d
+	tableSource.AsName.L = ""
+	tableSource.AsName.O = ""
 	return nil
 }
