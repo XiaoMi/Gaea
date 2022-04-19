@@ -336,7 +336,7 @@ func handleInsertGlobalSequenceValue(p *InsertPlan) error {
 func (s *InsertPlan) ExecuteIn(reqCtx *util.RequestContext, sess Executor) (*mysql.Result, error) {
 	rs, err := sess.ExecuteSQLs(reqCtx, s.sqls)
 	if err != nil {
-		return nil, fmt.Errorf("execute in InsertPlan error: %v", err)
+		return nil, err
 	}
 
 	r, err := MergeExecResult(rs)
