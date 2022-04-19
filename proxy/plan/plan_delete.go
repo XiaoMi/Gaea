@@ -53,7 +53,7 @@ func (p *DeletePlan) ExecuteIn(reqCtx *util.RequestContext, sess Executor) (*mys
 
 	rs, err := sess.ExecuteSQLs(reqCtx, sqls)
 	if err != nil {
-		return nil, fmt.Errorf("execute in UpdatePlan error: %v", err)
+		return nil, err
 	}
 
 	r, err := MergeExecResult(rs)
