@@ -15,9 +15,13 @@ package server
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"net"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/backend/mocks"
@@ -29,9 +33,11 @@ import (
 	"github.com/XiaoMi/Gaea/util"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"gopkg.in/ini.v1"
 )
 
+var global_manager *Manager
 func TestGetVariableExprResult(t *testing.T) {
 	tests := []struct {
 		variable []string
@@ -62,15 +68,7 @@ func TestGetVariableExprResult(t *testing.T) {
 	}
 }
 
-func TestExecute(t *testing.T) {
-	se, err := prepareSessionExecutor()
-	if err != nil {
-		t.Fatal("prepare session executer error:", err)
-		return
-	}
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-
+func mockBackConnPool(se *SessionExecutor) {
 	slice0MasterPool := new(mocks.ConnectionPool)
 	slice0SlavePool := new(mocks.ConnectionPool)
 	slice1MasterPool := new(mocks.ConnectionPool)
@@ -88,10 +86,12 @@ func TestExecute(t *testing.T) {
 	slice0MasterConn.On("GetConnectionID").Return(int64(1))
 	slice0MasterPool.On("Get", ctx).Return(slice0MasterConn, nil).Once()
 	slice0MasterConn.On("UseDB", "db_mycat_0").Return(nil)
+	slice0MasterConn.On("UseDB", "db_ks").Return(nil)
 	slice0MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice0MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice0MasterConn.On("GetAddr").Return("127.0.0.1:3306")
 	slice0MasterConn.On("Execute", "SELECT * FROM `tbl_mycat` WHERE `k`=0", defaultMaxSqlResultSize).Return(expectResult1, nil)
+	slice0MasterConn.On("Execute", "SELECT 1", defaultMaxSqlResultSize).Return(expectResult1, nil)
 	slice0MasterConn.On("Recycle").Return(nil)
 
 	//slice-1
@@ -99,11 +99,26 @@ func TestExecute(t *testing.T) {
 	slice1MasterConn.On("GetConnectionID").Return(int64(2))
 	slice1MasterPool.On("Get", ctx).Return(slice1MasterConn, nil).Once()
 	slice1MasterConn.On("UseDB", "db_mycat_2").Return(nil)
+	slice1MasterConn.On("UseDB", "db_ks").Return(nil)
 	slice1MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
 	slice1MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
 	slice1MasterConn.On("GetAddr").Return("127.0.0.1:3306")
 	slice1MasterConn.On("Execute", "SELECT * FROM `tbl_mycat` WHERE `k`=0", defaultMaxSqlResultSize).Return(expectResult2, nil)
+	slice1MasterConn.On("Execute", "SELECT 1", defaultMaxSqlResultSize).Return(expectResult2, nil)
 	slice1MasterConn.On("Recycle").Return(nil)
+}
+
+func TestExecute(t *testing.T) {
+	se, err := prepareSessionExecutor()
+	if err != nil {
+		t.Fatal("prepare session executer error:", err)
+		return
+	}
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+	expectResult1 := &mysql.Result{}
+	expectResult2 := &mysql.Result{}
+	mockBackConnPool(se)
 
 	sqls := map[string]map[string][]string{
 		"slice-0": {
@@ -130,11 +145,15 @@ func prepareSessionExecutor() (*SessionExecutor, error) {
 	var namespaceName = "test_executor_namespace"
 	var database = "db_ks"
 
-	m, err := prepareNamespaceManager()
-	if err != nil {
-		return nil, err
+	if global_manager == nil {
+		var err error
+		global_manager, err = prepareNamespaceManager()
+		if err != nil {
+			return nil, err
+		}
 	}
-	executor := newSessionExecutor(m)
+
+	executor := newSessionExecutor(global_manager)
 	executor.user = userName
 
 	collationID := 33 // "utf8"
@@ -300,4 +319,211 @@ encrypt_key=1234abcd5678efg*
 	}
 	m.users[current] = user
 	return m, nil
+}
+
+func createSocketPair(t *testing.T) (net.Listener, *Session, *mysql.Conn) {
+	// Create a listener.
+	listener, err := net.Listen("tcp", "127.0.0.1:")
+	if err != nil {
+		t.Fatalf("Listen failed: %v", err)
+	}
+
+	addr := listener.Addr().String()
+	listener.(*net.TCPListener).SetDeadline(time.Now().Add(10 * time.Second))
+
+	// Dial a client, Accept a server.
+	wg := sync.WaitGroup{}
+
+	var clientConn net.Conn
+	var clientErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		clientConn, clientErr = net.DialTimeout("tcp", addr, 10*time.Second)
+	}()
+
+	var serverConn net.Conn
+	var serverErr error
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		serverConn, serverErr = listener.Accept()
+	}()
+
+	wg.Wait()
+
+	if clientErr != nil {
+		t.Fatalf("Dial failed: %v", clientErr)
+	}
+	if serverErr != nil {
+		t.Fatalf("Accept failed: %v", serverErr)
+	}
+
+	s := new(Server)
+	se, err := prepareSessionExecutor()
+	require.NoError(t, err)
+	s.manager = se.manager
+
+	session := newSession(s, serverConn)
+	session.executor = se
+	session.namespace = se.namespace
+	se.session = session
+	cConn := mysql.NewConn(clientConn)
+
+	return listener, session, cConn
+}
+func WriteComQuery(conn *mysql.Conn, sql string) error {
+	conn.SetSequence(0)
+	data := conn.StartEphemeralPacket(len(sql) + 1)
+	data[0] = mysql.ComQuery
+	copy(data[1:], sql)
+	if err := conn.WriteEphemeralPacket(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func TestMultiStatementStopsOnError(t *testing.T) {
+	// 未开启多语句开关，报错
+	testMultiStatementStopsOnError(t, "select 1;select 2", false, false)
+
+	//开启多语开关，但是中间件flag未设置支持，报错
+	testMultiStatementStopsOnError(t, "select 1;select 2", true, false)
+
+	//开启多语开关，中间件flag已设置支持，但语句错误
+	testMultiStatementStopsOnError(t, "error;select 2", true, true)
+}
+
+func handleErrorPacket(data []byte) *mysql.SQLError {
+	e := new(mysql.SQLError)
+	var pos = 1
+	e.Code = binary.LittleEndian.Uint16(data[pos:])
+	pos += 2
+	e.Message = string(data[pos:])
+
+	return e
+}
+
+//isOpenMultiQuery 是否开启multi-query标识位置
+func testMultiStatementStopsOnError(t *testing.T, sql string, isOpenMultiQuerySwitch bool, isOpenMultiQueryCapabilities bool) {
+	listener, sConn, cConn := createSocketPair(t)
+
+	defer func() {
+		listener.Close()
+		sConn.Close()
+		cConn.Close()
+	}()
+
+	if isOpenMultiQuerySwitch {
+		sConn.executor.GetNamespace().supportMultiQuery = true
+		if isOpenMultiQueryCapabilities {
+			sConn.c.Capabilities |= mysql.ClientMultiStatements
+		}
+	} else {
+		sConn.executor.GetNamespace().supportMultiQuery = false
+		sConn.c.Capabilities &^= mysql.ClientMultiStatements
+	}
+
+	
+
+	//client send sql
+	err := WriteComQuery(cConn, sql)
+	require.NoError(t, err)
+
+	//server side,recevice and handle sql
+	sConn.c.SetSequence(0)
+	data, err := sConn.c.ReadEphemeralPacket()
+	require.NoError(t, err)
+	cmd := data[0]
+	data = data[1:]
+
+	rs := sConn.executor.ExecuteCommand(cmd, data)
+	// 如果其他地方已经回收过,这里不再重复回收
+	if sConn.c.hasRecycledReadPacket.Get() {
+		sConn.c.hasRecycledReadPacket.Set(false)
+	} else {
+		sConn.c.RecycleReadPacket()
+	}
+	err = sConn.writeResponse(rs)
+	require.NoError(t, err)
+
+	//client recevice the results
+	result, err := cConn.ReadPacket()
+	require.NoError(t, err)
+	require.NotEmpty(t, result)
+	require.EqualValues(t, result[0], mysql.ErrHeader) // we should see the error here
+	errInfo := handleErrorPacket(result)
+	if isOpenMultiQuerySwitch && !isOpenMultiQueryCapabilities {
+		require.Contains(t, errInfo.Message, "client's Capabilities not support multi statements")
+	} 
+}
+
+func TestMultiStatementSuccess(t *testing.T) {
+	listener, sConn, cConn := createSocketPair(t)
+	defer func() {
+		listener.Close()
+		sConn.Close()
+		cConn.Close()
+	}()
+
+	mockBackConnPool(sConn.executor)
+	sConn.executor.GetNamespace().supportMultiQuery = true
+	sConn.c.Capabilities |= mysql.ClientMultiStatements
+	sConn.executor.GetNamespace().userProperties["test_executor"].RWSplit = 0
+	
+	//client send sql
+	err := WriteComQuery(cConn, "set autocommit=1;SELECT 1;set autocommit=0;")
+	require.NoError(t, err)
+
+	//server side,recevice and handle sql
+	sConn.c.SetSequence(0)
+	data, err := sConn.c.ReadEphemeralPacket()
+	require.NoError(t, err)
+	cmd := data[0]
+	data = data[1:]
+
+	rs := sConn.executor.ExecuteCommand(cmd, data)
+	require.True(t, sConn.c.hasRecycledReadPacket.Get())
+	err = sConn.writeResponse(rs)
+	require.NoError(t, err)
+
+	//client recevice the results
+	result, _ := cConn.ReadPacket()
+	require.EqualValues(t, result[0], mysql.OKHeader)
+	require.True(t, uint16(result[3])&mysql.ServerMoreResultsExists > 0)
+	require.True(t, uint16(result[3])&mysql.ServerStatusAutocommit > 0)
+
+	//select 1
+	result, err = cConn.ReadPacket()  //mock okpacket
+	require.NoError(t, err)
+	require.NotEmpty(t, result)
+	require.EqualValues(t, result[0], mysql.OKHeader)
+	require.True(t, uint16(result[3])&mysql.ServerMoreResultsExists > 0)
+
+	//set autocommit=0
+	result, err = cConn.ReadPacket()
+	require.NoError(t, err)
+	require.NotEmpty(t, result)
+	require.EqualValues(t, result[0], mysql.OKHeader)
+	require.True(t, uint16(result[3])&mysql.ServerMoreResultsExists == 0)
+	require.True(t, uint16(result[3])&mysql.ServerStatusAutocommit == 0)
+
+	{
+		//test HandleComSetOption
+		data1 := [2]byte{0x00, 0x00}
+		sConn.c.HandleComSetOption(data1[:])
+		require.True(t, sConn.c.Capabilities&mysql.ClientMultiStatements > 0)
+		data1 = [2]byte{0x01, 0x00}
+		sConn.c.HandleComSetOption(data1[:])
+		require.True(t, sConn.c.Capabilities&mysql.ClientMultiStatements == 0)
+		data1 = [2]byte{0x02, 0x00}
+		ret, _ := sConn.c.HandleComSetOption(data1[:])
+		require.False(t, ret)
+	}
+
+	{
+		multiSql := "select 1; select 2;select 1 from `tt;tt` where id =1;"
+		pieces, _ := parser.SplitStatementToPieces(multiSql)
+		require.EqualValues(t, 3, len(pieces))
+	}
 }

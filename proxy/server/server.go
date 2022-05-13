@@ -147,7 +147,7 @@ func (s *Server) onConn(c net.Conn) {
 		cc.executor.clientAddr,
 		cc.executor.db,
 		cc.executor.namespace,
-		cc.c.capability)
+		cc.c.Capabilities)
 	cc.Run()
 }
 

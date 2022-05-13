@@ -71,6 +71,7 @@ type Namespace struct {
 	maxSqlExecuteTime  int // session max sql execute time,millisecond
 	maxSqlResultSize   int
 	defaultSlice       string
+	supportMultiQuery  bool 
 
 	slowSQLCache         *cache.LRUCache
 	errorSQLCache        *cache.LRUCache
@@ -106,6 +107,7 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 		}
 	}()
 
+	namespace.supportMultiQuery = namespaceConfig.SupportMultiQuery
 	// init black sql
 	namespace.sqls = parseBlackSqls(namespaceConfig.BlackSQL)
 
