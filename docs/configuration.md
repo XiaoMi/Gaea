@@ -126,6 +126,9 @@ namespace的配置格式为json，包含分表、非分表、实例等配置信�
 | rw_flag        | int      | 读写标识, 只读=1, 读写=2                |
 | rw_split       | int      | 是否读写分离, 非读写分离=0, 读写分离=1     |
 | other_property | int      | 目前用来标识是否走统计从实例, 普通用户=0, 统计用户=1 |
+| open_rate_limit | bool     | 是否开启流控                |
+| max_rate_limit  | int      | 最大流控速率        |
+| max_token_wait_time | int  | 流控时获取不到流控颁发的令牌，最大等待时间,单位ms |
 
 ### 全局序列号配置
 
