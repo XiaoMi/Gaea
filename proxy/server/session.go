@@ -30,7 +30,7 @@ import (
 // DefaultCapability means default capability
 var DefaultCapability = mysql.ClientLongPassword | mysql.ClientLongFlag |
 	mysql.ClientConnectWithDB | mysql.ClientProtocol41 |
-	mysql.ClientTransactions | mysql.ClientSecureConnection
+	mysql.ClientTransactions | mysql.ClientSecureConnection | mysql.ClientMultiStatements
 
 //下面的会根据配置文件参数加进去
 //mysql.ClientPluginAuth
@@ -75,6 +75,7 @@ func newSession(s *Server, co net.Conn) *Session {
 
 	cc.executor = newSessionExecutor(s.manager)
 	cc.executor.clientAddr = co.RemoteAddr().String()
+	cc.executor.session = cc
 	cc.closed.Store(false)
 	return cc
 }
@@ -251,7 +252,10 @@ func (cc *Session) Run() {
 		cmd := data[0]
 		data = data[1:]
 		rs := cc.executor.ExecuteCommand(cmd, data)
-		cc.c.RecycleReadPacket()
+		// 如果其他地方已经回收过,不再回收
+		if !cc.c.hasRecycledReadPacket.CompareAndSwap(true,false) {
+			cc.c.RecycleReadPacket()
+		}
 
 		if err = cc.writeResponse(rs); err != nil {
 			log.Warn("Session write response error, connId: %d, err: %v", cc.c.GetConnectionID(), err)

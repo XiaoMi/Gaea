@@ -102,6 +102,15 @@ type Conn struct {
 	// currentEphemeralBuffer for tracking allocated temporary buffer for writes and reads respectively.
 	// It can be allocated from bufPool or heap and should be recycled in the same manner.
 	currentEphemeralBuffer *[]byte
+
+	// Capabilities is the current set of features this connection
+	// is using.  It is the features that are both supported by
+	// the client and the server, and currently in use.
+	// It is set during the initial handshake.
+	//
+	// It is only used for CapabilityClientDeprecateEOF
+	// and CapabilityClientFoundRows.
+	Capabilities uint32
 }
 
 // bufPool is used to allocate and free buffers in an efficient way.
@@ -700,6 +709,30 @@ func parseOKHeader(data []byte) (uint64, uint64, uint16, uint16, error) {
 	}
 
 	return affectedRows, lastInsertID, statusFlags, warnings, nil
+}
+
+func (c *Conn) HandleComSetOption(data []byte) (ret bool, err error) {
+	ret = true
+	//parseComSetOption
+	operation, _, ok := ReadUint16(data, 0)
+	//c.recycleReadPacket()
+	if ok {
+		switch operation {
+		case 0:
+			c.Capabilities |= ClientMultiStatements
+		case 1:
+			c.Capabilities &^= ClientMultiStatements
+		default:
+			ret = false
+			err = fmt.Errorf("Got unhandled packet (ComSetOption default) from client %v, returning error: %v", c.ConnectionID, data)
+
+		}
+	} else {
+		ret = false
+		err = fmt.Errorf("Got unhandled packet (ComSetOption else) from client %v, returning error: %v", c.ConnectionID, data)
+	}
+
+	return ret, err
 }
 
 // IsErrorPacket determines whether or not the packet is an error packet. Mostly here for
