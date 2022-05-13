@@ -45,6 +45,9 @@ const (
 	StmtComment
 	StmtSavepoint
 )
+const (
+	eofChar = 0x100
+)
 
 // Preview analyzes the beginning of the query using a simpler and faster
 // textual comparison to identify the statement type.
@@ -145,4 +148,58 @@ func StmtType(stmtType int) string {
 	default:
 		return "UNKNOWN"
 	}
+}
+
+// SplitStatementToPieces split raw sql statement that may have multi sql pieces to sql pieces
+// returns the sql pieces blob contains; or error if sql cannot be parsed
+func SplitStatementToPieces(blob string) (pieces []string, err error) {
+	// fast path: the vast majority of SQL statements do not have semicolons in them
+	if blob == "" {
+		return nil, nil
+	}
+	switch strings.IndexByte(blob, ';') {
+	case -1: // if there is no semicolon, return blob as a whole
+		return []string{blob}, nil
+	case len(blob) - 1: // if there's a single semicolon and it's the last character, return blob without it
+		return []string{blob[:len(blob)-1]}, nil
+	}
+
+	pieces = make([]string, 0, 16)
+	tokenizer := NewScanner(blob)
+
+	tkn := 0
+	var pos Pos
+	var stmt string
+	stmtBegin := 0
+	emptyStatement := true
+loop:
+	for {
+		tkn, pos, _ = tokenizer.scan()
+		switch tkn {
+		case ';':
+			stmt = blob[stmtBegin:pos.Offset]
+			if !emptyStatement {
+				pieces = append(pieces, stmt)
+				emptyStatement = true
+			}
+			stmtBegin = pos.Offset + 1
+		case 0, eofChar:
+			blobTail := pos.Offset - 1
+			if stmtBegin < blobTail {
+				stmt = blob[stmtBegin : blobTail+1]
+				if !emptyStatement {
+					pieces = append(pieces, stmt)
+				}
+			}
+			break loop
+		default:
+			emptyStatement = false
+		}
+	}
+
+	if len(tokenizer.errs) > 0 {
+		err = tokenizer.errs[0]
+	}
+
+	return
 }

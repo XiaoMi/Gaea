@@ -66,6 +66,7 @@ type SessionExecutor struct {
 	stmts  map[uint32]*Stmt //prepare相关,client端到proxy的stmt
 
 	parser *parser.Parser
+	session *Session
 }
 
 // Response response info
@@ -279,10 +280,13 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		sql := string(data)
 		// handle phase
 		r, err := se.handleQuery(sql)
-		if err != nil {
+		if se.session.IsClosed() {
+			return CreateNoopResponse()
+		} else if err != nil {
 			return CreateErrorResponse(se.status, err)
+		} else {
+			return CreateResultResponse(se.status, r)
 		}
-		return CreateResultResponse(se.status, r)
 	case mysql.ComPing:
 		return CreateOKResponse(se.status)
 	case mysql.ComInitDB:
@@ -332,7 +336,13 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		}
 		return CreateOKResponse(se.status)
 	case mysql.ComSetOption:
-		return CreateEOFResponse(se.status)
+		ok, err := se.session.c.HandleComSetOption(data)
+		if ok {
+			return CreateEOFResponse(se.status)
+		} else {
+			log.Warn("dispatch command failed, error: %v", err)
+			return CreateErrorResponse(se.status, mysql.NewError(mysql.ErrUnknown, err.Error()))
+		}
 	default:
 		msg := fmt.Sprintf("command %d not supported now", cmd)
 		log.Warn("dispatch command failed, error: %s", msg)
