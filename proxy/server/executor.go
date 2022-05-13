@@ -267,8 +267,22 @@ func (se *SessionExecutor) GetDatabase() string {
 	return se.db
 }
 
+func (se *SessionExecutor) checkFlowControl() (bool, error) {
+	ns := se.GetNamespace()
+	if ns.userProperties != nil && ns.userProperties[se.user] != nil {
+		return ns.userProperties[se.user].GetRateLimiterToken()
+	} else {
+		return true, nil
+	}
+}
+
 // ExecuteCommand execute command
 func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
+	if ok, err := se.checkFlowControl(); !ok {
+		log.Warn("flow control error: %v", err)
+		return CreateErrorResponse(se.status, err)
+	}
+
 	switch cmd {
 	case mysql.ComQuit:
 		se.handleRollback(nil)

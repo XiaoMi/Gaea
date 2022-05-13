@@ -41,12 +41,15 @@ const (
 
 // User meand user struct
 type User struct {
-	UserName      string `json:"user_name"`
-	Password      string `json:"password"`
-	Namespace     string `json:"namespace"`
-	RWFlag        int    `json:"rw_flag"`        //1: 只读 2:读写
-	RWSplit       int    `json:"rw_split"`       //0: 不采用读写分离 1:读写分离
-	OtherProperty int    `json:"other_property"` // 1:统计用户
+	UserName         string `json:"user_name"`
+	Password         string `json:"password"`
+	Namespace        string `json:"namespace"`
+	RWFlag           int    `json:"rw_flag"`        //1: 只读 2:读写
+	RWSplit          int    `json:"rw_split"`       //0: 不采用读写分离 1:读写分离
+	OtherProperty    int    `json:"other_property"` // 1:统计用户
+	OpenRateLimit    bool    `json:"open_rate_limit"`   // false：非流控；true:流控
+	MaxRateLimit     int    `json:"max_rate_limit"`      // 流控，最大QPS速率，默认值是0.
+	MaxTokenWaitTime int    `json:"max_token_wait_time"` //流控，获取流控token默认最大等待时间。默认值0，表示不等待
 }
 
 func (p *User) verify() error {
@@ -75,6 +78,14 @@ func (p *User) verify() error {
 
 	if p.OtherProperty != StatisticUser && p.OtherProperty != 0 {
 		return fmt.Errorf("invalid other property, user: %s, %d", p.UserName, p.OtherProperty)
+	}
+
+	if p.MaxRateLimit < 0 {
+		return fmt.Errorf("invalid MaxRateLimit, MaxRateLimit: %d, max_rate_limit should >= 0", p.MaxRateLimit)
+	}
+
+	if p.MaxTokenWaitTime < 0 {
+		return fmt.Errorf("invalid MaxTokenWaitTime, MaxTokenWaitTime: %d, max_token_wait_time should >= 0", p.MaxTokenWaitTime)
 	}
 
 	return nil

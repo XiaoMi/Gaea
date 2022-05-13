@@ -15,11 +15,13 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/XiaoMi/Gaea/backend"
@@ -31,6 +33,7 @@ import (
 	"github.com/XiaoMi/Gaea/proxy/sequence"
 	"github.com/XiaoMi/Gaea/util"
 	"github.com/XiaoMi/Gaea/util/cache"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -51,6 +54,46 @@ type UserProperty struct {
 	RWFlag        int
 	RWSplit       int
 	OtherProperty int
+	rateLimiter        *rate.Limiter
+	maxTokenWaitTimeMs int64 //流控，获取流控token默认最大等待时间。默认值0，表示不等待
+	lock               sync.RWMutex
+}
+func (cc *UserProperty) initRateLimiter(openRateLimit bool, maxRateLimit int, maxTokenWaitTime int) {
+	cc.lock.Lock()
+	defer cc.lock.Unlock()
+	if !openRateLimit {
+		cc.rateLimiter = nil
+		return
+	}
+
+	//cc.maxRateLimit = maxRateLimit
+	cc.rateLimiter = rate.NewLimiter(rate.Limit(maxRateLimit), maxRateLimit)
+	cc.maxTokenWaitTimeMs = int64(maxTokenWaitTime)
+}
+
+func (cc *UserProperty) GetRateLimiterToken() (ok bool, err error) {
+	cc.lock.RLock()
+	defer cc.lock.RUnlock()
+	if cc.rateLimiter == nil {
+		return true, nil
+	}
+
+	ok = true
+	if cc.maxTokenWaitTimeMs > 0 {
+		getCtx, cancel := context.WithTimeout(context.Background(), time.Duration(cc.maxTokenWaitTimeMs)*time.Millisecond)
+		defer cancel()
+		err = cc.rateLimiter.Wait(getCtx)
+		if err != nil {
+			ok = false
+		}
+	} else {
+		ok = cc.rateLimiter.Allow()
+		if !ok {
+			err = fmt.Errorf("rate limit %v,can't get rate limit token now", cc.rateLimiter.Limit())
+		}
+	}
+
+	return ok, err
 }
 
 // Namespace is struct driected used by server
@@ -160,7 +203,8 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 	// init user properties
 	for _, user := range namespaceConfig.Users {
 		up := &UserProperty{RWFlag: user.RWFlag, RWSplit: user.RWSplit, OtherProperty: user.OtherProperty}
-		namespace.userProperties[user.UserName] = up
+		up.initRateLimiter(user.OpenRateLimit, user.MaxRateLimit, user.MaxTokenWaitTime)
+		namespace.userProperties[user.UserName] = up	
 	}
 
 	// init backend slices
