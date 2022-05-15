@@ -138,3 +138,23 @@ func HostName(ip string) (hostname string, err error) {
 	}
 	return hostName[0], err
 }
+
+// IncrementIP 为 ip 增加一个数值 IncrementIP is an utility function to increment an IP address
+func IncrementIP(ip net.IP) net.IP {
+	// 先把 IP 地址转换并加1 add one to the ip address
+	i := ip.To4()
+	var v uint
+	if len(i) != 0 {
+		v = uint(i[0])<<24 + uint(i[1])<<16 + uint(i[2])<<8 + uint(i[3])
+	}
+	v += 1
+
+	// 再把加1后的数值转换回IP地址 convert the value back to an IP address
+	v3 := byte(v & 0xFF)
+	v2 := byte((v >> 8) & 0xFF)
+	v1 := byte((v >> 16) & 0xFF)
+	v0 := byte((v >> 24) & 0xFF)
+
+	// 再把IP地址转换回IP地址 return the new IP address
+	return net.IPv4(v0, v1, v2, v3)
+}

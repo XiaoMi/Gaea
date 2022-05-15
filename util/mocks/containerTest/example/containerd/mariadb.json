@@ -1,0 +1,14 @@
+{
+  "sock": "",
+  "type": "mariadb",
+  "name": "mariadb-server",
+  "namespace": "mariadb",
+  "image": "docker.io/panhongrainbow/mariadb:testing",
+  "task": "mariadb-server",
+  "networkNs": "/var/run/netns/gaea-mariadb",
+  "ip": "10.0.0.10:3306",
+  "snapshot": "mariadb-server-snapshot",
+  "sehema": "",
+  "user": "xiaomi",
+  "password": "12345"
+}

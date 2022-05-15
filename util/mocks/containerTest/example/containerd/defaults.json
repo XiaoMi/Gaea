@@ -1,0 +1,14 @@
+{
+  "sock": "",
+  "type": "default",
+  "name": "default-server",
+  "namespace": "default",
+  "image": "docker.io/library/debian:testing",
+  "task": "default-server",
+  "networkNs": "/var/run/netns/gaea-default",
+  "ip": "10.0.0.2",
+  "snapshot": "default-server-snapshot",
+  "sehema": "",
+  "user": "",
+  "password": ""
+}

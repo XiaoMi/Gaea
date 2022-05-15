@@ -1,0 +1,177 @@
+@startuml
+
+left to right direction
+scale 5000 width
+scale 2000 height
+
+'预设背景的颜色
+skinparam NoteBackgroundColor white
+
+
+'整个 Containerd 运作的类图
+
+package containerTest包 {
+    '管理员
+    class containerManager {
+    }
+    class containerManager #back:red
+    note bottom of containerManager {
+        容器管理员
+    }
+
+    class ContainderList {
+    	- sync.Locker networkLock
+    	- ContainerD cfg
+    	- Builder builder
+    }
+    class ContainderList #back:tomato
+    note bottom of ContainderList {
+        ContainderList
+    }
+    }
+
+    '客户端介面
+    package builder包 {
+        interface Builder {
+            + Build() error
+            + OnService(t time.Duration) error
+            + TearDown() error
+        }
+        interface Builder #back:steelblue
+        note bottom of Builder {
+            Builder 是操作一个新的测试环境的接口
+            interface for making a new test environment.
+        }
+    }
+
+    '核心类
+    package Container包 {
+    class ContainerdClient {
+            + Distinguish() error
+	        + Build(t time.Duration) error
+	        + OnService(t time.Duration) error
+	        + TearDown(t time.Duration) error
+        }
+        class ContainerdClient #back:red
+        note bottom of ContainerdClient {
+            ContainerdClient is the core component of controlling Containerd.
+            ContainerdClient 为控制 containerd 的主要核心物件
+        }
+
+    '核心类的设定
+
+    '核心类的容器设定
+        class ClientContainerd {}
+        class ClientContainerd #back:orange
+        note bottom of ClientContainerd {
+            ClientContainerd 为客戶端的容器服务設定
+            containerd is configured for Containerd.
+        }
+
+    '核心类的 Schema 设定
+        class ClientSchema {
+            + string User     string
+            + string Password string
+            + string Schema
+        }
+        class ClientSchema #back:orange
+        note bottom of ClientSchema {
+            ClientSchema 客戶端的 Schema 設定
+            ClientSchema is the schema of the containerd client.
+        }
+
+    '核心类的容器运行时的对象
+        class ClientRunning {}
+        class ClientRunning #back:tomato
+        note bottom of ClientRunning {
+            ClientRunning 客戶端的运行时的对象
+            ClientRunning is the running object of the containerd client.
+        }
+    }
+
+    '核心类的执行接口
+    package run包 {
+        interface Run {
+            + Pull(client *containerd.Client, ctx context.Context, imageUrl string) (containerd.Image, error)
+            + Create(client *containerd.Client, ctx context.Context, containerName string, networkNS string, imagePulled containerd.Image, snapShot string) (containerd.Container, error)
+            + Task(container containerd.Container, ctx context.Context) (containerd.Task, error)
+            + Start(task containerd.Task, ctx context.Context) error
+            + CheckService(ctx context.Context, ipAddrPort string) error
+            + CheckSchema(ctx context.Context, ipAddrPort string) error
+            + Interrupt(task containerd.Task, ctx context.Context) error
+            + Delete(task containerd.Task, container containerd.Container, ctx context.Context) error
+        }
+        interface Run #back:darkmagenta
+        note bottom of Run {
+            容器服务的运行的接口 interface for Containerd.
+        }
+    }
+
+    '实现执行接口的类
+    package defaults包 {
+        class defaults {}
+        class defaults #back:indianred
+        note left of defaults {
+            预设容器
+            default container.
+        }
+    }
+
+    package mariadb包 {
+        class mariadb {}
+        class mariadb #back:indianred
+        note left of mariadb {
+            数据库容器
+            mariadb container.
+        }
+    }
+
+    package etcd包 {
+        class etcd {}
+        class etcd #back:indianred
+        note left of etcd {
+            etcd库容器
+            etcd container.
+        }
+    }
+
+    '容器管理员的关联
+    containerManager *-- ContainderList: 組成
+    ContainderList *-- Builder: 組成
+    ContainderList *-- sync.Locker: 組成
+
+    '核心类的设定档关连
+    ContainerdClient --> ClientContainerd: dependsOn 依赖关系
+    ContainerdClient --> ClientSchema: dependsOn 依赖关系
+
+    '核心类的执行物件的关连
+    ContainerdClient --> ClientRunning: dependsOn 依赖关系
+
+    '核心类的执行接口的关连
+    ContainerdClient --> Run: dependsOn 依赖关系
+
+    '实现执行接口的类的关连
+    defaults .[#Purple].|> Run: 實現
+    mariadb .[#Purple].|> Run: 實現
+    etcd .[#Purple].|> Run: 實現
+    mariadb --|> defaults: 繼承
+    etcd --|> defaults: 繼承
+
+    '核心类的执行创建函数的关连
+    ContainerdClient::Build -[#Red]-> Run::Pull: dependsOn Pull
+    'ContainerdClient::Build -[#Red]-> Run::Create: dependsOn Create
+    'ContainerdClient::Build -[#Red]-> Run::Task: dependsOn Task
+    'ContainerdClient::Build -[#Red]-> Run::Start: dependsOn Start
+
+    '核心类的执行检函数的关连
+    ContainerdClient::OnService -[#Sienna]-> Run::CheckService: dependsOn CheckService
+    'ContainerdClient::OnService -[#Sienna]-> Run::CheckSchema: dependsOn CheckSchema
+
+    '核心类的执行拆除函数的关连
+    ContainerdClient::TearDown -[#Blue]-> Run::Interrupt: dependsOn Interrupt
+    'ContainerdClient::TearDown -[#Blue]-> Run::Delete: dependsOn Delete
+
+    '客户端介面的关连
+    ContainerdClient .[#Purple].|> Builder: 實現
+
+@enduml

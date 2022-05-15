@@ -16,10 +16,15 @@ package backend
 import (
 	"bytes"
 	"github.com/XiaoMi/Gaea/mysql"
+	"github.com/XiaoMi/Gaea/util/mocks/containerTest"
 	"github.com/XiaoMi/Gaea/util/mocks/pipeTest"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestAppendSetVariable(t *testing.T) {
@@ -184,4 +189,121 @@ func TestDirectConnWithoutDB(t *testing.T) {
 		require.Equal(t, strings.Contains(string(responseMsg), dc.password), false) // check the non-existence of the password in the packet. 确认 密码 不行写到封包里
 
 	})
+}
+
+// TestContainersInterference 確認管理的容器之間不互相干擾
+// TestContainersInterference is checking interference of the container management and multi container.
+func TestContainersInterference(t *testing.T) {
+	// 确认管理容器是否被启用
+	// check if the container is enabled.
+	if containerTest.IsEnable() == false {
+		return
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(4)
+
+	// 預設容器測試協程
+	// default container test goroutine
+	go func() {
+		// 数据库容器测试 mariadb container test
+		for i := 0; i < 2; i++ {
+			go func(j int) {
+				regFunc := func() string {
+					return containerTest.AppendCurrentFunction(3, "-default-"+strconv.Itoa(j))
+				}
+
+				// 取得 builder 对象 get builder object.
+				builder, err := containerTest.GetBuilder("default-server", regFunc)
+				assert.Nil(t, err)
+
+				// 创建部份 create part
+				err = builder.Build(300 * time.Second)
+				assert.Nil(t, err)
+
+				// 检查部份 check part
+				err = builder.OnService(60 * time.Second)
+				assert.Nil(t, err)
+
+				// 拆卸部份 decompose part
+				err = builder.TearDown(60 * time.Second)
+				assert.Nil(t, err)
+
+				// 归还 builder 部份 return builder part
+				err = containerTest.ReturnBuilder("default-server", regFunc)
+				require.Nil(t, err)
+
+				// 协程完成 goroutine complete.
+				wg.Done()
+			}(i)
+		}
+	}()
+
+	// 數據庫容器測試協程
+	// mariadb container test goroutine
+	// 預設容器測試協程
+	// default container test goroutine
+	go func() {
+		// 数据库容器测试 mariadb container test
+		for i := 0; i < 2; i++ {
+			go func(j int) {
+				regFunc := func() string {
+					return containerTest.AppendCurrentFunction(3, "-mariadb-"+strconv.Itoa(j))
+				}
+
+				// 取得 builder 对象 get builder object.
+				builder, err := containerTest.GetBuilder("mariadb-server", regFunc)
+				assert.Nil(t, err)
+
+				// 创建部份 create part
+				err = builder.Build(300 * time.Second)
+				assert.Nil(t, err)
+
+				// 检查部份 check part
+				err = builder.OnService(60 * time.Second)
+				assert.Nil(t, err)
+
+				// 进行测试 testing
+				if err == nil {
+					// 获得容器对象的网路位置
+					// get the container object's network location.
+					ipAddrPort, err := containerTest.GetIPAddrPort("mariadb-server")
+					require.Nil(t, err)
+
+					// 产生直连对象 Create dc connection.
+					var dc = DirectConnection{
+						// login to the mariadb. 登入数据库
+						user:      "xiaomi",   // user 帐户名称
+						password:  "12345",    // password 密码
+						charset:   "utf8mb4",  // charset 数据库编码
+						collation: 46,         // collation 文本排序
+						addr:      ipAddrPort, // mariadb 的 IP 地址
+					}
+				LOOP:
+					// 建立新的数据库连线 create a new connection to the mariadb.
+					for i := 0; i < 10; i++ {
+						err = dc.connect() // 连接数据库 connect to the mariadb.
+						if err == nil {
+							assert.Equal(t, i, 0) // check the connection. 确认连线是否成功
+							break LOOP            // 如果连接成功，则跳出循环 break the loop if the connection is successful.
+						}
+						time.Sleep(1 * time.Second) // 等待 1 秒 wait for 1 second.
+					}
+				}
+
+				// 拆卸部份 decompose part
+				err = builder.TearDown(60 * time.Second)
+				assert.Nil(t, err)
+
+				// 归还 builder 部份 return builder part
+				err = containerTest.ReturnBuilder("mariadb-server", regFunc)
+				require.Nil(t, err)
+
+				// 协程完成 goroutine complete.
+				wg.Done()
+			}(i)
+		}
+	}()
+
+	wg.Wait()
 }
