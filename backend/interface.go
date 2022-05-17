@@ -26,6 +26,7 @@ type PooledConnect interface {
 	WriteSetStatement() error
 	GetConnectionID() int64
 	GetReturnTime() time.Time
+	Id() uint32
 }
 
 type ConnectionPool interface {
