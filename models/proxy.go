@@ -55,11 +55,11 @@ type Proxy struct {
 	AdminPassword  string `ini:"admin_password"`
 	SlowSQLTime    int64  `ini:"slow_sql_time"`
 	SessionTimeout int    `ini:"session_timeout"`
+	DeadlockCheckInterval int    `ini:"deadlock_check_interval"`
 
 	// 监控配置
 	StatsEnabled  string `ini:"stats_enabled"`  // set true to enable stats
 	StatsInterval int    `ini:"stats_interval"` // set stats interval of connect pool
-
 	EncryptKey string `ini:"encrypt_key"`
 
 	ServerVersion string `ini:"server_version"`
@@ -87,6 +87,11 @@ func ParseProxyConfigFromFile(cfgFile string) (*Proxy, error) {
 	} else if proxyConfig.Cluster != "" {
 		proxyConfig.CoordinatorRoot = "/" + proxyConfig.Cluster
 	}
+
+	if proxyConfig.DeadlockCheckInterval == 0 {
+		proxyConfig.DeadlockCheckInterval = 5
+	}
+
 	return proxyConfig, err
 }
 

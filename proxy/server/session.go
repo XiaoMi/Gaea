@@ -210,8 +210,21 @@ func (cc *Session) Close() {
 	}
 	cc.c.Close()
 	log.Debug("client closed, %d", cc.c.GetConnectionID())
+	cc.proxy.removeFrontend(cc.c.ConnectionID)
+}
 
-	return
+func (cc *Session) forceClose(reason string) {
+	if cc.IsClosed() {
+		return
+	}
+	cc.closed.Store(true)
+	if err := cc.executor.forceClose(); err != nil {
+		log.Warn("executor force close error: %v", err)
+	}
+	cc.c.Close()
+	log.Warn("client[%d] is forced close  because of [%v]", cc.c.GetConnectionID(), reason)
+
+	cc.proxy.removeFrontend(cc.c.ConnectionID)
 }
 
 // IsClosed check if closed

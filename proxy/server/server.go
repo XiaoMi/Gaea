@@ -18,6 +18,7 @@ import (
 	"net"
 	"runtime"
 	"strconv"
+	"sync"
 	"time"
 
 	"fmt"
@@ -27,6 +28,7 @@ import (
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util"
 	"github.com/XiaoMi/Gaea/util/sync2"
+	"github.com/XiaoMi/Gaea/util/timer"
 )
 
 var (
@@ -36,15 +38,18 @@ var (
 
 // Server means proxy that serve client request
 type Server struct {
-	closed         sync2.AtomicBool
-	listener       net.Listener
-	sessionTimeout time.Duration
-	tw             *util.TimeWheel
-	adminServer    *AdminServer
-	manager        *Manager
-	EncryptKey     string
-	ServerVersion  string
-	AuthPlugin     string
+	closed             sync2.AtomicBool
+	listener           net.Listener
+	sessionTimeout     time.Duration
+	tw                 *util.TimeWheel
+	adminServer        *AdminServer
+	manager            *Manager
+	EncryptKey         string
+	ServerVersion      string
+	AuthPlugin         string
+	frontendConn       map[uint32]*Session
+	frontendConnLock   sync.RWMutex
+	deadlockCheckTimer *timer.Timer
 }
 
 // NewServer create new server
@@ -99,6 +104,7 @@ func NewServer(cfg *models.Proxy, manager *Manager) (*Server, error) {
 		return nil, err
 	}
 	s.adminServer = adminServer
+	s.startDeadlockCheckTimer()
 
 	log.Notice("server start succ, netProtoType: %s, addr: %s", cfg.ProtoType, cfg.ProxyAddr)
 	return s, nil
@@ -148,6 +154,9 @@ func (s *Server) onConn(c net.Conn) {
 		cc.executor.db,
 		cc.executor.namespace,
 		cc.c.capability)
+
+	s.addFrontend(cc.c.ConnectionID, cc)
+	
 	cc.Run()
 }
 
@@ -187,6 +196,49 @@ func (s *Server) Close() error {
 
 	s.manager.Close()
 	return nil
+}
+
+func (s *Server) startDeadlockCheckTimer() {
+	isRunning := sync2.NewAtomicBool(false)
+	deadlockCheck := func() {
+		//保障只有一个job在运行
+		if isRunning.CompareAndSwap(false, true) {
+			return
+		}
+		defer isRunning.CompareAndSwap(true, false)
+		for _, ns := range s.manager.GetNamespaces() {
+			if err := doDeadlockCheck(s, ns.slices); err != nil {
+				log.Warn("do deck lock check error[%v]", err)
+			}
+		}
+	}
+
+	interval := s.manager.ProxyCfg.DeadlockCheckInterval
+	s.deadlockCheckTimer = timer.NewTimer(time.Duration(interval) * time.Second)
+	s.deadlockCheckTimer.Start(deadlockCheck)
+}
+
+func (s *Server) addFrontend(connId uint32, session *Session) {
+	s.frontendConnLock.Lock()
+	defer s.frontendConnLock.Unlock()
+	s.frontendConn[connId] = session
+}
+func (s *Server) removeFrontend(connId uint32) {
+	s.frontendConnLock.Lock()
+	defer s.frontendConnLock.Unlock()
+	delete(s.frontendConn, connId)
+}
+func (s *Server) getBackend2FrontendMap() map[string]*Session {
+	s.frontendConnLock.RLock()
+	defer s.frontendConnLock.RUnlock()
+
+	backend2FrontendMap := make(map[string]*Session, 128)
+	for _, s := range s.frontendConn {
+		for k, _ := range s.executor.getAllTrxConn() {
+			backend2FrontendMap[k] = s
+		}
+	}
+	return backend2FrontendMap
 }
 
 // ReloadNamespacePrepare config change prepare phase
