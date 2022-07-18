@@ -87,7 +87,7 @@ func loadAllNamespace(cfg *models.Proxy) (map[string]*models.Namespace, error) {
 			for name := range nameC {
 				namespace, e := store.LoadNamespace(cfg.EncryptKey, name)
 				if e != nil {
-					log.Warn("load namespace %s failed, err: %v", name, err)
+					log.Warn("load namespace %s failed, err: %v", name, e)
 					// assign extent err out of this scope
 					err = e
 					return
