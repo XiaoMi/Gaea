@@ -75,6 +75,7 @@ func (pc *pooledConnectImpl) UseDB(db string) error {
 func (pc *pooledConnectImpl) Ping() error {
 	return pc.directConnection.Ping()
 }
+
 // Execute wrapper of direct connection, execute sql
 func (pc *pooledConnectImpl) Execute(sql string, maxRows int) (*mysql.Result, error) {
 	return pc.directConnection.Execute(sql, maxRows)

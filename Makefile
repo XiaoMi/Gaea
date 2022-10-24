@@ -21,6 +21,12 @@ clean:
 	@rm -rf bin
 	@rm -f .coverage.out .coverage.html
 
+ALL_CHECKS = EOF
+check: $(addprefix check-,$(ALL_CHECKS))
+
+check-%:
+	./hack/verify-$*.sh
+
 test:
 	go test -coverprofile=.coverage.out ./...
 	go tool cover -func=.coverage.out -o .coverage.func
