@@ -1,0 +1,32 @@
+variables:
+  HOSTS: "master:tj1-dba-garm-test02.kscn:3308,\
+      slave:tj1-dba-garm-test01.kscn:3308"
+
+before_script:
+  - export GOPROXY="https://goproxy.cn/";
+
+stages:
+  - check
+  - test
+  - build
+  - e2e-test
+
+code_check:
+  stage: check
+  script:
+    - make check
+
+unit_tests:
+  stage: test
+  script:
+    - echo "unit test"
+
+build_branch:
+  stage: build
+  script:
+    - pwd
+
+e2e_test:
+  stage: e2e-test
+  script:
+    - echo "e2e test"
