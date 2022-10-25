@@ -92,12 +92,12 @@ func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*my
 
 	db := se.db
 
-	p, err := se.getPlan(se.GetNamespace(), db, sql)
+	p, stmt, err := se.getPlan(se.GetNamespace(), db, sql)
 	if err != nil {
 		return nil, fmt.Errorf("get plan error, db: %s, sql: %s, err: %v", db, sql, err)
 	}
 
-	if canExecuteFromSlave(se, sql) {
+	if canExecuteFromSlave(se, sql, stmt) {
 		reqCtx.Set(util.FromSlave, 1)
 	}
 
@@ -153,10 +153,10 @@ func (se *SessionExecutor) handleUseDB(dbName string) error {
 	return mysql.NewDefaultError(mysql.ErrNoDB)
 }
 
-func (se *SessionExecutor) getPlan(ns *Namespace, db string, sql string) (plan.Plan, error) {
+func (se *SessionExecutor) getPlan(ns *Namespace, db string, sql string) (plan.Plan, ast.StmtNode, error) {
 	n, err := se.Parse(sql)
 	if err != nil {
-		return nil, fmt.Errorf("parse sql error, sql: %s, err: %v", sql, err)
+		return nil, nil, fmt.Errorf("parse sql error, sql: %s, err: %v", sql, err)
 	}
 
 	rt := ns.GetRouter()
@@ -164,10 +164,10 @@ func (se *SessionExecutor) getPlan(ns *Namespace, db string, sql string) (plan.P
 	phyDBs := ns.GetPhysicalDBs()
 	p, err := plan.BuildPlan(n, phyDBs, db, sql, rt, seq)
 	if err != nil {
-		return nil, fmt.Errorf("create select plan error: %v", err)
+		return nil, nil, fmt.Errorf("create select plan error: %v", err)
 	}
 
-	return p, nil
+	return p, n, nil
 }
 
 func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string, stmt *ast.ShowStmt) (*mysql.Result, error) {
