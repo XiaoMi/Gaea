@@ -4610,13 +4610,17 @@ SavepointStmt:
     }
 
 SelectStmtBasic:
-	"SELECT" SelectStmtOpts SelectStmtFieldList
+	TableOptimizerHints "SELECT" SelectStmtOpts SelectStmtFieldList
 	{
 		st := &ast.SelectStmt {
-			SelectStmtOpts: $2.(*ast.SelectStmtOpts),
-			Distinct:      $2.(*ast.SelectStmtOpts).Distinct,
-			Fields:        $3.(*ast.FieldList),
+			SelectStmtOpts: $3.(*ast.SelectStmtOpts),
+			Distinct:      $3.(*ast.SelectStmtOpts).Distinct,
+			Fields:        $4.(*ast.FieldList),
 		}
+
+		if st.TableHints == nil && $1 != nil {
+             		st.TableHints = $1.([]*ast.TableOptimizerHint)
+        	}
 		$$ = st
 	}
 
@@ -5386,6 +5390,10 @@ TableOptimizerHintOpt:
 	{
 		$$ = &ast.TableOptimizerHint{HintName: model.NewCIStr($1), MaxExecutionTime: getUint64FromNUM($3)}
 	}
+|   master
+    {
+        $$ = &ast.TableOptimizerHint{HintName: model.NewCIStr($1)}
+    }
 
 SelectStmtCalcFoundRows:
 	{
