@@ -4,13 +4,14 @@ ARCH:="$(shell uname -s)"
 MAC:="Darwin"
 LINUX:="Linux"
 GOYACCBIN:=""
+GOYACC=`which goyacc`
 ifeq ($(ARCH), $(LINUX))
 	GOYACCBIN=./goyacc
 else
 	ifeq ($(ARCH), $(MAC))
-		GOYACCBIN=./goyacc
+		GOYACCBIN=${GOYACC}
 	else
-		GOYACCBIN=./goyacc
+		GOYACCBIN=${GOYACC}
 	endif
 endif
 
