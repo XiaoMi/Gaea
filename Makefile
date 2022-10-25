@@ -21,7 +21,7 @@ clean:
 	@rm -rf bin
 	@rm -f .coverage.out .coverage.html
 
-ALL_CHECKS = EOF
+ALL_CHECKS = EOF spelling
 check: $(addprefix check-,$(ALL_CHECKS))
 
 check-%:

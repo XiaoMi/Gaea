@@ -4,6 +4,7 @@ variables:
 
 before_script:
   - export GOPROXY="https://goproxy.cn/";
+  - export GO111MODULE=on
 
 stages:
   - check
@@ -14,6 +15,7 @@ stages:
 
 code_check:
   stage: check
+  image: micr.cloud.mioffice.cn/dockerhub/library/golang:1.16.15
   script:
     - make check
 
