@@ -38,6 +38,7 @@ import (
 const (
 	// master comments
 	masterComment = "/*master*/"
+	masterHint    = "master"
 	// general query log variable
 	gaeaGeneralLogVariable = "gaea_general_log"
 )
@@ -588,19 +589,29 @@ func getOnOffVariable(v string) (string, error) {
 }
 
 // master-slave routing
-func canExecuteFromSlave(c *SessionExecutor, sql string) bool {
+func canExecuteFromSlave(c *SessionExecutor, sql string, stmt ast.StmtNode) bool {
 	if parser.Preview(sql) != parser.StmtSelect {
 		return false
 	}
 
-	_, comments := parser.SplitMarginComments(sql)
-	lcomment := strings.ToLower(strings.TrimSpace(comments.Leading))
-	var fromSlave = c.GetNamespace().IsRWSplit(c.user)
-	if strings.ToLower(lcomment) == masterComment {
-		fromSlave = false
+	if !c.GetNamespace().IsRWSplit(c.user) {
+		return false
 	}
 
-	return fromSlave
+	//use SQL parser
+	selectNode := stmt.(*ast.SelectStmt)
+	if selectNode.TableHints != nil {
+		//for simplicity, we only consider one hint
+		hint := selectNode.TableHints[0].HintName
+		if masterHint == strings.ToLower(strings.TrimSpace(hint.L)) {
+			return false
+		}
+	}
+
+	// use regx directly
+	_, comments := parser.SplitMarginComments(sql)
+	lcomment := strings.ToLower(strings.TrimSpace(comments.Leading))
+	return masterComment != lcomment
 }
 
 // 如果是只读用户, 且SQL是INSERT, UPDATE, DELETE, 则拒绝执行, 返回true
