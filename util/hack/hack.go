@@ -42,7 +42,7 @@ func Slice(s string) (b []byte) {
 	return
 }
 
-// IsSQLSep check if sql seperation
+// IsSQLSep check if sql separation
 func IsSQLSep(r rune) bool {
 	return r == ' ' || r == ',' ||
 		r == '\t' || r == '/' ||

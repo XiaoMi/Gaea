@@ -167,7 +167,7 @@ func (rt *Rates) Get() (rateMap map[string][]float64) {
 	return
 }
 
-// GetCount get direct count without devided by duration
+// GetCount get direct count without divided by duration
 func (rt *Rates) GetCount() (rateMap map[string][]int64) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()

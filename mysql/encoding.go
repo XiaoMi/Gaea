@@ -117,7 +117,7 @@ func AppendLenEncInt(data []byte, i uint64) []byte {
 	return data
 }
 
-// LenNullString return lenght Null terminated string
+// LenNullString return length Null terminated string
 func LenNullString(value string) int {
 	return len(value) + 1
 }

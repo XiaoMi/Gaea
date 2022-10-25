@@ -64,7 +64,7 @@ func (c CachedString) Size() int {
 // StringValue alias name of string
 type StringValue string
 
-// Size return cached string value lenght
+// Size return cached string value length
 func (s StringValue) Size() int {
 	return len(s)
 }
