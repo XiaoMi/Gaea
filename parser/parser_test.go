@@ -2032,28 +2032,6 @@ func (s *testParserSuite) TestOptimizerHints(c *C) {
 	c.Assert(len(hints), Equals, 1)
 	c.Assert(hints[0].HintName.L, Equals, "max_execution_time")
 	c.Assert(hints[0].MaxExecutionTime, Equals, uint64(1000))
-
-	stmt, _, err = parser.Parse("/*master*/ select * from t1 limit 1", "", "")
-	c.Assert(err, IsNil)
-	selectStmt = stmt[0].(*ast.SelectStmt)
-	hints = selectStmt.TableHints
-	c.Assert(len(hints), Equals, 1)
-	c.Assert(hints[0].HintName.L, Equals, "master")
-
-	stmt, _, err = parser.Parse("select /*master*/ * from t1 limit 1", "", "")
-	c.Assert(err, IsNil)
-	selectStmt = stmt[0].(*ast.SelectStmt)
-	hints = selectStmt.TableHints
-	c.Assert(len(hints), Equals, 1)
-	c.Assert(hints[0].HintName.L, Equals, "master")
-
-	stmt, _, err = parser.Parse("/*master*/ select /*master*/ * from t1 limit 1", "", "")
-	c.Assert(err, IsNil)
-	selectStmt = stmt[0].(*ast.SelectStmt)
-	hints = selectStmt.TableHints
-	c.Assert(len(hints), Equals, 1)
-	c.Assert(hints[0].HintName.L, Equals, "master")
-
 }
 
 func (s *testParserSuite) TestType(c *C) {

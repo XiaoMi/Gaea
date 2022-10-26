@@ -146,6 +146,38 @@ func prepareSessionExecutor() (*SessionExecutor, error) {
 	return executor, nil
 }
 
+func TestMasterHint(t *testing.T) {
+	se, _ := prepareSessionExecutor()
+	ctx := util.NewRequestContext()
+
+	ctx.Set("stmtType", 1)
+	ctx.Set(util.FromSlave, 0)
+
+	type sqlAndExpectations struct {
+		sql      string
+		expected int
+	}
+
+	testCase := []sqlAndExpectations{
+		{"/*master*/ select * from t1", 0},
+		{"select * from t1", 1},
+		{"select /*master*/ * from t1", 0},
+		{"/*master*/ select /*master*/ * from t1", 0},
+		{"/*master*/ select /* master*/ * from t1", 0},
+		{"select /* master*/ * from t1", 1},
+		{"/*master */ select * from t1", 1},
+		{"/*master*/ select * from t1 inner join t2 on t1.id = t2.id", 0},
+		{"select /*master*/ * from t1 inner join t2 on t1.id = t2.id", 0},
+	}
+
+	for _, ca := range testCase {
+		se.ForTest(ca.sql, ctx)
+		assert.Equal(t, ctx.Get(util.FromSlave).(int), ca.expected)
+		ctx.Set(util.FromSlave, 0)
+	}
+
+}
+
 func prepareNamespaceManager() (*Manager, error) {
 	proxyCfg := `
 ; config type, etcd/file, you can test gaea with file type, you shoud use etcd in production
