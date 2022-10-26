@@ -4610,17 +4610,14 @@ SavepointStmt:
     }
 
 SelectStmtBasic:
-	TableOptimizerHints "SELECT" SelectStmtOpts SelectStmtFieldList
+	"SELECT" SelectStmtOpts SelectStmtFieldList
 	{
 		st := &ast.SelectStmt {
-			SelectStmtOpts: $3.(*ast.SelectStmtOpts),
-			Distinct:      $3.(*ast.SelectStmtOpts).Distinct,
-			Fields:        $4.(*ast.FieldList),
+			SelectStmtOpts: $2.(*ast.SelectStmtOpts),
+			Distinct:      $2.(*ast.SelectStmtOpts).Distinct,
+			Fields:        $3.(*ast.FieldList),
 		}
 
-		if st.TableHints == nil && $1 != nil {
-             		st.TableHints = $1.([]*ast.TableOptimizerHint)
-        	}
 		$$ = st
 	}
 

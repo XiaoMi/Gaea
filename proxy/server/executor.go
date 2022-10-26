@@ -37,8 +37,9 @@ import (
 
 const (
 	// master comments
-	masterComment = "/*master*/"
-	masterHint    = "master"
+	masterComment      = "/*master*/"
+	masterHint         = "master"
+	standardMasterHint = "/*+ master */"
 	// general query log variable
 	gaeaGeneralLogVariable = "gaea_general_log"
 )
@@ -588,8 +589,15 @@ func getOnOffVariable(v string) (string, error) {
 	}
 }
 
+func extractPrefixCommentsAndRewrite(sql string) (trimmed string, comment parser.MarginComments) {
+	_, comments := parser.SplitMarginComments(sql)
+	trimmed = strings.TrimPrefix(sql, comments.Leading)
+	return strings.Replace(trimmed, masterComment, standardMasterHint, -1), comments
+}
+
 // master-slave routing
-func canExecuteFromSlave(c *SessionExecutor, sql string, stmt ast.StmtNode) bool {
+// public for test
+func canExecuteFromSlave(c *SessionExecutor, sql string, stmt ast.StmtNode, comments parser.MarginComments) bool {
 	if parser.Preview(sql) != parser.StmtSelect {
 		return false
 	}
@@ -609,7 +617,6 @@ func canExecuteFromSlave(c *SessionExecutor, sql string, stmt ast.StmtNode) bool
 	}
 
 	// use regx directly
-	_, comments := parser.SplitMarginComments(sql)
 	lcomment := strings.ToLower(strings.TrimSpace(comments.Leading))
 	return masterComment != lcomment
 }

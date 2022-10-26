@@ -79,6 +79,11 @@ func (se *SessionExecutor) handleQuery(sql string) (r *mysql.Result, err error) 
 	return r, err
 }
 
+func (se *SessionExecutor) ForTest(sql string, ctx *util.RequestContext) error {
+	_, err := se.doQuery(ctx, sql)
+	return err
+}
+
 func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*mysql.Result, error) {
 	stmtType := reqCtx.Get("stmtType").(int)
 
@@ -91,13 +96,13 @@ func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*my
 	}
 
 	db := se.db
-
-	p, stmt, err := se.getPlan(se.GetNamespace(), db, sql)
+	trimmedSql, comments := extractPrefixCommentsAndRewrite(sql)
+	p, stmt, err := se.getPlan(se.GetNamespace(), db, trimmedSql)
 	if err != nil {
-		return nil, fmt.Errorf("get plan error, db: %s, sql: %s, err: %v", db, sql, err)
+		return nil, fmt.Errorf("get plan error, db: %s, origin sql: %s, trimmedSql: %s, err: %v", db, sql, trimmedSql, err)
 	}
 
-	if canExecuteFromSlave(se, sql, stmt) {
+	if canExecuteFromSlave(se, trimmedSql, stmt, comments) {
 		reqCtx.Set(util.FromSlave, 1)
 	}
 
