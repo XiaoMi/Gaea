@@ -62,6 +62,11 @@ func TestGetVariableExprResult(t *testing.T) {
 	}
 }
 
+func (se *SessionExecutor) forTest(sql string, ctx *util.RequestContext) error {
+	_, err := se.doQuery(ctx, sql)
+	return err
+}
+
 func TestExecute(t *testing.T) {
 	se, err := prepareSessionExecutor()
 	if err != nil {
@@ -92,7 +97,7 @@ func TestExecute(t *testing.T) {
 	}
 
 	for _, ca := range testCase {
-		se.ForTest(ca.sql, reqCtx)
+		_ = se.forTest(ca.sql, reqCtx)
 		assert.Equal(t, reqCtx.Get(util.FromSlave).(int), ca.expected)
 		reqCtx.Set(util.FromSlave, 0)
 	}
