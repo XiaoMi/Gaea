@@ -79,11 +79,6 @@ func (se *SessionExecutor) handleQuery(sql string) (r *mysql.Result, err error) 
 	return r, err
 }
 
-func (se *SessionExecutor) ForTest(sql string, ctx *util.RequestContext) error {
-	_, err := se.doQuery(ctx, sql)
-	return err
-}
-
 func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*mysql.Result, error) {
 	stmtType := reqCtx.Get("stmtType").(int)
 
