@@ -76,6 +76,7 @@ func newSession(s *Server, co net.Conn) *Session {
 	cc.executor = newSessionExecutor(s.manager)
 	cc.executor.clientAddr = co.RemoteAddr().String()
 	cc.closed.Store(false)
+	cc.executor.session = cc
 	return cc
 }
 
