@@ -274,7 +274,7 @@ func (se *SessionExecutor) GetDatabase() string {
 
 // ExecuteCommand execute command
 func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
-	now := time.Now()
+	start := time.Now()
 	switch cmd {
 	case mysql.ComQuit:
 		log.Notice("Quit - conn_id=%d, %s", se.session.c.ConnectionID, se.clientAddr)
@@ -291,7 +291,7 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		}
 		// Gaea support multi tanant, so we can set the server addr and port is a constant number
 		log.Notice("OK - %dms - %s->%s,mysql_connect_id=%d|%v",
-			time.Now().Sub(now).Milliseconds(),
+			time.Since(start).Milliseconds(),
 			se.clientAddr,
 			se.serverAddr,
 			se.session.c.ConnectionID,
