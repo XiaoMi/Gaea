@@ -17,6 +17,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,8 +68,9 @@ type SessionExecutor struct {
 	stmtID uint32
 	stmts  map[uint32]*Stmt //prepare相关,client端到proxy的stmt
 
-	parser  *parser.Parser
-	session *Session
+	parser     *parser.Parser
+	session    *Session
+	serverAddr net.Addr
 }
 
 // Response response info
@@ -288,9 +290,10 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 			return CreateErrorResponse(se.status, err)
 		}
 		// Gaea support multi tanant, so we can set the server addr and port is a constant number
-		log.Notice("OK - %dms - %s->0.0.0.0:13306,mysql_connect_id=%d|%v",
+		log.Notice("OK - %dms - %s->%s,mysql_connect_id=%d|%v",
 			time.Now().Sub(now).Milliseconds(),
 			se.clientAddr,
+			se.serverAddr,
 			se.session.c.ConnectionID,
 			sql)
 		return CreateResultResponse(se.status, r)
