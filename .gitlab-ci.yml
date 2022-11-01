@@ -36,6 +36,7 @@ integrate_tests:
     - sleep 10
     - make integrate_test
 
+
 e2e_test:
   stage: e2e-test
   script:
