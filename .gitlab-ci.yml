@@ -36,6 +36,7 @@ integrate_tests:
     - nohup bin/gaea -config etc/gaea.ini &
     - sleep 10
     - make integrate_test
+    - ps -ef | grep gaea | grep -v grep | awk '{print $2}' | xargs kill -9
 
 
 e2e_test:
