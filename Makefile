@@ -36,7 +36,7 @@ test:
 integrate_test:
 	go test -coverprofile=.integrate_coverage.out ./... -run ^TestIntegration$
 	go tool cover -func=.integrate_coverage.out -o .integrate_coverage.func
-	tail -1 .integrate_coverag
+	tail -1 .integrate_coverage.func
 	go tool cover -html=.integrate_coverage.out -o .integrate_coverage.html
 
 build_with_coverage:
