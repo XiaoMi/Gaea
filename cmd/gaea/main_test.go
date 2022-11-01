@@ -162,7 +162,7 @@ func doCheck(t *testing.T, proxyDb, mysqlDb *sql.DB, sqlString string) error {
 	var r1, r2 *sql.Rows
 	var err error
 
-	//To make the test more, we should add retry methetism
+	//To make the test more robust, we should add retry methetism
 	if r1, err = proxyDb.Query(sqlString); err != nil {
 		return err
 	}
