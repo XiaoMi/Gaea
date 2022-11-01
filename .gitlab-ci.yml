@@ -9,6 +9,7 @@ stages:
   - check
   - unittest
   - build
+  - integrate_tests
   - e2e-test
 
 code_check:
@@ -28,6 +29,15 @@ build_branch:
   stage: build
   script:
     - pwd
+
+
+integrate_tests:
+  stage: integrate_tests
+  script:
+    - echo "start integrate tests"
+    - nohup bin/gaea -config etc/gaea.ini &
+    - sleep 10
+    - make integrate_test
 
 e2e_test:
   stage: e2e-test
