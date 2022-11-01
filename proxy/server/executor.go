@@ -287,11 +287,18 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		// handle phase
 		r, err := se.handleQuery(sql)
 		if err != nil {
+			log.Notice("ERROR - %.1fms - %s->%s,mysql_connect_id=%d|%v",
+				float64(time.Since(start).Microseconds())/1000.0,
+				se.clientAddr,
+				se.serverAddr,
+				se.session.c.ConnectionID,
+				sql)
+
 			return CreateErrorResponse(se.status, err)
 		}
 		// Gaea support multi tanant, so we can set the server addr and port is a constant number
-		log.Notice("OK - %dms - %s->%s,mysql_connect_id=%d|%v",
-			time.Since(start).Milliseconds(),
+		log.Notice("OK - %.1fms - %s->%s,mysql_connect_id=%d|%v",
+			float64(time.Since(start).Microseconds())/1000.0,
 			se.clientAddr,
 			se.serverAddr,
 			se.session.c.ConnectionID,
