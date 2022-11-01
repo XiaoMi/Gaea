@@ -28,7 +28,7 @@ unit_tests:
 build_branch:
   stage: build
   script:
-    - pwd
+    - make
 
 
 integrate_tests:
