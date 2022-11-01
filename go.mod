@@ -50,6 +50,7 @@ require (
 	google.golang.org/protobuf v1.27.1 // indirect
 	gopkg.in/ini.v1 v1.42.0
 	gopkg.in/yaml.v2 v2.4.0 // indirect
+	github.com/go-sql-driver/mysql v1.6.0
 )
 
 replace github.com/dgrijalva/jwt-go => github.com/golang-jwt/jwt v3.2.2-0.20210713063142-860640e8862d+incompatible
