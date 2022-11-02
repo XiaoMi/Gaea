@@ -39,8 +39,6 @@ integrate_tests:
     - echo "start integrate tests"
     - sed -i "s/IT_USER/${IT_USER}/g" cmd/gaea/main_test.go
     - sed -i "s/IT_PASSWORD/${IT_PASSWORD}/g" cmd/gaea/main_test.go
-    - echo "${IT_USER}:""${PASSWORD}"
-    - cat cmd/gaea/main_test.go
     - nohup bin/gaea -config etc/gaea.ini &
     - sleep 10
     - make integrate_test
