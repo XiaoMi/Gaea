@@ -19,6 +19,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -126,6 +127,10 @@ func TestIntegration(t *testing.T) {
 		assert.Fail(t, err.Error())
 	}
 
+	sort.Slice(sqlFiles, func(i, j int) bool {
+		return sqlFiles[i].Name() < sqlFiles[j].Name()
+	})
+
 	for _, fs := range sqlFiles {
 		bys, err := ioutil.ReadFile("../../sql_cases/" + fs.Name())
 		if err != nil {
@@ -136,6 +141,13 @@ func TestIntegration(t *testing.T) {
 			trimSql := strings.TrimSpace(sqlString)
 			if strings.HasPrefix(trimSql, "//") || trimSql == "" {
 				continue
+			}
+
+			//This is schema sql, we should run it first
+			if strings.Contains(fs.Name(), "scheam") {
+				if _, err := mysqlDb.Exec(sqlString); err != nil {
+					assert.Fail(t, err.Error())
+				}
 			}
 
 			if err = retryer(t, proxyDb, mysqlDb, sqlString, doCheck); err != nil {
