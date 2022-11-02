@@ -17,6 +17,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,7 +68,9 @@ type SessionExecutor struct {
 	stmtID uint32
 	stmts  map[uint32]*Stmt //prepare相关,client端到proxy的stmt
 
-	parser *parser.Parser
+	parser     *parser.Parser
+	session    *Session
+	serverAddr net.Addr
 }
 
 // Response response info
@@ -271,8 +274,10 @@ func (se *SessionExecutor) GetDatabase() string {
 
 // ExecuteCommand execute command
 func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
+	start := time.Now()
 	switch cmd {
 	case mysql.ComQuit:
+		log.Notice("Quit - conn_id=%d, %s", se.session.c.ConnectionID, se.clientAddr)
 		se.handleRollback(nil)
 		// https://dev.mysql.com/doc/internals/en/com-quit.html
 		// either a connection close or a OK_Packet, OK_Packet will cause client RST sometimes, but doesn't affect sql execute
@@ -282,8 +287,22 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		// handle phase
 		r, err := se.handleQuery(sql)
 		if err != nil {
+			log.Notice("ERROR - %.1fms - %s->%s,mysql_connect_id=%d|%v",
+				float64(time.Since(start).Microseconds())/1000.0,
+				se.clientAddr,
+				se.serverAddr,
+				se.session.c.ConnectionID,
+				sql)
+
 			return CreateErrorResponse(se.status, err)
 		}
+		// Gaea support multi tanant, so we can set the server addr and port is a constant number
+		log.Notice("OK - %.1fms - %s->%s,mysql_connect_id=%d|%v",
+			float64(time.Since(start).Microseconds())/1000.0,
+			se.clientAddr,
+			se.serverAddr,
+			se.session.c.ConnectionID,
+			sql)
 		return CreateResultResponse(se.status, r)
 	case mysql.ComPing:
 		return CreateOKResponse(se.status)

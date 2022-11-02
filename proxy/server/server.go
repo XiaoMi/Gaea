@@ -124,7 +124,12 @@ func (s *Server) onConn(c net.Conn) {
 		cc.Close()
 	}()
 
-	if err := cc.Handshake(); err != nil {
+	if info, err := cc.Handshake(); err != nil {
+		if info != nil {
+			log.Notice("Connect_error - Access denied for user  %s@%s (%s), conn_id=%d",
+				info.User, c.RemoteAddr().String(), info.Database, cc.c.ConnectionID)
+		}
+
 		log.Warn("[server] onConn error: %s", err.Error())
 		if err != mysql.ErrBadConn {
 			cc.c.writeErrorPacket(err)
