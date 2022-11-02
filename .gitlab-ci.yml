@@ -37,8 +37,8 @@ integrate_tests:
     - echo "Start to build gaea"
     - make gaea
     - echo "start integrate tests"
-    - sed -i 's/PROXY_URL/${proxyUrl}/g' cmd/gaea/main_test.go
-    - sed -i 's/MYSQL_URL/${mysqlUrl}/g' cmd/gaea/main_test.go
+    - sed -i "s/IT_USER/${IT_USER}/g" cmd/gaea/main_test.go
+    - sed -i "s/IT_PASSWORD/${IT_PASSWORD}/g" cmd/gaea/main_test.go
     - nohup bin/gaea -config etc/gaea.ini &
     - sleep 10
     - make integrate_test
