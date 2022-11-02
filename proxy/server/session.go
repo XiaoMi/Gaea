@@ -76,6 +76,8 @@ func newSession(s *Server, co net.Conn) *Session {
 	cc.executor = newSessionExecutor(s.manager)
 	cc.executor.clientAddr = co.RemoteAddr().String()
 	cc.closed.Store(false)
+	cc.executor.session = cc
+	cc.executor.serverAddr = s.listener.Addr()
 	return cc
 }
 
@@ -99,7 +101,7 @@ func (cc *Session) IsAllowConnect() bool {
 // step1: server send plain handshake packets to client
 // step2: client send handshake response packets to server
 // step3: server send ok/err packets to client
-func (cc *Session) Handshake() error {
+func (cc *Session) Handshake() (*HandshakeResponseInfo, error) {
 	// First build and send the server handshake packet.
 	if err := cc.c.writeInitialHandshakeV10(); err != nil {
 		clientHost, _, innerErr := net.SplitHostPort(cc.c.RemoteAddr().String())
@@ -109,12 +111,12 @@ func (cc *Session) Handshake() error {
 		// filter lvs detect liveness
 		hostname, _ := util.HostName(clientHost)
 		if len(hostname) > 0 && strings.Contains(hostname, "lvs") {
-			return err
+			return nil, err
 		}
 
 		log.Warn("[server] Session writeInitialHandshake error, connId: %d, ip: %s, msg: %s, error: %s",
 			cc.c.GetConnectionID(), clientHost, " send initial handshake error", err.Error())
-		return err
+		return nil, err
 	}
 
 	info, err := cc.c.readHandshakeResponse()
@@ -126,26 +128,26 @@ func (cc *Session) Handshake() error {
 		// filter lvs detect liveness
 		hostname, _ := util.HostName(clientHost)
 		if len(hostname) > 0 && strings.Contains(hostname, "lvs") {
-			return err
+			return &info, err
 		}
 
 		log.Warn("[server] Session readHandshakeResponse error, connId: %d, ip: %s, msg: %s, error: %s",
 			cc.c.GetConnectionID(), clientHost, "read Handshake Response error", err.Error())
-		return err
+		return &info, err
 	}
 
 	if err := cc.handleHandshakeResponse(info); err != nil {
 		log.Warn("handleHandshakeResponse error, connId: %d, err: %v", cc.c.GetConnectionID(), err)
-		return err
+		return &info, err
 	}
 
 	if err := cc.c.writeOK(cc.executor.GetStatus()); err != nil {
 		log.Warn("[server] Session readHandshakeResponse error, connId %d, msg: %s, error: %s",
 			cc.c.GetConnectionID(), "write ok fail", err.Error())
-		return err
+		return &info, err
 	}
 
-	return nil
+	return &info, nil
 }
 
 func (cc *Session) handleHandshakeResponse(info HandshakeResponseInfo) error {
@@ -255,6 +257,9 @@ func (cc *Session) Run() {
 
 		if err = cc.writeResponse(rs); err != nil {
 			log.Warn("Session write response error, connId: %d, err: %v", cc.c.GetConnectionID(), err)
+			if err == mysql.ErrBadConn {
+				log.Notice("Aborted - conn_id=%s, %s", cc.c.GetConnectionID(), cc.c.RemoteAddr())
+			}
 			cc.Close()
 			return
 		}

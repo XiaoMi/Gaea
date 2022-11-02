@@ -7,7 +7,7 @@ before_script:
 
 stages:
   - check
-  - test
+  - unittest
   - build
   - integrate_tests
   - e2e-test
@@ -18,9 +18,12 @@ code_check:
     - make check
 
 unit_tests:
-  stage: test
+  stage: unittest
+  image: micr.cloud.mioffice.cn/miflow-base/golang:1.16.6-centos7.3
   script:
-    - echo "unit test"
+    - ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+    - ls -l /etc/localtime
+    - go test `go list ./... | grep -v util/timer`
 
 build_branch:
   stage: build
