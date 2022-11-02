@@ -109,8 +109,8 @@ func checkResult(proxyResult, mysqlresult *sql.Rows, t *testing.T) error {
 func TestIntegration(t *testing.T) {
 	// the following code can be refator to a function
 	// maybe we should encode the username and password
-	proxyUrl := "dbtest:cUBm0Lvf468DkoS9eVuFWDDGczMvFkNw@tcp(127.0.0.1:13306)/sbtest1"
-	mysqlUrl := "dbtest:cUBm0Lvf468DkoS9eVuFWDDGczMvFkNw@tcp(10.38.164.125:3308)/sbtest1"
+	proxyUrl := "PROXY_URL"
+	mysqlUrl := "MYSQL_URL"
 	proxyDb, mysqlDb, err := getConnection(proxyUrl, mysqlUrl)
 	if err != nil {
 		panic(err)
