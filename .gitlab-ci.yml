@@ -23,7 +23,7 @@ unit_tests:
   script:
     - ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
     - ls -l /etc/localtime
-    - go test `go list ./... | grep -v util/timer`
+    - make test
 
 build_branch:
   stage: build
