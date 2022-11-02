@@ -38,7 +38,7 @@ integrate_tests:
     - make gaea
     - echo "start integrate tests"
     - sed -i 's/PROXY_URL/${proxyUrl}/g' cmd/gaea/main_test.go
-    - sed -i 's/MYSQL_URL/${proxyUrl}/g' cmd/gaea/main_test.go
+    - sed -i 's/MYSQL_URL/${mysqlUrl}/g' cmd/gaea/main_test.go
     - nohup bin/gaea -config etc/gaea.ini &
     - sleep 10
     - make integrate_test
