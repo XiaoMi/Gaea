@@ -106,13 +106,12 @@ func TestExecute(t *testing.T) {
 	defer mockCtrl.Finish()
 
 	slice0MasterPool := new(mocks.ConnectionPool)
-	slice0SlavePool := new(mocks.ConnectionPool)
 	slice1MasterPool := new(mocks.ConnectionPool)
-	slice1SlavePool := new(mocks.ConnectionPool)
+
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Master = slice0MasterPool
-	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Slave = []backend.ConnectionPool{slice0SlavePool}
+	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Slave = &backend.SlavesInfo{}
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Master = slice1MasterPool
-	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Slave = []backend.ConnectionPool{slice1SlavePool}
+	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Slave = &backend.SlavesInfo{}
 
 	expectResult1 := &mysql.Result{}
 	expectResult2 := &mysql.Result{}

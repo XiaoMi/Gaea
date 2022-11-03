@@ -28,7 +28,7 @@ check-%:
 	./hack/verify-$*.sh
 
 test:
-	go test -coverprofile=.coverage.out `go list ./... | grep -v util/timer` -run "^Test\(?<!Integration\)|^Test "
+	go test -coverprofile=.coverage.out `go list ./... | grep -v util/timer` -run "^Test\(?<!Integration\)"
 	go tool cover -func=.coverage.out -o .coverage.func
 	tail -1 .coverage.func
 	go tool cover -html=.coverage.out -o .coverage.html

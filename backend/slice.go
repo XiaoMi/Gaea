@@ -48,6 +48,19 @@ const (
 	DefaultSlice = "slice-0"
 )
 
+type SlaveStatusCode uint32
+
+const (
+	OK   SlaveStatusCode = 1
+	DOWN SlaveStatusCode = 2
+)
+
+type SlavesInfo struct {
+	ConnPool  []ConnectionPool
+	Balancer  *balancer
+	StatusMap sync.Map
+}
+
 // Slice means one slice of the mysql cluster
 type Slice struct {
 	Cfg models.Slice
@@ -55,11 +68,8 @@ type Slice struct {
 
 	Master ConnectionPool
 
-	Slave         []ConnectionPool
-	slaveBalancer *balancer
-
-	StatisticSlave         []ConnectionPool
-	statisticSlaveBalancer *balancer
+	Slave          *SlavesInfo
+	StatisticSlave *SlavesInfo
 
 	charset     string
 	collationID mysql.CollationID
@@ -74,12 +84,12 @@ func (s *Slice) GetSliceName() string {
 func (s *Slice) GetConn(fromSlave bool, userType int) (pc PooledConnect, err error) {
 	if fromSlave {
 		if userType == models.StatisticUser {
-			pc, err = s.GetStatisticSlaveConn()
+			pc, err = s.GetSlaveConn(s.StatisticSlave)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			pc, err = s.GetSlaveConn()
+			pc, err = s.GetSlaveConn(s.Slave)
 			if err != nil {
 				log.Warn("get connection from slave failed, try to get from master, error: %s", err.Error())
 				pc, err = s.GetMasterConn()
@@ -105,36 +115,43 @@ func (s *Slice) GetMasterConn() (PooledConnect, error) {
 	return s.Master.Get(ctx)
 }
 
-// GetSlaveConn return a connection in slave pool
-func (s *Slice) GetSlaveConn() (PooledConnect, error) {
-	if len(s.Slave) == 0 {
-		return nil, errors.ErrNoDatabase
-	}
+func allSlaveIsOffline(SlaveStatusMap *sync.Map) bool {
+	var result = true
+	SlaveStatusMap.Range(func(k, v interface{}) bool {
+		if v == OK {
+			result = false
+			return false
+		}
+		return true
+	})
 
-	s.Lock()
-	index, err := s.slaveBalancer.next()
-	s.Unlock()
-	if err != nil {
-		return nil, err
-	}
-	ctx := context.TODO()
-	return s.Slave[index].Get(ctx)
+	return result
 }
 
-// GetStatisticSlaveConn return a connection in statistic slave pool
-func (s *Slice) GetStatisticSlaveConn() (PooledConnect, error) {
-	if len(s.StatisticSlave) == 0 {
-		return nil, errors.ErrNoDatabase
+// GetSlaveConn get connection from salve
+func (s *Slice) GetSlaveConn(slavesInfo *SlavesInfo) (PooledConnect, error) {
+	if len(slavesInfo.ConnPool) == 0 || allSlaveIsOffline(&slavesInfo.StatusMap) {
+		return nil, errors.ErrNoSlaveDB
 	}
 
-	s.Lock()
-	index, err := s.statisticSlaveBalancer.next()
-	s.Unlock()
-	if err != nil {
-		return nil, err
+	var index int
+	// find the idx of the pooledconnect that isn't mark as down
+	for size := len(slavesInfo.ConnPool); size > 0; size-- {
+		s.Lock()
+		index, err := slavesInfo.Balancer.next()
+		s.Unlock()
+		if err != nil {
+			return nil, err
+		}
+
+		//We ingore the error, int fact error will never nil
+		if value, _ := slavesInfo.StatusMap.Load(index); value == OK {
+			break
+		}
 	}
 	ctx := context.TODO()
-	return s.StatisticSlave[index].Get(ctx)
+	return slavesInfo.ConnPool[index].Get(ctx)
+
 }
 
 // Close close the pool in slice
@@ -145,13 +162,13 @@ func (s *Slice) Close() error {
 	s.Master.Close()
 
 	// close slaves
-	for i := range s.Slave {
-		s.Slave[i].Close()
+	for i := range s.Slave.ConnPool {
+		s.Slave.ConnPool[i].Close()
 	}
 
 	// close statistic slaves
-	for i := range s.StatisticSlave {
-		s.StatisticSlave[i].Close()
+	for i := range s.StatisticSlave.ConnPool {
+		s.StatisticSlave.ConnPool[i].Close()
 	}
 
 	return nil
@@ -172,16 +189,16 @@ func (s *Slice) ParseMaster(masterStr string) error {
 
 // ParseSlave create connection pool of slaves
 // (127.0.0.1:3306@2,192.168.0.12:3306@3)
-func (s *Slice) ParseSlave(slaves []string) error {
+func (s *Slice) ParseSlave(slaves []string) (*SlavesInfo, error) {
 	if len(slaves) == 0 {
-		return nil
+		return &SlavesInfo{}, nil
 	}
 
 	var err error
 	var weight int
 
 	count := len(slaves)
-	s.Slave = make([]ConnectionPool, 0, count)
+	connPool := make([]ConnectionPool, 0, count)
 	slaveWeights := make([]int, 0, count)
 
 	//parse addr and weight
@@ -190,7 +207,7 @@ func (s *Slice) ParseSlave(slaves []string) error {
 		if len(addrAndWeight) == 2 {
 			weight, err = strconv.Atoi(addrAndWeight[1])
 			if err != nil {
-				return err
+				return nil, err
 			}
 		} else {
 			weight = 1
@@ -198,56 +215,22 @@ func (s *Slice) ParseSlave(slaves []string) error {
 		slaveWeights = append(slaveWeights, weight)
 		idleTimeout, err := util.Int2TimeDuration(s.Cfg.IdleTimeout)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability)
 		if err = cp.Open(); err != nil {
-			return err
+			return nil, err
 		}
-		s.Slave = append(s.Slave, cp)
-	}
-	s.slaveBalancer = newBalancer(slaveWeights, len(s.Slave))
-	return nil
-}
-
-// ParseStatisticSlave create connection pool of statistic slaves
-// slaveStr(127.0.0.1:3306@2,192.168.0.12:3306@3)
-func (s *Slice) ParseStatisticSlave(statisticSlaves []string) error {
-	if len(statisticSlaves) == 0 {
-		return nil
+		connPool = append(connPool, cp)
 	}
 
-	var err error
-	var weight int
-
-	count := len(statisticSlaves)
-	s.StatisticSlave = make([]ConnectionPool, 0, count)
-	statisticSlaveWeights := make([]int, 0, count)
-
-	//parse addr and weight
-	for i := 0; i < count; i++ {
-		addrAndWeight := strings.Split(statisticSlaves[i], weightSplit)
-		if len(addrAndWeight) == 2 {
-			weight, err = strconv.Atoi(addrAndWeight[1])
-			if err != nil {
-				return err
-			}
-		} else {
-			weight = 1
-		}
-		statisticSlaveWeights = append(statisticSlaveWeights, weight)
-		idleTimeout, err := util.Int2TimeDuration(s.Cfg.IdleTimeout)
-		if err != nil {
-			return err
-		}
-		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability)
-		if err = cp.Open(); err != nil {
-			return err
-		}
-		s.StatisticSlave = append(s.StatisticSlave, cp)
+	slaveBalancer := newBalancer(slaveWeights, len(connPool))
+	StatusMap := sync.Map{}
+	for idx := range connPool {
+		StatusMap.Store(idx, OK)
 	}
-	s.statisticSlaveBalancer = newBalancer(statisticSlaveWeights, len(s.StatisticSlave))
-	return nil
+
+	return &SlavesInfo{connPool, slaveBalancer, StatusMap}, nil
 }
 
 // SetCharsetInfo set charset
