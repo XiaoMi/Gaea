@@ -181,6 +181,10 @@ func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string, s
 		}
 		fallthrough
 	default:
+		// readonly && readwrite user send to slave
+		if !se.GetNamespace().IsAllowWrite(se.user) || se.GetNamespace().IsRWSplit(se.user) {
+			reqCtx.Set(util.FromSlave, 1)
+		}
 		r, err := se.ExecuteSQL(reqCtx, se.GetNamespace().GetDefaultSlice(), se.db, sql)
 		if err != nil {
 			return nil, fmt.Errorf("execute sql error, sql: %s, err: %v", sql, err)
