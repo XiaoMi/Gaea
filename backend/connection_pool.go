@@ -69,7 +69,7 @@ func (cp *connectionPoolImpl) pool() (p *util.ResourcePool) {
 }
 
 // Open open connection pool without error, should be called before use the pool
-func (cp *connectionPoolImpl) Open() {
+func (cp *connectionPoolImpl) Open() error {
 	if cp.capacity == 0 {
 		cp.capacity = DefaultCapacity
 	}
@@ -79,8 +79,9 @@ func (cp *connectionPoolImpl) Open() {
 	}
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
-	cp.connections = util.NewResourcePool(cp.connect, cp.capacity, cp.maxCapacity, cp.idleTimeout)
-	return
+	var err error = nil
+	cp.connections, err = util.NewResourcePool(cp.connect, cp.capacity, cp.maxCapacity, cp.idleTimeout)
+	return err
 }
 
 // connect is used by the resource pool to create new resource.It's factory method

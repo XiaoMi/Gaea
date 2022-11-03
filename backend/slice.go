@@ -167,8 +167,7 @@ func (s *Slice) ParseMaster(masterStr string) error {
 		return err
 	}
 	s.Master = NewConnectionPool(masterStr, s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability)
-	s.Master.Open()
-	return nil
+	return s.Master.Open()
 }
 
 // ParseSlave create connection pool of slaves
@@ -202,7 +201,9 @@ func (s *Slice) ParseSlave(slaves []string) error {
 			return err
 		}
 		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability)
-		cp.Open()
+		if err = cp.Open(); err != nil {
+			return err
+		}
 		s.Slave = append(s.Slave, cp)
 	}
 	s.slaveBalancer = newBalancer(slaveWeights, len(s.Slave))
@@ -240,7 +241,9 @@ func (s *Slice) ParseStatisticSlave(statisticSlaves []string) error {
 			return err
 		}
 		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability)
-		cp.Open()
+		if err = cp.Open(); err != nil {
+			return err
+		}
 		s.StatisticSlave = append(s.StatisticSlave, cp)
 	}
 	s.statisticSlaveBalancer = newBalancer(statisticSlaveWeights, len(s.StatisticSlave))

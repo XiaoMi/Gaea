@@ -29,7 +29,7 @@ type PooledConnect interface {
 }
 
 type ConnectionPool interface {
-	Open()
+	Open() error
 	Addr() string
 	Close()
 	Get(ctx context.Context) (PooledConnect, error)
