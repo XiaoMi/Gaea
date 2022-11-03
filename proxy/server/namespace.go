@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -41,9 +42,11 @@ const (
 	defaultSQLCacheCapacity  = 64
 	defaultPlanCacheCapacity = 128
 
-	defaultSlowSQLTime       = 1000  // millisecond
-	defaultMaxSqlExecuteTime = 0     // 默认为0，不开启慢sql熔断功能
-	defaultMaxSqlResultSize  = 10000 // 默认为10000, 限制查询返回的结果集大小不超过该阈值
+	defaultSlowSQLTime                  = 1000  // millisecond
+	defaultMaxSqlExecuteTime            = 0     // 默认为0，不开启慢sql熔断功能
+	defaultMaxSqlResultSize             = 10000 // 默认为10000, 限制查询返回的结果集大小不超过该阈值
+	defaultSlaveMaxTimeOutInCheckLivess = 8     // 如果发现slave状态异常，则每sleep 1，2，4，8秒再检查， 8s之后
+	// 认为Slave已下线，如果需要快速判定状态，可减少该值
 )
 
 // UserProperty means runtime user properties
@@ -167,6 +170,11 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID)
 	if err != nil {
 		return nil, fmt.Errorf("init slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
+	}
+
+	//do slice salve check
+	if err = checkSlaveStatus(namespace.slices, namespaceConfig.Name); err != nil {
+		return nil, fmt.Errorf("check salve in slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
 	}
 
 	// init router
@@ -480,17 +488,18 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	}
 
 	// parse slaves
-	err = s.ParseSlave(cfg.Slaves)
+	slaveInfo, err := s.ParseSlave(cfg.Slaves)
 	if err != nil {
 		return nil, err
 	}
+	s.Slave = slaveInfo
 
 	// parse statistic slaves
-	err = s.ParseStatisticSlave(cfg.StatisticSlaves)
+	statisticSalve, err := s.ParseSlave(cfg.StatisticSlaves)
 	if err != nil {
 		return nil, err
 	}
-
+	s.StatisticSlave = statisticSalve
 	return s, nil
 }
 
@@ -511,6 +520,102 @@ func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.Co
 	}
 
 	return slices, nil
+}
+
+func checkSlaveStatus(slices map[string]*backend.Slice, namespace string) error {
+	ctx, cancel := context.WithCancel(context.TODO())
+
+	defer func() {
+		if err := recover(); err != nil {
+			cancel()
+			log.Notice("find error: %s ...", err)
+		}
+	}()
+
+	for _, v := range slices {
+		if err := checkLive(v, namespace, ctx); err != nil {
+			cancel()
+			log.Fatal("fail to start check salve liveness, namespace: %s, slice: %s", namespace, v.Cfg.Name)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func checkLive(slice *backend.Slice, namespace string, ctx context.Context) error {
+	checkFunc := func(slaveInfo *backend.SlavesInfo) {
+		for {
+			select {
+			case <-ctx.Done():
+				_ = log.Fatal("cancel by parent ......")
+				return
+			default:
+				for idx, v := range slaveInfo.ConnPool {
+					var sleepTime = 1
+					var err error
+					var conn backend.PooledConnect
+					_ = log.Notice("namespace: %s, slice: %s, start to check slave %s by auto check...",
+						namespace,
+						slice.Cfg.Name,
+						v.Addr())
+
+					for sleepTime < defaultSlaveMaxTimeOutInCheckLivess {
+						conn, err = v.Get(ctx)
+						if err != nil {
+							if conn != nil {
+								conn.Recycle()
+								conn = nil
+							}
+							sleepTime = sleepTime * 2
+							time.Sleep(time.Duration(sleepTime) * time.Second)
+							continue
+						}
+
+						if err = conn.Ping(); err == nil {
+							break
+						}
+						if err = conn.Reconnect(); err == nil {
+							break
+						}
+
+						sleepTime = sleepTime * 2
+						if conn != nil {
+							conn.Recycle()
+						}
+						time.Sleep(time.Duration(sleepTime) * time.Second)
+					}
+
+					if err != nil || sleepTime >= defaultSlaveMaxTimeOutInCheckLivess {
+						//mark slave is down
+						_ = log.Warn("nameapce: %s, slice: %s,  slave %s is find DOWN by auto check...",
+							namespace,
+							slice.Cfg.Name,
+							v.Addr())
+						slaveInfo.StatusMap.Store(idx, backend.DOWN)
+					} else {
+						_ = log.Notice("namespace: %s, slice: %s, slave %s is find OK by auto check...",
+							namespace,
+							slice.Cfg.Name,
+							v.Addr())
+						slaveInfo.StatusMap.Store(idx, backend.OK)
+					}
+
+					if conn != nil {
+						conn.Recycle()
+					}
+				}
+			}
+
+			//every 2 second to check
+			time.Sleep(2 * time.Second)
+		}
+	}
+
+	go checkFunc(slice.Slave)
+	go checkFunc(slice.StatisticSlave)
+
+	return nil
 }
 
 func parseAllowIps(allowedIP []string) ([]util.IPInfo, error) {

@@ -28,7 +28,7 @@ var (
 	// ErrNoMasterDB no master database
 	ErrNoMasterDB = errors.New("no master database")
 	// ErrNoSlaveDB no slve database
-	ErrNoSlaveDB = errors.New("no slave database")
+	ErrNoSlaveDB = errors.New("no slave database or all is offline")
 	// ErrNoDatabase no database
 	ErrNoDatabase = errors.New("no database")
 

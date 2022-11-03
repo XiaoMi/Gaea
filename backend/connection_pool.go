@@ -26,7 +26,7 @@ import (
 
 const (
 	getConnTimeout = 2 * time.Second
-	PING_PEROID    = 5 * time.Second
+	PING_PEROID    = 1 * time.Second
 )
 
 var (
