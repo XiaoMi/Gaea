@@ -112,6 +112,22 @@ func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Dur
 		resourceWrappers = append(resourceWrappers, resourceWrapper{})
 	}
 
+	err := initConnection(capacity, resourceWrappers, rp)
+
+	for _, rw := range resourceWrappers {
+		rp.resources <- rw
+	}
+
+	if idleTimeout != 0 {
+		rp.idleTimer = timer.NewTimer(idleTimeout / 10)
+		rp.idleTimer.Start(rp.closeIdleResources)
+	}
+	rp.capTimer = timer.NewTimer(5 * time.Second)
+	rp.capTimer.Start(rp.scaleInResources)
+	return rp, err
+}
+
+func initConnection(capacity int, resourceWrappers []resourceWrapper, rp *ResourcePool) error {
 	var err error = nil
 	//TODO make this value configuratable, currently set it the value of one fourth of capacity
 	if capacity <= 4 {
@@ -137,18 +153,7 @@ func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Dur
 		}
 		wg.Wait()
 	}
-
-	for _, rw := range resourceWrappers {
-		rp.resources <- rw
-	}
-
-	if idleTimeout != 0 {
-		rp.idleTimer = timer.NewTimer(idleTimeout / 10)
-		rp.idleTimer.Start(rp.closeIdleResources)
-	}
-	rp.capTimer = timer.NewTimer(5 * time.Second)
-	rp.capTimer.Start(rp.scaleInResources)
-	return rp, err
+	return err
 }
 
 // Close empties the pool calling Close on all its resources.
