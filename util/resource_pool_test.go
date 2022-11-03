@@ -57,7 +57,7 @@ func TestOpen(t *testing.T) {
 	ctx := context.Background()
 	lastID.Set(0)
 	count.Set(0)
-	p := NewResourcePool(PoolFactory, 6, 6, time.Second)
+	p, _ := NewResourcePool(PoolFactory, 6, 6, time.Second)
 	p.SetDynamic(false)
 	p.ScaleCapacity(5)
 	var resources [10]Resource
@@ -78,11 +78,15 @@ func TestOpen(t *testing.T) {
 		if p.WaitTime() != 0 {
 			t.Errorf("expecting 0, received %d", p.WaitTime())
 		}
-		if lastID.Get() != int64(i+1) {
-			t.Errorf("Expecting %d, received %d", i+1, lastID.Get())
+
+		// Since all connection will be connected at start and `PoolFactory` has been called 6 times
+		if lastID.Get() != 6 {
+			t.Errorf("Expecting %d, received %d", 6, lastID.Get())
 		}
-		if count.Get() != int64(i+1) {
-			t.Errorf("Expecting %d, received %d", i+1, count.Get())
+
+		// All connection will be connected at start, so the count is current capacity = 6 -1 = 5
+		if count.Get() != 5 {
+			t.Errorf("Expecting %d, received %d", 5, count.Get())
 		}
 	}
 
@@ -113,7 +117,7 @@ func TestOpen(t *testing.T) {
 	if p.WaitTime() == 0 {
 		t.Errorf("Expecting non-zero")
 	}
-	if lastID.Get() != 5 {
+	if lastID.Get() != 6 {
 		t.Errorf("Expecting 5, received %d", lastID.Get())
 	}
 
@@ -140,8 +144,9 @@ func TestOpen(t *testing.T) {
 	if count.Get() != 5 {
 		t.Errorf("Expecting 5, received %d", count.Get())
 	}
-	if lastID.Get() != 6 {
-		t.Errorf("Expecting 6, received %d", lastID.Get())
+	// the last values is 6 and since close resource at line 129 then call p.Get() 5 times, and one of five need connect
+	if lastID.Get() != 7 {
+		t.Errorf("Expecting 7, received %d", lastID.Get())
 	}
 
 	// ScaleCapacity
@@ -149,7 +154,7 @@ func TestOpen(t *testing.T) {
 	if count.Get() != 3 {
 		t.Errorf("Expecting 3, received %d", count.Get())
 	}
-	if lastID.Get() != 6 {
+	if lastID.Get() != 7 {
 		t.Errorf("Expecting 6, received %d", lastID.Get())
 	}
 	if p.Capacity() != 3 {
@@ -178,7 +183,7 @@ func TestOpen(t *testing.T) {
 	if count.Get() != 6 {
 		t.Errorf("Expecting 5, received %d", count.Get())
 	}
-	if lastID.Get() != 9 {
+	if lastID.Get() != 10 {
 		t.Errorf("Expecting 9, received %d", lastID.Get())
 	}
 
@@ -199,7 +204,7 @@ func TestOpenDynamic(t *testing.T) {
 	ctx := context.Background()
 	lastID.Set(0)
 	count.Set(0)
-	p := NewResourcePool(PoolFactory, 6, 10, time.Second)
+	p, _ := NewResourcePool(PoolFactory, 6, 10, time.Second)
 	p.ScaleCapacity(5)
 	p.SetDynamic(true)
 	var resources [10]Resource
@@ -227,11 +232,21 @@ func TestOpenDynamic(t *testing.T) {
 		if p.WaitTime() != 0 {
 			t.Errorf("expecting 0, received %d", p.WaitTime())
 		}
-		if lastID.Get() != int64(i+1) {
-			t.Errorf("Expecting %d, received %d", i+1, lastID.Get())
-		}
-		if count.Get() != int64(i+1) {
-			t.Errorf("Expecting %d, received %d", i+1, count.Get())
+
+		if i < 5 {
+			if lastID.Get() != 6 {
+				t.Errorf("Expecting %d, received %d", i+1, lastID.Get())
+			}
+			if count.Get() != 5 {
+				t.Errorf("Expecting %d, received %d", i+1, count.Get())
+			}
+		} else {
+			if lastID.Get() != int64(i+2) {
+				t.Errorf("Expecting %d, received %d", i+2, lastID.Get())
+			}
+			if count.Get() != int64(i+1) {
+				t.Errorf("Expecting %d, received %d", i+1, count.Get())
+			}
 		}
 	}
 
@@ -262,8 +277,8 @@ func TestOpenDynamic(t *testing.T) {
 	if p.WaitTime() == 0 {
 		t.Errorf("Expecting non-zero")
 	}
-	if lastID.Get() != 10 {
-		t.Errorf("Expecting 10, received %d", lastID.Get())
+	if lastID.Get() != 11 {
+		t.Errorf("Expecting 11, received %d", lastID.Get())
 	}
 
 	// Test Close resource
@@ -289,7 +304,7 @@ func TestOpenDynamic(t *testing.T) {
 	if count.Get() != 9 {
 		t.Errorf("Expecting 9, received %d", count.Get())
 	}
-	if lastID.Get() != 10 {
+	if lastID.Get() != 11 {
 		t.Errorf("Expecting 10, received %d", lastID.Get())
 	}
 }
@@ -298,7 +313,7 @@ func TestShrinking(t *testing.T) {
 	ctx := context.Background()
 	lastID.Set(0)
 	count.Set(0)
-	p := NewResourcePool(PoolFactory, 5, 5, time.Second)
+	p, _ := NewResourcePool(PoolFactory, 5, 5, time.Second)
 	p.SetDynamic(false)
 	var resources [10]Resource
 	// Leave one empty slot in the pool
@@ -438,7 +453,7 @@ func TestClosing(t *testing.T) {
 	ctx := context.Background()
 	lastID.Set(0)
 	count.Set(0)
-	p := NewResourcePool(PoolFactory, 5, 5, time.Second)
+	p, _ := NewResourcePool(PoolFactory, 5, 5, time.Second)
 	p.SetDynamic(false)
 	var resources [10]Resource
 	for i := 0; i < 5; i++ {
@@ -493,7 +508,7 @@ func TestIdleTimeout(t *testing.T) {
 	ctx := context.Background()
 	lastID.Set(0)
 	count.Set(0)
-	p := NewResourcePool(PoolFactory, 1, 1, 10*time.Millisecond)
+	p, _ := NewResourcePool(PoolFactory, 1, 1, 10*time.Millisecond)
 	p.SetDynamic(false)
 	defer p.Close()
 
@@ -599,7 +614,7 @@ func TestCreateFail(t *testing.T) {
 	ctx := context.Background()
 	lastID.Set(0)
 	count.Set(0)
-	p := NewResourcePool(FailFactory, 5, 5, time.Second)
+	p, _ := NewResourcePool(FailFactory, 5, 5, time.Second)
 	p.SetDynamic(false)
 	defer p.Close()
 	if _, err := p.Get(ctx); err.Error() != "Failed" {
@@ -616,7 +631,7 @@ func TestSlowCreateFail(t *testing.T) {
 	ctx := context.Background()
 	lastID.Set(0)
 	count.Set(0)
-	p := NewResourcePool(SlowFailFactory, 2, 2, time.Second)
+	p, _ := NewResourcePool(SlowFailFactory, 2, 2, time.Second)
 	p.SetDynamic(false)
 	defer p.Close()
 	ch := make(chan bool)
@@ -639,7 +654,7 @@ func TestTimeout(t *testing.T) {
 	ctx := context.Background()
 	lastID.Set(0)
 	count.Set(0)
-	p := NewResourcePool(PoolFactory, 1, 1, time.Second)
+	p, _ := NewResourcePool(PoolFactory, 1, 1, time.Second)
 	p.SetDynamic(false)
 	defer p.Close()
 	r, err := p.Get(ctx)
@@ -659,7 +674,7 @@ func TestTimeout(t *testing.T) {
 func TestExpired(t *testing.T) {
 	lastID.Set(0)
 	count.Set(0)
-	p := NewResourcePool(PoolFactory, 1, 1, time.Second)
+	p, _ := NewResourcePool(PoolFactory, 1, 1, time.Second)
 	p.SetDynamic(false)
 	defer p.Close()
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-1*time.Second))

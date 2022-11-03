@@ -22,6 +22,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/XiaoMi/Gaea/log"
 	"sync"
 	"time"
 
@@ -89,7 +90,7 @@ type resourceWrapper struct {
 // maxCap代表最大资源数量
 // 超过设定空闲时间的连接会被丢弃
 // 资源池会根据传入的factory进行具体资源的初始化，比如建立与mysql的连接
-func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Duration) *ResourcePool {
+func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Duration) (*ResourcePool, error) {
 	if capacity <= 0 || maxCap <= 0 || capacity > maxCap {
 		panic(errors.New("invalid/out of range capacity"))
 	}
@@ -105,8 +106,40 @@ func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Dur
 		scaleInTodo:  make(chan int8, 1),
 		Dynamic:      true, // 动态扩展连接池
 	}
+
+	resourceWrappers := make([]resourceWrapper, 0, capacity)
 	for i := 0; i < capacity; i++ {
-		rp.resources <- resourceWrapper{}
+		resourceWrappers = append(resourceWrappers, resourceWrapper{})
+	}
+
+	var err error = nil
+	//TODO make this value configuratable, currently set it the value of one fourth of capacity
+	if capacity <= 4 {
+		for i := 0; i < capacity; i++ {
+			if resourceWrappers[i].resource, err = rp.factory(); err != nil {
+				break
+			}
+			rp.active.Add(1)
+		}
+	} else {
+		// we need to do it in async method
+		wg := sync.WaitGroup{}
+		wg.Add(capacity)
+		for i := 0; i < capacity; i++ {
+			go func(idx int) {
+				defer func() { wg.Done() }()
+				if resourceWrappers[idx].resource, err = rp.factory(); err != nil {
+					_ = log.Fatal("can't get resource: %s", err)
+					return
+				}
+				rp.active.Add(1)
+			}(i)
+		}
+		wg.Wait()
+	}
+
+	for _, rw := range resourceWrappers {
+		rp.resources <- rw
 	}
 
 	if idleTimeout != 0 {
@@ -115,7 +148,7 @@ func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Dur
 	}
 	rp.capTimer = timer.NewTimer(5 * time.Second)
 	rp.capTimer.Start(rp.scaleInResources)
-	return rp
+	return rp, err
 }
 
 // Close empties the pool calling Close on all its resources.
