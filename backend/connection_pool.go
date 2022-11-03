@@ -49,14 +49,15 @@ type connectionPoolImpl struct {
 	charset     string
 	collationID mysql.CollationID
 
-	capacity    int // capacity of pool
-	maxCapacity int // max capacity of pool
-	idleTimeout time.Duration
+	capacity         int // capacity of pool
+	maxCapacity      int // max capacity of pool
+	idleTimeout      time.Duration
+	clientCapability uint32
 }
 
 // NewConnectionPool create connection pool
-func NewConnectionPool(addr, user, password, db string, capacity, maxCapacity int, idleTimeout time.Duration, charset string, collationID mysql.CollationID) ConnectionPool {
-	cp := &connectionPoolImpl{addr: addr, user: user, password: password, db: db, capacity: capacity, maxCapacity: maxCapacity, idleTimeout: idleTimeout, charset: charset, collationID: collationID}
+func NewConnectionPool(addr, user, password, db string, capacity, maxCapacity int, idleTimeout time.Duration, charset string, collationID mysql.CollationID, clientCapability uint32) ConnectionPool {
+	cp := &connectionPoolImpl{addr: addr, user: user, password: password, db: db, capacity: capacity, maxCapacity: maxCapacity, idleTimeout: idleTimeout, charset: charset, collationID: collationID, clientCapability: clientCapability}
 	return cp
 }
 
@@ -84,7 +85,7 @@ func (cp *connectionPoolImpl) Open() {
 
 // connect is used by the resource pool to create new resource.It's factory method
 func (cp *connectionPoolImpl) connect() (util.Resource, error) {
-	c, err := NewDirectConnection(cp.addr, cp.user, cp.password, cp.db, cp.charset, cp.collationID)
+	c, err := NewDirectConnection(cp.addr, cp.user, cp.password, cp.db, cp.charset, cp.collationID, cp.clientCapability)
 	if err != nil {
 		return nil, err
 	}

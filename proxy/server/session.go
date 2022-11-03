@@ -30,7 +30,9 @@ import (
 // DefaultCapability means default capability
 var DefaultCapability = mysql.ClientLongPassword | mysql.ClientLongFlag |
 	mysql.ClientConnectWithDB | mysql.ClientProtocol41 |
-	mysql.ClientTransactions | mysql.ClientSecureConnection
+	mysql.ClientTransactions | mysql.ClientSecureConnection | mysql.ClientFoundRows |
+	mysql.ClientMultiResults | mysql.ClientMultiStatements | mysql.ClientPSMultiResults |
+	mysql.ClientLocalFiles | mysql.ClientPluginAuth
 
 //下面的会根据配置文件参数加进去
 //mysql.ClientPluginAuth
@@ -252,6 +254,7 @@ func (cc *Session) Run() {
 
 		cmd := data[0]
 		data = data[1:]
+
 		rs := cc.executor.ExecuteCommand(cmd, data)
 		cc.c.RecycleReadPacket()
 
