@@ -50,23 +50,25 @@ type DirectConnection struct {
 	defaultCollation mysql.CollationID
 	defaultCharset   string
 
-	pkgErr error
-	closed sync2.AtomicBool
+	pkgErr                   error
+	closed                   sync2.AtomicBool
+	capabilityConnectToMySQL uint32
 }
 
 // NewDirectConnection return direct and authorised connection to mysql with real net connection
-func NewDirectConnection(addr string, user string, password string, db string, charset string, collationID mysql.CollationID) (*DirectConnection, error) {
+func NewDirectConnection(addr string, user string, password string, db string, charset string, collationID mysql.CollationID, clientCapability uint32) (*DirectConnection, error) {
 	dc := &DirectConnection{
-		addr:             addr,
-		user:             user,
-		password:         password,
-		db:               db,
-		charset:          charset,
-		collation:        collationID,
-		defaultCharset:   charset,
-		defaultCollation: collationID,
-		closed:           sync2.NewAtomicBool(false),
-		sessionVariables: mysql.NewSessionVariables(),
+		addr:                     addr,
+		user:                     user,
+		password:                 password,
+		db:                       db,
+		charset:                  charset,
+		collation:                collationID,
+		defaultCharset:           charset,
+		defaultCollation:         collationID,
+		closed:                   sync2.NewAtomicBool(false),
+		sessionVariables:         mysql.NewSessionVariables(),
+		capabilityConnectToMySQL: clientCapability,
 	}
 	err := dc.connect()
 	return dc, err
@@ -255,8 +257,15 @@ func (dc *DirectConnection) readInitialHandshake() error {
 // writeHandshakeResponse41 writes the handshake response.
 func (dc *DirectConnection) writeHandshakeResponse41() error {
 	// Adjust client capability flags based on server support
-	capability := mysql.ClientProtocol41 | mysql.ClientSecureConnection |
-		mysql.ClientLongPassword | mysql.ClientTransactions | mysql.ClientLongFlag
+
+	var capability uint32
+	if dc.capabilityConnectToMySQL == 0 {
+		capability = mysql.ClientProtocol41 | mysql.ClientSecureConnection |
+			mysql.ClientLongPassword | mysql.ClientTransactions | mysql.ClientLongFlag
+	} else {
+		capability = dc.capabilityConnectToMySQL
+	}
+
 	capability &= dc.capability
 
 	//we only support secure connection

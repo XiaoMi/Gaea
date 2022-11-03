@@ -57,6 +57,7 @@ func NewServer(cfg *models.Proxy, manager *Manager) (*Server, error) {
 	s.manager = manager
 	s.ServerVersion = cfg.ServerVersion
 	s.AuthPlugin = cfg.AuthPlugin
+
 	if len(s.AuthPlugin) > 0 {
 		DefaultCapability |= mysql.ClientPluginAuth
 	}

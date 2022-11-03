@@ -96,7 +96,7 @@ func (s *Slice) GetConn(fromSlave bool, userType int) (pc PooledConnect, err err
 }
 
 func (s *Slice) GetDirectConn(addr string) (*DirectConnection, error) {
-	return NewDirectConnection(addr, s.Cfg.UserName, s.Cfg.Password, "", s.charset, s.collationID)
+	return NewDirectConnection(addr, s.Cfg.UserName, s.Cfg.Password, "", s.charset, s.collationID, s.Cfg.Capability)
 }
 
 // GetMasterConn return a connection in master pool
@@ -166,7 +166,7 @@ func (s *Slice) ParseMaster(masterStr string) error {
 	if err != nil {
 		return err
 	}
-	s.Master = NewConnectionPool(masterStr, s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID)
+	s.Master = NewConnectionPool(masterStr, s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability)
 	s.Master.Open()
 	return nil
 }
@@ -201,7 +201,7 @@ func (s *Slice) ParseSlave(slaves []string) error {
 		if err != nil {
 			return err
 		}
-		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID)
+		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability)
 		cp.Open()
 		s.Slave = append(s.Slave, cp)
 	}
@@ -239,7 +239,7 @@ func (s *Slice) ParseStatisticSlave(statisticSlaves []string) error {
 		if err != nil {
 			return err
 		}
-		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID)
+		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability)
 		cp.Open()
 		s.StatisticSlave = append(s.StatisticSlave, cp)
 	}

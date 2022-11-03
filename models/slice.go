@@ -25,9 +25,11 @@ type Slice struct {
 	Slaves          []string `json:"slaves"`
 	StatisticSlaves []string `json:"statistic_slaves"`
 
-	Capacity    int `json:"capacity"`     // connection pool capacity
-	MaxCapacity int `json:"max_capacity"` // max connection pool capacity
-	IdleTimeout int `json:"idle_timeout"` // close backend direct connection after idle_timeout,unit: seconds
+	Capacity    int    `json:"capacity"`     // connection pool capacity
+	MaxCapacity int    `json:"max_capacity"` // max connection pool capacity
+	IdleTimeout int    `json:"idle_timeout"` // close backend direct connection after idle_timeout,unit: seconds
+	Capability  uint32 `json:"capability"`   // capability set by client, this capability is used as mysql client parameter when
+	// gaea proxy as client connected to MySQL  default is 0
 }
 
 func (s *Slice) verify() error {
