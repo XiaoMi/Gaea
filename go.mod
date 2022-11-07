@@ -12,7 +12,7 @@ require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/emirpasic/gods v1.12.0
 	github.com/gin-contrib/gzip v0.0.1
-	github.com/gin-gonic/gin v1.7.2
+	github.com/gin-gonic/gin v1.7.7
 	github.com/go-ini/ini v1.42.0
 	github.com/go-playground/validator/v10 v10.8.0 // indirect
 	github.com/gogo/protobuf v1.2.1 // indirect
