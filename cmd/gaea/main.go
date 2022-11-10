@@ -63,6 +63,7 @@ func main() {
 	mgr, err := server.LoadAndCreateManager(cfg)
 	if err != nil {
 		log.Fatal("init manager failed, error: %v", err)
+		fmt.Printf("init manager failed, error: %v\n", err)
 		return
 	}
 

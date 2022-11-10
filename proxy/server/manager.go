@@ -92,13 +92,7 @@ func loadAllNamespace(cfg *models.Proxy) (map[string]*models.Namespace, error) {
 					err = e
 					return
 				}
-				// verify namespace config
-				e = namespace.Verify()
-				if e != nil {
-					log.Warn("verify namespace %s failed, err: %v", name, e)
-					err = e
-					return
-				}
+
 				namespaceC <- namespace
 			}
 		}()
