@@ -14,7 +14,10 @@
 
 package models
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // Slice means config model of slice
 type Slice struct {
@@ -57,6 +60,10 @@ func (s *Slice) verify() error {
 
 	if s.MaxCapacity <= 0 {
 		return errors.New("max connection pool capactiy should be > 0")
+	}
+
+	if s.Capacity > s.MaxCapacity {
+		return fmt.Errorf("connection pool capacity should be less than max connection pool capactiy")
 	}
 
 	return nil

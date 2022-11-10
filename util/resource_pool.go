@@ -92,7 +92,7 @@ type resourceWrapper struct {
 // 资源池会根据传入的factory进行具体资源的初始化，比如建立与mysql的连接
 func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Duration) (*ResourcePool, error) {
 	if capacity <= 0 || maxCap <= 0 || capacity > maxCap {
-		panic(errors.New("invalid/out of range capacity"))
+		return nil, fmt.Errorf("invalid/out of range capacity")
 	}
 	rp := &ResourcePool{
 		resources:    make(chan resourceWrapper, maxCap),
