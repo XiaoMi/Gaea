@@ -1,4 +1,8 @@
 ROOT:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+GOOS ?= linux
+GOARCH ?= $(shell go env GOARCH)
+GOENV  := CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH)
+GO     := $(GOENV) go
 GAEA_OUT:=$(ROOT)/bin/gaea
 GAEA_CC_OUT:=$(ROOT)/bin/gaea-cc
 PKG:=$(shell go list -m)
@@ -9,10 +13,10 @@ all: build test
 build: parser gaea gaea-cc
 
 gaea:
-	go build -o $(GAEA_OUT) $(shell bash gen_ldflags.sh $(GAEA_OUT) $(PKG)/core $(PKG)/cmd/gaea)
+	$(GO) build -o $(GAEA_OUT) $(shell bash gen_ldflags.sh $(GAEA_OUT) $(PKG)/core $(PKG)/cmd/gaea)
 
 gaea-cc:
-	go build -o $(GAEA_CC_OUT) $(shell bash gen_ldflags.sh $(GAEA_CC_OUT) $(PKG)/core $(PKG)/cmd/gaea-cc)
+	$(GO) build -o $(GAEA_CC_OUT) $(shell bash gen_ldflags.sh $(GAEA_CC_OUT) $(PKG)/core $(PKG)/cmd/gaea-cc)
 
 parser:
 	cd parser && make && cd ..
