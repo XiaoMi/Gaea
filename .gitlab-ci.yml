@@ -1,10 +1,17 @@
+image: micr.cloud.mioffice.cn/dockerhub/library/golang:1.16.15
+
 variables:
   HOSTS: "master:tj1-dba-garm-test02.kscn:3308,\
       slave:tj1-dba-garm-test01.kscn:3308"
 
+cache:
+  key: "$CI_COMMIT_REF_SLUG"
+  paths:
+    - bin/
+
 before_script:
   - export GOPROXY="https://goproxy.cn/";
-  - export GO111MODULE=on
+  - export GO111MODULE=on;
 
 stages:
   - check
@@ -46,8 +53,11 @@ integrate_tests:
     - make integrate_test
     - ps -ef | grep gaea | grep -v grep | awk '{print $2}' | xargs kill -9
 
-
 e2e_test:
   stage: e2e-test
   script:
-    - echo "e2e test"
+    - sed -i "s/IT_USER/${IT_USER}/g" ./tests/e2e/config/config.yaml ./tests/e2e/cmd/etc/namespace/test_namespace_1.json
+    - sed -i "s/IT_PASSWORD/${IT_PASSWORD}/g" ./tests/e2e/config/config.yaml ./tests/e2e/cmd/etc/namespace/test_namespace_1.json
+    - cp bin/gaea tests/e2e/cmd/
+    - go install github.com/onsi/ginkgo/v2/ginkgo@v2.3.1
+    - ginkgo --v --progress --trace --flake-attempts=1 ./tests/e2e/

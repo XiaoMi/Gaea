@@ -18,6 +18,7 @@ FILELIST=($(find . -type f -not \( -path './bin/*' \
     -o -path './docs/*' \
     -o -path './logs/*' \
     -o -path './parser/goyacc' \
+    -o -path './tests/e2e/cmd/*' \
     \)))
 
 NUM=0

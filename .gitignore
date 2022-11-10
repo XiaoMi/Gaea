@@ -5,3 +5,6 @@ logs
 .coverage.*
 .vscode
 .idea
+tests/e2e/cmd/logs
+tests/e2e/cmd/gaea
+.DS_Store
