@@ -127,8 +127,8 @@ func (s *Server) onConn(c net.Conn) {
 
 	if info, err := cc.Handshake(); err != nil {
 		if info != nil {
-			log.Notice("Connect_error - Access denied for user  %s@%s (%s), conn_id=%d",
-				info.User, c.RemoteAddr().String(), info.Database, cc.c.ConnectionID)
+			_ = s.manager.statistics.generalLogger.Notice("Connect_error - namespace: [%s] Access denied for user  %s@%s (%s), conn_id=%d",
+				cc.namespace, info.User, c.RemoteAddr().String(), info.Database, cc.c.ConnectionID)
 		}
 
 		log.Warn("[server] onConn error: %s", err.Error())
@@ -147,7 +147,7 @@ func (s *Server) onConn(c net.Conn) {
 
 	// added into time wheel
 	s.tw.Add(s.sessionTimeout, cc, cc.Close)
-	log.Notice("Connected conn_id=%d, %s@%s (%s) namespace:%s capability: %d",
+	_ = s.manager.statistics.generalLogger.Notice("Connected conn_id=%d, %s@%s (%s) namespace:%s capability: %d",
 		cc.c.ConnectionID,
 		cc.executor.user,
 		cc.executor.clientAddr,

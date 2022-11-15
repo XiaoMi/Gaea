@@ -80,13 +80,14 @@ func (s *SelectPlan) ExecuteIn(reqCtx *util.RequestContext, sess Executor) (*mys
 
 	if s.isExecOnSingleNode() {
 		return rs[0], nil
-	} else {
-		r, err := MergeSelectResult(s, s.stmt, rs)
-		if err != nil {
-			return nil, fmt.Errorf("merge select result error: %v", err)
-		}
-		return r, nil
 	}
+
+	r, err := MergeSelectResult(s, s.stmt, rs)
+	if err != nil {
+		return nil, fmt.Errorf("merge select result error: %v", err)
+	}
+	return r, nil
+
 }
 
 // GetStmt SelectStmt
@@ -151,11 +152,7 @@ func (s *SelectPlan) GetSQLs() map[string]map[string][]string {
 
 //执行计划是否仅仅涉及一个分片
 func (s *SelectPlan) isExecOnSingleNode() bool {
-	if len(s.result.indexes) == 1 {
-		return true
-	} else {
-		return false
-	}
+	return len(s.result.indexes) == 1
 }
 
 // HandleSelectStmt build a SelectPlan
