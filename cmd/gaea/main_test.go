@@ -115,8 +115,8 @@ func checkResult(proxyResult, mysqlresult *sql.Rows) error {
 func TestIntegration(t *testing.T) {
 	// the following code can be refator to a function
 	// maybe we should encode the username and password
-	proxyUrl := "IT_USER:IT_PASSWORD@tcp(127.0.0.1:13306)/"
-	mysqlUrl := "IT_USER:IT_PASSWORD@tcp(10.38.164.125:3308)/"
+	proxyUrl := "IT_USER:IT_PASSWORD@tcp(127.0.0.1:13306)/sbtest1"
+	mysqlUrl := "IT_USER:IT_PASSWORD@tcp(10.38.164.125:3308)/sbtest1"
 	proxyDb, mysqlDb, err := getConnection(proxyUrl, mysqlUrl)
 	if err != nil {
 		panic(err)
@@ -143,6 +143,7 @@ func TestIntegration(t *testing.T) {
 			assert.Fail(t, err.Error())
 		}
 
+		fmt.Printf("start test file: %s-------------------------------------\n ", fs.Name())
 		sqls := strings.Split(string(bys), "\n")
 		for lineNum, sqlString := range sqls {
 			trimSql := strings.TrimSpace(sqlString)
