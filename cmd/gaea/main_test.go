@@ -16,6 +16,9 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
+	"github.com/XiaoMi/Gaea/parser"
+	"github.com/XiaoMi/Gaea/parser/ast"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
@@ -25,14 +28,14 @@ import (
 	"time"
 )
 
-const MYSQL_DRIVER_NAME = "mysql"
+const MysqlDriverName = "mysql"
 
 func Test_Main(t *testing.T) {
 	main()
 }
 
 func getConnection(proxyUrl, mysqlUrl string) (*sql.DB, *sql.DB, error) {
-	proxyDb, err := sql.Open(MYSQL_DRIVER_NAME, proxyUrl)
+	proxyDb, err := sql.Open(MysqlDriverName, proxyUrl)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -40,7 +43,7 @@ func getConnection(proxyUrl, mysqlUrl string) (*sql.DB, *sql.DB, error) {
 	proxyDb.SetMaxOpenConns(10)
 	proxyDb.SetMaxIdleConns(10)
 
-	mysqlDb, err := sql.Open(MYSQL_DRIVER_NAME, mysqlUrl)
+	mysqlDb, err := sql.Open(MysqlDriverName, mysqlUrl)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -58,7 +61,7 @@ func rawToString(raw sql.RawBytes) string {
 	return string(raw)
 }
 
-func checkResult(proxyResult, mysqlresult *sql.Rows, t *testing.T) error {
+func checkResult(proxyResult, mysqlresult *sql.Rows) error {
 	columns, _ := proxyResult.Columns()
 	columnSize := len(columns)
 
@@ -78,15 +81,17 @@ func checkResult(proxyResult, mysqlresult *sql.Rows, t *testing.T) error {
 		b1 := proxyResult.Next()
 		if !b1 {
 			if mysqlresult.Next() {
-				assert.Fail(t, "row number is not equal")
+				return fmt.Errorf("row number is not equal")
+				//assert.Fail(t, "row number is not equal")
 			}
 			break
 		}
 
 		b2 := mysqlresult.Next()
 		if !b2 {
-			assert.Fail(t, "row number is not equal")
-			break
+			//assert.Fail(t, "row number is not equal")
+			return fmt.Errorf("row number is not equal")
+
 		}
 
 		if err := proxyResult.Scan(proxyArgs...); err != nil {
@@ -98,7 +103,10 @@ func checkResult(proxyResult, mysqlresult *sql.Rows, t *testing.T) error {
 		}
 
 		for idx := range proxyValues {
-			assert.Equal(t, rawToString(proxyValues[idx]), rawToString(mysqlValues[idx]))
+			if rawToString(proxyValues[idx]) != rawToString(mysqlValues[idx]) {
+				return fmt.Errorf("column value is not equal. col1 = %s, col2 = %s", rawToString(proxyValues[idx]),
+					rawToString(mysqlValues[idx]))
+			}
 		}
 	}
 
@@ -117,8 +125,8 @@ func TestIntegration(t *testing.T) {
 	}
 
 	defer func() {
-		proxyDb.Close()
-		proxyDb.Close()
+		_ = proxyDb.Close()
+		_ = proxyDb.Close()
 	}()
 
 	//
@@ -137,32 +145,59 @@ func TestIntegration(t *testing.T) {
 			assert.Fail(t, err.Error())
 		}
 
-		for _, sqlString := range strings.Split(string(bys), "\n") {
+		sqls := strings.Split(string(bys), "\n")
+		for lineNum, sqlString := range sqls {
 			trimSql := strings.TrimSpace(sqlString)
-			if strings.HasPrefix(trimSql, "//") || trimSql == "" {
+			if strings.HasPrefix(trimSql, "//") || strings.HasPrefix(trimSql, "#") || trimSql == "" {
 				continue
 			}
 
-			//This is schema sql, we should run it first
-			if strings.Contains(fs.Name(), "scheam") {
-				if _, err := mysqlDb.Exec(sqlString); err != nil {
-					assert.Fail(t, err.Error())
-				}
+			isSelect, err := isSelectStmt(sqlString)
+			if err != nil {
+				fmt.Printf("filename: %s, line number: %d, sql = [%s]\n", fs.Name(), lineNum+1, sqlString)
+				assert.Fail(t, err.Error())
 			}
 
-			if err = retryer(t, proxyDb, mysqlDb, sqlString, doCheck); err != nil {
+			//This is schema sql, we should run it first
+			if strings.Contains(fs.Name(), "scheam") || !isSelect {
+				if _, err := mysqlDb.Exec(sqlString); err != nil {
+					fmt.Printf("filename: %s, line number: %d, sql = [%s]\n", fs.Name(), lineNum+1, sqlString)
+					assert.Fail(t, err.Error())
+				}
+
+				continue
+			}
+
+			if err = retryer(proxyDb, mysqlDb, sqlString, doCheck); err != nil {
+				fmt.Printf("filename: %s, line number: %d, sql = [%s]\n", fs.Name(), lineNum+1, sqlString)
 				assert.Fail(t, err.Error())
 			}
 		}
+
+		fmt.Printf("finish test file: %s-------------------------------------\n ", fs.Name())
 	}
 }
 
-func retryer(t *testing.T, proxyDb, mysqlDb *sql.DB, sqlString string,
-	fn func(t *testing.T, proxyDb, mysqlDb *sql.DB, sqlString string) error) error {
+func isSelectStmt(sqlString string) (bool, error) {
+	p := parser.New()
+	stmt, _, err := p.Parse(sqlString, "", "")
+	if err != nil {
+		return false, err
+	}
+	switch stmt[0].(type) {
+	case *ast.SelectStmt:
+		return true, err
+	default:
+		return false, err
+	}
+}
+
+func retryer(proxyDb, mysqlDb *sql.DB, sqlString string,
+	fn func(proxyDb, mysqlDb *sql.DB, sqlString string) error) error {
 	var retryTimes = 3
 	var err error
 	for i := 0; i < retryTimes; i++ {
-		if err = fn(t, proxyDb, mysqlDb, sqlString); err == nil {
+		if err = fn(proxyDb, mysqlDb, sqlString); err == nil {
 			return nil
 		}
 	}
@@ -170,7 +205,7 @@ func retryer(t *testing.T, proxyDb, mysqlDb *sql.DB, sqlString string,
 	return err
 }
 
-func doCheck(t *testing.T, proxyDb, mysqlDb *sql.DB, sqlString string) error {
+func doCheck(proxyDb, mysqlDb *sql.DB, sqlString string) error {
 	var r1, r2 *sql.Rows
 	var err error
 
@@ -182,5 +217,5 @@ func doCheck(t *testing.T, proxyDb, mysqlDb *sql.DB, sqlString string) error {
 		return err
 	}
 
-	return checkResult(r1, r2, t)
+	return checkResult(r1, r2)
 }
