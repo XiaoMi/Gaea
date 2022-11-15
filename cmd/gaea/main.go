@@ -48,6 +48,11 @@ func main() {
 		return
 	}
 
+	if err := cfg.Verify(); err != nil {
+		fmt.Printf("gaea.init is invalid: %v", err)
+		return
+	}
+
 	if err = initXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service); err != nil {
 		fmt.Printf("init xlog error: %v\n", err.Error())
 		return
