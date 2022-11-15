@@ -82,14 +82,12 @@ func checkResult(proxyResult, mysqlresult *sql.Rows) error {
 		if !b1 {
 			if mysqlresult.Next() {
 				return fmt.Errorf("row number is not equal")
-				//assert.Fail(t, "row number is not equal")
 			}
 			break
 		}
 
 		b2 := mysqlresult.Next()
 		if !b2 {
-			//assert.Fail(t, "row number is not equal")
 			return fmt.Errorf("row number is not equal")
 
 		}
