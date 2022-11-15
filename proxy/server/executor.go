@@ -277,7 +277,8 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 	start := time.Now()
 	switch cmd {
 	case mysql.ComQuit:
-		log.Notice("Quit - conn_id=%d, %s", se.session.c.ConnectionID, se.clientAddr)
+		_ = se.manager.statistics.generalLogger.Notice("Quit - namespace:[%s] conn_id=%d, %s", se.namespace,
+			se.session.c.ConnectionID, se.clientAddr)
 		se.handleRollback(nil)
 		// https://dev.mysql.com/doc/internals/en/com-quit.html
 		// either a connection close or a OK_Packet, OK_Packet will cause client RST sometimes, but doesn't affect sql execute
@@ -287,8 +288,9 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		// handle phase
 		r, err := se.handleQuery(sql)
 		if err != nil {
-			log.Notice("ERROR - %.1fms - %s->%s,mysql_connect_id=%d|%v",
+			_ = se.manager.statistics.generalLogger.Notice("ERROR - %.1fms namespace:[%s] - %s->%s,mysql_connect_id=%d|%v",
 				float64(time.Since(start).Microseconds())/1000.0,
+				se.namespace,
 				se.clientAddr,
 				se.serverAddr,
 				se.session.c.ConnectionID,
@@ -297,8 +299,9 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 			return CreateErrorResponse(se.status, err)
 		}
 		// Gaea support multi tanant, so we can set the server addr and port is a constant number
-		log.Notice("OK - %.1fms - %s->%s,mysql_connect_id=%d|%v",
+		_ = se.manager.statistics.generalLogger.Notice("OK - %.1fms namespace:[%s] - %s->%s,mysql_connect_id=%d|%v",
 			float64(time.Since(start).Microseconds())/1000.0,
+			se.namespace,
 			se.clientAddr,
 			se.serverAddr,
 			se.session.c.ConnectionID,
@@ -387,33 +390,32 @@ func (se *SessionExecutor) getTransactionConn(sliceName string) (pc backend.Pool
 	defer se.txLock.Unlock()
 
 	var ok bool
-	pc, ok = se.txConns[sliceName]
-
-	if !ok {
-		slice := se.GetNamespace().GetSlice(sliceName) // returns nil only when the conf is error (fatal) so panic is correct
-		if pc, err = slice.GetMasterConn(); err != nil {
-			return
-		}
-
-		if !se.isAutoCommit() {
-			if err = pc.SetAutoCommit(0); err != nil {
-				pc.Close()
-				pc.Recycle()
-				return
-			}
-		} else {
-			if err = pc.Begin(); err != nil {
-				pc.Close()
-				pc.Recycle()
-				return
-			}
-		}
-		for _, savepoint := range se.savepoints {
-			pc.Execute("savepoint "+savepoint, 0)
-		}
-		se.txConns[sliceName] = pc
+	if pc, ok = se.txConns[sliceName]; ok {
+		return
 	}
 
+	slice := se.GetNamespace().GetSlice(sliceName) // returns nil only when the conf is error (fatal) so panic is correct
+	if pc, err = slice.GetMasterConn(); err != nil {
+		return
+	}
+
+	if !se.isAutoCommit() {
+		if err = pc.SetAutoCommit(0); err != nil {
+			pc.Close()
+			pc.Recycle()
+			return
+		}
+	} else {
+		if err = pc.Begin(); err != nil {
+			pc.Close()
+			pc.Recycle()
+			return
+		}
+	}
+	for _, savepoint := range se.savepoints {
+		pc.Execute("savepoint "+savepoint, 0)
+	}
+	se.txConns[sliceName] = pc
 	return
 }
 

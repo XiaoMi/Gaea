@@ -242,7 +242,7 @@ func (rp *ResourcePool) get(ctx context.Context, wait bool) (resource Resource, 
 			return nil, ErrTimeout
 		}
 		endTime := time.Now()
-		if int64(startTime.UnixNano()/100000) != int64(endTime.UnixNano()/100000) {
+		if startTime.UnixNano()/100000 != endTime.UnixNano()/100000 {
 			rp.recordWait(startTime)
 		}
 	}
