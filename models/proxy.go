@@ -15,6 +15,9 @@
 package models
 
 import (
+	"fmt"
+	"github.com/XiaoMi/Gaea/mysql"
+	"strconv"
 	"strings"
 
 	"github.com/go-ini/ini"
@@ -91,8 +94,38 @@ func ParseProxyConfigFromFile(cfgFile string) (*Proxy, error) {
 }
 
 // Verify verify proxy config
-func (p *Proxy) Verify() error {
-	return nil
+func (p *Proxy) Verify() (err error) {
+
+	//first check ConfigType
+	switch p.ConfigType {
+	case ConfigFile, ConfigEtcd, ConfigEtcdV3:
+	default:
+		return fmt.Errorf("unsupport config_type: %s", p.ConfigType)
+	}
+
+	// check statstics
+	if _, err = strconv.ParseBool(p.StatsEnabled); err != nil {
+		return fmt.Errorf("StatsEnabled should be a bool value: current: %s, "+
+			"error: %s", p.StatsEnabled, err.Error())
+	}
+	if p.StatsInterval < 0 {
+		return fmt.Errorf("stats_interval should be >= 0: %d", p.StatsInterval)
+	}
+
+	// check gloal slow query and session timeout
+	if p.SlowSQLTime < 0 {
+		return fmt.Errorf("slow_sql_time should be >= 0: %d", p.SlowSQLTime)
+	}
+	if p.SessionTimeout < 0 {
+		return fmt.Errorf("session_timeout should be >= 0: %d", p.SlowSQLTime)
+	}
+
+	switch p.AuthPlugin {
+	case "", mysql.MysqlNativePassword, mysql.CachingSHA2Password:
+	default:
+		return fmt.Errorf("unsupport auth_plugin: %s", p.AuthPlugin)
+	}
+	return
 }
 
 // ProxyInfo for report proxy information
