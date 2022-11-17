@@ -80,6 +80,8 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig, cluster 
 	storeConn := models.NewStore(client)
 	defer storeConn.Close()
 
+	existNamespace, _ := storeConn.LoadNamespace(cfg.EncryptKey, namespace.Name)
+
 	if err := storeConn.UpdateNamespace(namespace); err != nil {
 		log.Warn("update namespace failed, %s", string(namespace.Encode()))
 		return err
@@ -93,39 +95,60 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig, cluster 
 	}
 
 	wg := sync.WaitGroup{}
+	prepareErrs := make(chan error, len(proxies))
+	commitErrs := make(chan error, len(proxies))
 	// prepare phase
 	for _, v := range proxies {
 		wg.Add(1)
 		go func(v *models.ProxyMonitorMetric) {
+			defer wg.Done()
 			for i := 0; i < PREPARE_RETRY_TIMES; i++ {
 				if err = proxy.PrepareConfig(v.IP+":"+v.AdminPort, namespace.Name, cfg); err == nil {
 					break
 				}
 				log.Warn("namespace %s, proxy prepare retry %d", namespace.Name, i)
 			}
-			if err != nil {
-				return
-			}
-			wg.Done()
+			prepareErrs <- err
 		}(v)
 	}
 	wg.Wait()
+	close(prepareErrs)
+
+	// check prepare res and rollback
+	for err := range prepareErrs {
+		if err != nil {
+			if err2 := rollbackNamespace(existNamespace, cfg, storeConn); err2 != nil {
+				return fmt.Errorf("prepareConfig error:%s, rollback error:%s", err, err2)
+			}
+			return fmt.Errorf("prepareConfig error:%s, rollback success", err)
+		}
+	}
 
 	// commit phase
 	for _, v := range proxies {
 		wg.Add(1)
 		go func(v *models.ProxyMonitorMetric) {
+			defer wg.Done()
 			for i := 0; i < COMMIT_RETRY_TIMES; i++ {
 				if err := proxy.CommitConfig(v.IP+":"+v.AdminPort, namespace.Name, cfg); err == nil {
 					break
 				}
 				log.Warn("namespace %s, proxy prepare retry %d", namespace.Name, i)
 			}
-			if err != nil {
-				return
-			}
-			wg.Done()
+			commitErrs <- err
 		}(v)
+	}
+	wg.Wait()
+	close(commitErrs)
+
+	// check commit res and rollback
+	for err := range commitErrs {
+		if err != nil {
+			if err2 := rollbackNamespace(existNamespace, cfg, storeConn); err2 != nil {
+				return fmt.Errorf("commitConfig error:%s, rollback error:%s", err, err2)
+			}
+			return fmt.Errorf("commitConfig error:%s, rollback success", err)
+		}
 	}
 
 	return nil
@@ -156,6 +179,24 @@ func DelNamespace(name string, cfg *models.CCConfig, cluster string) error {
 		}
 	}
 
+	return nil
+}
+
+func rollbackNamespace(existNamespace *models.Namespace, cfg *models.CCConfig, storeConn *models.Store) (err error) {
+	if err = existNamespace.Verify(); err != nil {
+		return fmt.Errorf("verify existNamespace error: %v", err)
+	}
+
+	// create/modify will save encrypted data default
+	if err = existNamespace.Encrypt(cfg.EncryptKey); err != nil {
+		return fmt.Errorf("encrypt existNamespace error: %v", err)
+	}
+
+	if err = storeConn.UpdateNamespace(existNamespace); err != nil {
+		_ = log.Notice("rollback existNamespace failed, %s.err:%s", existNamespace.Name, err)
+		return fmt.Errorf("rollback existNamespace error:%s", err)
+	}
+	_ = log.Warn("rollback existNamespace success, %s.", existNamespace.Name)
 	return nil
 }
 
