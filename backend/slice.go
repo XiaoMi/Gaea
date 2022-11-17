@@ -183,7 +183,7 @@ func (s *Slice) ParseMaster(masterStr string) error {
 	if err != nil {
 		return err
 	}
-	s.Master = NewConnectionPool(masterStr, s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability)
+	s.Master = NewConnectionPool(masterStr, s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability, s.Cfg.InitConnect)
 	return s.Master.Open()
 }
 
@@ -217,7 +217,7 @@ func (s *Slice) ParseSlave(slaves []string) (*SlavesInfo, error) {
 		if err != nil {
 			return nil, err
 		}
-		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability)
+		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability, s.Cfg.InitConnect)
 		if err = cp.Open(); err != nil {
 			return nil, err
 		}

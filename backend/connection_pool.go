@@ -17,6 +17,7 @@ package backend
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,11 +54,13 @@ type connectionPoolImpl struct {
 	maxCapacity      int // max capacity of pool
 	idleTimeout      time.Duration
 	clientCapability uint32
+	initConnect      string
 }
 
 // NewConnectionPool create connection pool
-func NewConnectionPool(addr, user, password, db string, capacity, maxCapacity int, idleTimeout time.Duration, charset string, collationID mysql.CollationID, clientCapability uint32) ConnectionPool {
+func NewConnectionPool(addr, user, password, db string, capacity, maxCapacity int, idleTimeout time.Duration, charset string, collationID mysql.CollationID, clientCapability uint32, initConnect string) ConnectionPool {
 	cp := &connectionPoolImpl{addr: addr, user: user, password: password, db: db, capacity: capacity, maxCapacity: maxCapacity, idleTimeout: idleTimeout, charset: charset, collationID: collationID, clientCapability: clientCapability}
+	cp.initConnect = strings.Trim(strings.TrimSpace(initConnect), ";")
 	return cp
 }
 
@@ -89,6 +92,14 @@ func (cp *connectionPoolImpl) connect() (util.Resource, error) {
 	c, err := NewDirectConnection(cp.addr, cp.user, cp.password, cp.db, cp.charset, cp.collationID, cp.clientCapability)
 	if err != nil {
 		return nil, err
+	}
+	if cp.initConnect != "" {
+		for _, sql := range strings.Split(cp.initConnect, ";") {
+			_, err := c.Execute(sql, 0)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	return &pooledConnectImpl{directConnection: c, pool: cp}, nil
 }
