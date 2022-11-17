@@ -89,18 +89,19 @@ namespace的配置格式为json，包含分表、非分表、实例等配置信�
 
 ### slice配置
 
-| 字段名称         | 字段类型        | 字段含义                                                                                                                                       |
-| ---------------- |-------------|--------------------------------------------------------------------------------------------------------------------------------------------|
-| name             | string      | 分片名称，自动、有序生成                                                                                                                               |
-| user_name        | string      | 连接后端mysql所需要的用户名称                                                                                                                          |
-| password         | string      | 连接后端mysql所需要的用户密码                                                                                                                          |
-| master           | string      | 主实例地址                                                                                                                                      |
-| slaves           | string数组    | 从实例地址列表                                                                                                                                    |
-| statistic_slaves | string数组    | 统计型从实例地址列表                                                                                                                                 |
-| capacity         | int         | gaea_proxy与每个实例的连接池大小                                                                                                                      |
-| max_capacity     | int         | gaea_proxy与每个实例的连接池最大大小                                                                                                                    |
-| idle_timeout     | int         | gaea_proxy与后端mysql空闲连接存活时间，单位:秒                                                                                                            |
- | capability       | int         | 自定义gaea_proxy与MySQL连接时capability, 注意: 除非你十分清楚这个值的意义，否则不要设置此值。 如果此值未设或者设置为0，gaea将使用默认值41477; 如果要支持multi query, 可将此值设置成500357， 更具体请参看MySQL文档 |
+| 字段名称             | 字段类型     | 字段含义                                                                                                                                       |
+|------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| name             | string   | 分片名称，自动、有序生成                                                                                                                               |
+| user_name        | string   | 连接后端mysql所需要的用户名称                                                                                                                          |
+| password         | string   | 连接后端mysql所需要的用户密码                                                                                                                          |
+| master           | string   | 主实例地址                                                                                                                                      |
+| slaves           | string数组 | 从实例地址列表                                                                                                                                    |
+| statistic_slaves | string数组 | 统计型从实例地址列表                                                                                                                                 |
+| capacity         | int      | gaea_proxy与每个实例的连接池大小                                                                                                                      |
+| max_capacity     | int      | gaea_proxy与每个实例的连接池最大大小                                                                                                                    |
+| idle_timeout     | int      | gaea_proxy与后端mysql空闲连接存活时间，单位:秒                                                                                                            |
+ | capability       | int      | 自定义gaea_proxy与MySQL连接时capability, 注意: 除非你十分清楚这个值的意义，否则不要设置此值。 如果此值未设或者设置为0，gaea将使用默认值41477; 如果要支持multi query, 可将此值设置成500357， 更具体请参看MySQL文档 |
+| init_connect     | string   | 自定义gaea_proxy与MySQL连接时初始执行的SQL，默认为空，执行的SQL以`;`分割，如设置sql_mode、session变量等。 注意: 除非你确认业务上确实有此依赖，且无法在业务侧调整，否则请不要设置此值。                           |
 
 ### shard配置
 
