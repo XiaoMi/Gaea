@@ -47,6 +47,7 @@ const (
 	defaultMaxSqlResultSize             = 10000 // 默认为10000, 限制查询返回的结果集大小不超过该阈值
 	defaultSlaveMaxTimeOutInCheckLivess = 8     // 如果发现slave状态异常，则每sleep 1，2，4，8秒再检查， 8s之后
 	// 认为Slave已下线，如果需要快速判定状态，可减少该值
+	defaultMaxClientConnections = 100000000 //Big enough
 )
 
 // UserProperty means runtime user properties
@@ -80,6 +81,8 @@ type Namespace struct {
 	backendSlowSQLCache  *cache.LRUCache
 	backendErrorSQLCache *cache.LRUCache
 	planCache            *cache.LRUCache
+
+	maxClientConnections int
 }
 
 // DumpToJSON  means easy encode json
@@ -196,6 +199,12 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 		sequences.SetSequence(v.DB, v.Table, seq)
 	}
 	namespace.sequences = sequences
+
+	if namespace.maxClientConnections <= 0 {
+		namespace.maxClientConnections = defaultMaxClientConnections
+	} else {
+		namespace.maxClientConnections = namespaceConfig.MaxClientConnections
+	}
 
 	return namespace, nil
 }

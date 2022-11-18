@@ -28,25 +28,26 @@ import (
 
 // Namespace means namespace model stored in etcd
 type Namespace struct {
-	OpenGeneralLog    bool              `json:"open_general_log"`
-	IsEncrypt         bool              `json:"is_encrypt"` // true: 加密存储 false: 非加密存储，目前加密Slice、User中的用户名、密码
-	Name              string            `json:"name"`
-	Online            bool              `json:"online"`
-	ReadOnly          bool              `json:"read_only"`
-	AllowedDBS        map[string]bool   `json:"allowed_dbs"`
-	DefaultPhyDBS     map[string]string `json:"default_phy_dbs"`
-	SlowSQLTime       string            `json:"slow_sql_time"`
-	BlackSQL          []string          `json:"black_sql"`
-	AllowedIP         []string          `json:"allowed_ip"`
-	Slices            []*Slice          `json:"slices"`
-	ShardRules        []*Shard          `json:"shard_rules"`
-	Users             []*User           `json:"users"` // 客户端接入proxy用户，每个用户可以设置读写分离、读写权限等
-	DefaultSlice      string            `json:"default_slice"`
-	GlobalSequences   []*GlobalSequence `json:"global_sequences"`
-	DefaultCharset    string            `json:"default_charset"`
-	DefaultCollation  string            `json:"default_collation"`
-	MaxSqlExecuteTime int               `json:"max_sql_execute_time"` // sql最大执行时间，大于该时间，进行熔断
-	MaxSqlResultSize  int               `json:"max_sql_result_size"`  // 限制单分片返回结果集大小不超过max_select_rows
+	OpenGeneralLog       bool              `json:"open_general_log"`
+	IsEncrypt            bool              `json:"is_encrypt"` // true: 加密存储 false: 非加密存储，目前加密Slice、User中的用户名、密码
+	Name                 string            `json:"name"`
+	Online               bool              `json:"online"`
+	ReadOnly             bool              `json:"read_only"`
+	AllowedDBS           map[string]bool   `json:"allowed_dbs"`
+	DefaultPhyDBS        map[string]string `json:"default_phy_dbs"`
+	SlowSQLTime          string            `json:"slow_sql_time"`
+	BlackSQL             []string          `json:"black_sql"`
+	AllowedIP            []string          `json:"allowed_ip"`
+	Slices               []*Slice          `json:"slices"`
+	ShardRules           []*Shard          `json:"shard_rules"`
+	Users                []*User           `json:"users"` // 客户端接入proxy用户，每个用户可以设置读写分离、读写权限等
+	DefaultSlice         string            `json:"default_slice"`
+	GlobalSequences      []*GlobalSequence `json:"global_sequences"`
+	DefaultCharset       string            `json:"default_charset"`
+	DefaultCollation     string            `json:"default_collation"`
+	MaxSqlExecuteTime    int               `json:"max_sql_execute_time"`   // sql最大执行时间，大于该时间，进行熔断
+	MaxSqlResultSize     int               `json:"max_sql_result_size"`    // 限制单分片返回结果集大小不超过max_select_rows
+	MaxClientConnections int               `json:"max_client_connections"` // namespace中最大的前端连接数
 }
 
 // Encode encode json

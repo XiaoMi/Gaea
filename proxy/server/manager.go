@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
+	"go.uber.org/atomic"
 	"net/http"
 	"sort"
 	"strconv"
@@ -646,6 +647,7 @@ type StatisticManager struct {
 	sqlForbidenCounts         *stats.CountersWithMultiLabels // SQL黑名单请求统计
 	flowCounts                *stats.CountersWithMultiLabels // 业务流量统计
 	sessionCounts             *stats.GaugesWithMultiLabels   // 前端会话数统计
+	clientConnecions          sync.Map                       // 等同于sessionCounts, 用于限制前端连接
 
 	backendSQLTimings                *stats.MultiTimings            // 后端SQL耗时统计
 	backendSQLFingerprintSlowCounts  *stats.CountersWithMultiLabels // 后端慢SQL指纹数量统计
@@ -751,7 +753,7 @@ func (s *StatisticManager) Init(cfg *models.Proxy) error {
 		"gaea proxy backend in-use connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
 	s.backendConnectPoolWaitCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolWaitCounts",
 		"gaea proxy backend wait connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
-
+	s.clientConnecions = sync.Map{}
 	s.startClearTask()
 	return nil
 }
@@ -849,10 +851,28 @@ func (s *StatisticManager) IncrSessionCount(namespace string) {
 	s.sessionCounts.Add(statsKey, 1)
 }
 
+func (s *StatisticManager) IncrConnectionCount(namespace string) {
+	if value, ok := s.clientConnecions.Load(namespace); !ok {
+		s.clientConnecions.Store(namespace, atomic.NewInt32(1))
+	} else {
+		lastNum := value.(*atomic.Int32)
+		lastNum.Inc()
+	}
+}
+
 // DescSessionCount decr session count
 func (s *StatisticManager) DescSessionCount(namespace string) {
 	statsKey := []string{s.clusterName, namespace}
 	s.sessionCounts.Add(statsKey, -1)
+}
+
+func (s *StatisticManager) DescConnectionCount(namespace string) {
+	if value, ok := s.clientConnecions.Load(namespace); !ok {
+		_ = log.Warn("namespace: '%v' maxClientConnections should in map", namespace)
+	} else {
+		lastNum := value.(*atomic.Int32)
+		lastNum.Dec()
+	}
 }
 
 // AddReadFlowCount add read flow count
