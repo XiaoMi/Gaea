@@ -17,6 +17,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/XiaoMi/Gaea/backend"
@@ -108,10 +109,16 @@ func TestExecute(t *testing.T) {
 	slice0MasterPool := new(mocks.ConnectionPool)
 	slice1MasterPool := new(mocks.ConnectionPool)
 
-	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Master = slice0MasterPool
-	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Slave = &backend.SlavesInfo{}
-	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Master = slice1MasterPool
-	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Slave = &backend.SlavesInfo{}
+	slice0Status := sync.Map{}
+	slice0Status.Store(0, backend.UP)
+
+	slice1Status := sync.Map{}
+	slice1Status.Store(0, backend.UP)
+
+	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Master = &backend.DBInfo{ConnPool: []backend.ConnectionPool{slice0MasterPool}, StatusMap: slice0Status}
+	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Slave = &backend.DBInfo{}
+	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Master = &backend.DBInfo{ConnPool: []backend.ConnectionPool{slice1MasterPool}, StatusMap: slice1Status}
+	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Slave = &backend.DBInfo{}
 
 	expectResult1 := &mysql.Result{}
 	expectResult2 := &mysql.Result{}

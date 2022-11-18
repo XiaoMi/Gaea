@@ -42,12 +42,13 @@ const (
 	defaultSQLCacheCapacity  = 64
 	defaultPlanCacheCapacity = 128
 
-	defaultSlowSQLTime                  = 1000  // millisecond
-	defaultMaxSqlExecuteTime            = 0     // 默认为0，不开启慢sql熔断功能
-	defaultMaxSqlResultSize             = 10000 // 默认为10000, 限制查询返回的结果集大小不超过该阈值
-	defaultSlaveMaxTimeOutInCheckLivess = 8     // 如果发现slave状态异常，则每sleep 1，2，4，8秒再检查， 8s之后
+	defaultSlowSQLTime       = 1000  // millisecond
+	defaultMaxSqlExecuteTime = 0     // 默认为0，不开启慢sql熔断功能
+	defaultMaxSqlResultSize  = 10000 // 默认为10000, 限制查询返回的结果集大小不超过该阈值
+	defaultTimeAfterNoAlive  = 8     // 如果发现slave状态异常，则每sleep 1，2，4，8秒再检查， 8s之后
 	// 认为Slave已下线，如果需要快速判定状态，可减少该值
 	defaultMaxClientConnections = 100000000 //Big enough
+
 )
 
 // UserProperty means runtime user properties
@@ -59,22 +60,24 @@ type UserProperty struct {
 
 // Namespace is struct driected used by server
 type Namespace struct {
-	name               string
-	allowedDBs         map[string]bool
-	defaultPhyDBs      map[string]string // logicDBName-phyDBName
-	sqls               map[string]string //key: sql fingerprint
-	slowSQLTime        int64             // session slow sql time, millisecond, default 1000
-	allowips           []util.IPInfo
-	router             *router.Router
-	sequences          *sequence.SequenceManager
-	slices             map[string]*backend.Slice // key: slice name
-	userProperties     map[string]*UserProperty  // key: user name ,value: user's properties
-	defaultCharset     string
-	defaultCollationID mysql.CollationID
-	openGeneralLog     bool
-	maxSqlExecuteTime  int // session max sql execute time,millisecond
-	maxSqlResultSize   int
-	defaultSlice       string
+	name                string
+	allowedDBs          map[string]bool
+	defaultPhyDBs       map[string]string // logicDBName-phyDBName
+	sqls                map[string]string //key: sql fingerprint
+	slowSQLTime         int64             // session slow sql time, millisecond, default 1000
+	allowips            []util.IPInfo
+	router              *router.Router
+	sequences           *sequence.SequenceManager
+	slices              map[string]*backend.Slice // key: slice name
+	userProperties      map[string]*UserProperty  // key: user name ,value: user's properties
+	defaultCharset      string
+	defaultCollationID  mysql.CollationID
+	openGeneralLog      bool
+	maxSqlExecuteTime   int // session max sql execute time,millisecond
+	maxSqlResultSize    int
+	defaultSlice        string
+	downAfterNoAlive    int
+	secondsBehindMaster uint64
 
 	slowSQLCache         *cache.LRUCache
 	errorSQLCache        *cache.LRUCache
@@ -175,8 +178,8 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 		return nil, fmt.Errorf("init slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
 	}
 
-	//do slice salve check
-	if err = checkSlaveStatus(namespace.slices, namespaceConfig.Name); err != nil {
+	//Check slice master and slave status and mark them as unavailable when detect down
+	if err = checkSlicesStatus(namespace.slices, namespace); err != nil {
 		return nil, fmt.Errorf("check salve in slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
 	}
 
@@ -205,6 +208,17 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 	} else {
 		namespace.maxClientConnections = namespaceConfig.MaxClientConnections
 	}
+
+	namespace.downAfterNoAlive = namespaceConfig.DownAfterNoAlive
+	if namespace.downAfterNoAlive < 0 {
+		return nil, fmt.Errorf("downAfterNoAlive should be greater than 0")
+	}
+	// not configurable yet, use default
+	if namespace.downAfterNoAlive == 0 {
+		namespace.downAfterNoAlive = defaultTimeAfterNoAlive
+	}
+
+	namespace.secondsBehindMaster = namespaceConfig.SecondsBehindMaster
 
 	return namespace, nil
 }
@@ -531,7 +545,7 @@ func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.Co
 	return slices, nil
 }
 
-func checkSlaveStatus(slices map[string]*backend.Slice, namespace string) error {
+func checkSlicesStatus(slices map[string]*backend.Slice, namespace *Namespace) error {
 	ctx, cancel := context.WithCancel(context.TODO())
 
 	defer func() {
@@ -542,7 +556,7 @@ func checkSlaveStatus(slices map[string]*backend.Slice, namespace string) error 
 	}()
 
 	for _, v := range slices {
-		if err := checkLive(v, namespace, ctx); err != nil {
+		if err := doCheckSlice(v, namespace, ctx); err != nil {
 			cancel()
 			log.Fatal("fail to start check salve liveness, namespace: %s, slice: %s", namespace, v.Cfg.Name)
 			return err
@@ -552,8 +566,27 @@ func checkSlaveStatus(slices map[string]*backend.Slice, namespace string) error 
 	return nil
 }
 
-func checkLive(slice *backend.Slice, namespace string, ctx context.Context) error {
-	checkFunc := func(slaveInfo *backend.SlavesInfo) {
+func shouldCheckSlaveDataSyncStatus(namespace *Namespace, crruentStatus backend.StatusCode, slice *backend.Slice, isMaster bool) bool {
+	if isMaster || crruentStatus == backend.UP {
+		return false
+	}
+
+	// AS when master is down, slave io thread will stop, we should not check slave sync crruentStatus, or we
+	// will mark slave as down mistakely
+	if masterStatus, _ := slice.Master.StatusMap.Load(0); masterStatus == backend.DOWN {
+		return false
+	}
+
+	return namespace.secondsBehindMaster != 0
+}
+
+func doCheckSlice(slice *backend.Slice, namespace *Namespace, ctx context.Context) error {
+	checkStatus := func(slaveInfo *backend.DBInfo, isMaster bool) {
+		role := "Slave"
+		if isMaster {
+			role = "Master"
+		}
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -561,58 +594,42 @@ func checkLive(slice *backend.Slice, namespace string, ctx context.Context) erro
 				return
 			default:
 				for idx, v := range slaveInfo.ConnPool {
-					var sleepTime = 1
-					var err error
-					var conn backend.PooledConnect
-					_ = log.Notice("namespace: %s, slice: %s, start to check slave %s by auto check...",
-						namespace,
+					_ = log.Debug("namespace: %s, slice: %s, start to check %s %s by auto check...",
+						namespace.name,
+						role,
 						slice.Cfg.Name,
 						v.Addr())
 
-					for sleepTime < defaultSlaveMaxTimeOutInCheckLivess {
-						conn, err = v.Get(ctx)
-						if err != nil {
-							if conn != nil {
-								conn.Recycle()
-								conn = nil
-							}
-							sleepTime = sleepTime * 2
-							time.Sleep(time.Duration(sleepTime) * time.Second)
-							continue
-						}
+					now := time.Now()
 
-						if err = conn.Ping(); err == nil {
-							break
+					status, conn := getInstanceStatus(namespace, v, ctx)
+					// status is ok && this is slave && seconds_behind_master is not 0, we start to check master and slave lag
+					// Pay attention!!!!, if master is down, slave IO thread is close, so we should skip check slave when master is down
+					if shouldCheckSlaveDataSyncStatus(namespace, status, slice, isMaster) {
+						if lag, _ := slaveIsLagBehand(conn, namespace); lag {
+							status = backend.DOWN
 						}
-						if err = conn.Reconnect(); err == nil {
-							break
-						}
-
-						sleepTime = sleepTime * 2
-						if conn != nil {
-							conn.Recycle()
-						}
-						time.Sleep(time.Duration(sleepTime) * time.Second)
-					}
-
-					if err != nil || sleepTime >= defaultSlaveMaxTimeOutInCheckLivess {
-						//mark slave is down
-						_ = log.Warn("nameapce: %s, slice: %s,  slave %s is find DOWN by auto check...",
-							namespace,
-							slice.Cfg.Name,
-							v.Addr())
-						slaveInfo.StatusMap.Store(idx, backend.DOWN)
-					} else {
-						_ = log.Notice("namespace: %s, slice: %s, slave %s is find OK by auto check...",
-							namespace,
-							slice.Cfg.Name,
-							v.Addr())
-						slaveInfo.StatusMap.Store(idx, backend.OK)
 					}
 
 					if conn != nil {
 						conn.Recycle()
 					}
+
+					slaveInfo.StatusMap.Store(idx, status)
+
+					logValue := fmt.Sprintf("nameapce: %s, slice: %s, %s, IP:PORT:[%s] is find %s by auto check...,take = %d Milliseconds",
+						namespace.name,
+						slice.Cfg.Name,
+						role,
+						v.Addr(),
+						status.String(),
+						time.Since(now).Milliseconds())
+					if status == backend.DOWN {
+						_ = log.Warn(logValue)
+					} else {
+						_ = log.Notice(logValue)
+					}
+
 				}
 			}
 
@@ -621,10 +638,156 @@ func checkLive(slice *backend.Slice, namespace string, ctx context.Context) erro
 		}
 	}
 
-	go checkFunc(slice.Slave)
-	go checkFunc(slice.StatisticSlave)
+	go checkStatus(slice.Slave, false)
+	go checkStatus(slice.StatisticSlave, false)
+	go checkStatus(slice.Master, true)
 
 	return nil
+}
+
+func slaveIsLagBehand(conn backend.PooledConnect, namespace *Namespace) (bool, error) {
+	var slaveStatus SlaveStatus
+	var err error
+	if slaveStatus, err = GetSlaveStatus(conn); err != nil {
+		_ = log.Warn("slave %s get SlaveStatus failed for %v", conn.GetAddr(), err)
+		return false, err
+	}
+
+	if slaveStatus.SecondsBehindMaster > namespace.secondsBehindMaster {
+		_ = log.Warn("slave %s SecondsBehindMaster(%d) is greater than %d", conn.GetAddr(), slaveStatus.SecondsBehindMaster,
+			namespace.secondsBehindMaster)
+		return true, nil
+	}
+
+	if slaveStatus.SlaveIORunning != "Yes" {
+		_ = log.Warn("slave %s Slave_IO_Running(%s) is not Yes", conn.GetAddr(), slaveStatus.SlaveIORunning)
+		return true, nil
+	}
+	if slaveStatus.SlaveSQLRunning != "Yes" {
+		_ = log.Warn("slave %s SlaveSQLRunning(%s) is not Yes", conn.GetAddr(), slaveStatus.SlaveSQLRunning)
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func getInstanceStatus(namespace *Namespace, v backend.ConnectionPool, ctx context.Context) (backend.StatusCode, backend.PooledConnect) {
+	var sleepTime = 1
+	var err error
+	var conn backend.PooledConnect
+	for ; sleepTime < namespace.downAfterNoAlive; sleepTime *= 2 {
+		conn, err = v.Get(ctx)
+		if err != nil {
+			if conn != nil {
+				conn.Recycle()
+				conn = nil
+			}
+			time.Sleep(time.Duration(sleepTime) * time.Second)
+			continue
+		}
+
+		if err = conn.Ping(); err == nil {
+			break
+		}
+		if err = conn.Reconnect(); err == nil {
+			break
+		}
+
+		if conn != nil {
+			conn.Recycle()
+		}
+		time.Sleep(time.Duration(sleepTime) * time.Second)
+	}
+
+	status := backend.UP
+	if err != nil || sleepTime >= namespace.downAfterNoAlive {
+		status = backend.DOWN
+	}
+
+	return status, conn
+}
+
+type SlaveStatus struct {
+	SecondsBehindMaster uint64
+	SlaveIORunning      string
+	SlaveSQLRunning     string
+	MasterLogFile       string
+	ReadMasterLogPos    uint64
+	RelayMasterLogFile  string
+	ExecMasterLogPos    uint64
+}
+
+func GetSlaveStatus(conn backend.PooledConnect) (SlaveStatus, error) {
+	var slaveStatus SlaveStatus
+	res, err := conn.Execute("show slave status;", 0)
+	if err != nil {
+		return slaveStatus, err
+	}
+
+	for _, f := range res.Fields {
+		fieldName := string(f.Name)
+		var col interface{}
+		col, err = res.GetValueByName(0, fieldName)
+		if err != nil {
+			_ = log.Warn("get field name Get '%s' failed in SlaveStatus, err: %v", fieldName, err)
+			break
+		}
+
+		switch strings.ToLower(fieldName) {
+		case "seconds_behind_master":
+			switch col.(type) {
+			case uint64:
+				slaveStatus.SecondsBehindMaster = col.(uint64)
+			default:
+				slaveStatus.SecondsBehindMaster = 0
+			}
+		case "slave_io_running":
+			switch col.(type) {
+			case string:
+				slaveStatus.SlaveIORunning = col.(string)
+			default:
+				slaveStatus.SlaveIORunning = "No"
+			}
+		case "slave_sql_running":
+			switch col.(type) {
+			case string:
+				slaveStatus.SlaveSQLRunning = col.(string)
+			default:
+				slaveStatus.SlaveSQLRunning = "No"
+			}
+		case "master_log_file":
+			switch col.(type) {
+			case string:
+				slaveStatus.MasterLogFile = col.(string)
+			default:
+				slaveStatus.MasterLogFile = ""
+			}
+		case "read_master_log_pos":
+			switch col.(type) {
+			case uint64:
+				slaveStatus.ReadMasterLogPos = col.(uint64)
+			default:
+				slaveStatus.ReadMasterLogPos = 0
+			}
+		case "relay_master_log_file":
+			switch col.(type) {
+			case string:
+				slaveStatus.RelayMasterLogFile = col.(string)
+			default:
+				slaveStatus.RelayMasterLogFile = ""
+			}
+		case "exec_master_log_pos":
+			switch col.(type) {
+			case uint64:
+				slaveStatus.ExecMasterLogPos = col.(uint64)
+			default:
+				slaveStatus.ExecMasterLogPos = 0
+			}
+		default:
+			continue
+		}
+	}
+	return slaveStatus, err
 }
 
 func parseAllowIps(allowedIP []string) ([]util.IPInfo, error) {

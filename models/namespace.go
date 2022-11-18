@@ -48,6 +48,8 @@ type Namespace struct {
 	MaxSqlExecuteTime    int               `json:"max_sql_execute_time"`   // sql最大执行时间，大于该时间，进行熔断
 	MaxSqlResultSize     int               `json:"max_sql_result_size"`    // 限制单分片返回结果集大小不超过max_select_rows
 	MaxClientConnections int               `json:"max_client_connections"` // namespace中最大的前端连接数
+	DownAfterNoAlive     int               `json:"down_after_no_alive"`    // 如果探测MySQL服务offline超过该时间后标记mysql为下线
+	SecondsBehindMaster  uint64            `json:"seconds_behind_master"`  // slave延迟超过该值将slave标记为down, 默认值为0，即无限大
 }
 
 // Encode encode json
