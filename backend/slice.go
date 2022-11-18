@@ -30,6 +30,7 @@ package backend
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -48,14 +49,23 @@ const (
 	DefaultSlice = "slice-0"
 )
 
-type SlaveStatusCode uint32
+type StatusCode uint32
 
 const (
-	OK   SlaveStatusCode = 1
-	DOWN SlaveStatusCode = 2
+	UP   StatusCode = 0
+	DOWN StatusCode = 1
 )
 
-type SlavesInfo struct {
+func (s *StatusCode) String() string {
+	r := "UP"
+	if *s == DOWN {
+		r = "DOWN"
+	}
+
+	return fmt.Sprintf(r)
+}
+
+type DBInfo struct {
 	ConnPool  []ConnectionPool
 	Balancer  *balancer
 	StatusMap sync.Map
@@ -66,10 +76,9 @@ type Slice struct {
 	Cfg models.Slice
 	sync.RWMutex
 
-	Master ConnectionPool
-
-	Slave          *SlavesInfo
-	StatisticSlave *SlavesInfo
+	Master         *DBInfo
+	Slave          *DBInfo
+	StatisticSlave *DBInfo
 
 	charset     string
 	collationID mysql.CollationID
@@ -111,14 +120,18 @@ func (s *Slice) GetDirectConn(addr string) (*DirectConnection, error) {
 
 // GetMasterConn return a connection in master pool
 func (s *Slice) GetMasterConn() (PooledConnect, error) {
+	if v, _ := s.Master.StatusMap.Load(0); v != UP {
+		return nil, fmt.Errorf("master:%s is Down", s.Cfg.Master)
+	}
+
 	ctx := context.TODO()
-	return s.Master.Get(ctx)
+	return s.Master.ConnPool[0].Get(ctx)
 }
 
 func allSlaveIsOffline(SlaveStatusMap *sync.Map) bool {
 	var result = true
 	SlaveStatusMap.Range(func(k, v interface{}) bool {
-		if v == OK {
+		if v == UP {
 			result = false
 			return false
 		}
@@ -129,7 +142,7 @@ func allSlaveIsOffline(SlaveStatusMap *sync.Map) bool {
 }
 
 // GetSlaveConn get connection from salve
-func (s *Slice) GetSlaveConn(slavesInfo *SlavesInfo) (PooledConnect, error) {
+func (s *Slice) GetSlaveConn(slavesInfo *DBInfo) (PooledConnect, error) {
 	if len(slavesInfo.ConnPool) == 0 || allSlaveIsOffline(&slavesInfo.StatusMap) {
 		return nil, errors.ErrNoSlaveDB
 	}
@@ -145,7 +158,7 @@ func (s *Slice) GetSlaveConn(slavesInfo *SlavesInfo) (PooledConnect, error) {
 		}
 
 		//We ingore the error, int fact error will never nil
-		if value, _ := slavesInfo.StatusMap.Load(index); value == OK {
+		if value, _ := slavesInfo.StatusMap.Load(index); value == UP {
 			break
 		}
 	}
@@ -159,7 +172,9 @@ func (s *Slice) Close() error {
 	s.Lock()
 	defer s.Unlock()
 	// close master
-	s.Master.Close()
+	for i := range s.Master.ConnPool {
+		s.Master.ConnPool[i].Close()
+	}
 
 	// close slaves
 	for i := range s.Slave.ConnPool {
@@ -183,15 +198,21 @@ func (s *Slice) ParseMaster(masterStr string) error {
 	if err != nil {
 		return err
 	}
-	s.Master = NewConnectionPool(masterStr, s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability, s.Cfg.InitConnect)
-	return s.Master.Open()
+
+	connectionPool := NewConnectionPool(masterStr, s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability, s.Cfg.InitConnect)
+	connectionPool.Open()
+	status := sync.Map{}
+	status.Store(0, UP)
+
+	s.Master = &DBInfo{[]ConnectionPool{connectionPool}, nil, status}
+	return nil
 }
 
 // ParseSlave create connection pool of slaves
 // (127.0.0.1:3306@2,192.168.0.12:3306@3)
-func (s *Slice) ParseSlave(slaves []string) (*SlavesInfo, error) {
+func (s *Slice) ParseSlave(slaves []string) (*DBInfo, error) {
 	if len(slaves) == 0 {
-		return &SlavesInfo{}, nil
+		return &DBInfo{}, nil
 	}
 
 	var err error
@@ -227,10 +248,10 @@ func (s *Slice) ParseSlave(slaves []string) (*SlavesInfo, error) {
 	slaveBalancer := newBalancer(slaveWeights, len(connPool))
 	StatusMap := sync.Map{}
 	for idx := range connPool {
-		StatusMap.Store(idx, OK)
+		StatusMap.Store(idx, UP)
 	}
 
-	return &SlavesInfo{connPool, slaveBalancer, StatusMap}, nil
+	return &DBInfo{connPool, slaveBalancer, StatusMap}, nil
 }
 
 // SetCharsetInfo set charset

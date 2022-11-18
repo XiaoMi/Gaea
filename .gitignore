@@ -8,3 +8,6 @@ logs
 tests/e2e/cmd/logs
 tests/e2e/cmd/gaea
 .DS_Store
+.integrate_coverage.func
+.integrate_coverage.html
+.integrate_coverage.out

@@ -68,24 +68,26 @@ server_version=5.6.20-gaea
 
 namespace的配置格式为json，包含分表、非分表、实例等配置信息，都可在运行时改变。namespace的配置可以直接通过web平台进行操作，使用方不需要关心json里的内容，如果有兴趣参与到gaea的开发中，可以关注下字段含义，具体解释如下,格式为字段名称、类型、内容含义。
 
-| 字段名称         | 字段类型   | 字段含义                                           |
-| --------------- | ---------- | ----------------------------------------------- |
-| name            | string     | namespace名称                                    |
-| online          | bool       | 是否在线，逻辑上下线使用                            |
-| read_only       | bool       | 是否只读，namespace级别                            |
-| allowed_dbs     | map        | 数据库集合                                        |
-| default_phy_dbs | map        | 默认数据库名, 与allowed_dbs一一对应                 |
-| slow_sql_time   | string     | 慢sql时间，单位ms                                 |
-| black_sql       | string数组 | 黑名单sql                                         |
-| allowed_ip      | string数组 | 白名单IP                                          |
-| slices          | map数组    | 一主多从的物理实例，slice里map的具体字段可参照slice配置 |
-| shard_rules     | map数组    | 分库、分表、特殊表的配置内容，具体字段可参照shard配置    |
-| users           | map数组    | 应用端连接gaea所需要的用户配置，具体字段可参照users配置 |
-| global_sequences| map       | 生成全局唯一序列号的配置, 具体字段可参考全局序列号配置    |
-| default_slice   | string    | show语句默认的执行分片                              |
-| open_general_log   | bool    | 是否开启审计日志, [如何开启](https://github.com/XiaoMi/Gaea/issues/109)|                              |
-| max_sql_execute_time  | int | 应用端查询最大执行时间, 超时后会被自动kill, 为0默认不开启此功能 |
-| max_sql_result_size   | int | gaea从后端mysql接收结果集的最大值, 限制单分片查询行数, 默认值10000, -1表示不开启|
+| 字段名称                 | 字段类型   | 字段含义 |
+|----------------------| ---------- | -- |
+| name                 | string     | namespace名称 |
+| online               | bool       | 是否在线，逻辑上下线使用 |
+| read_only            | bool       | 是否只读，namespace级别 |
+| allowed_dbs          | map        | 数据库集合 |
+| default_phy_dbs      | map        | 默认数据库名, 与allowed_dbs一一对应 |
+| slow_sql_time        | string     | 慢sql时间，单位ms |
+| black_sql            | string数组 | 黑名单sql |
+| allowed_ip           | string数组 | 白名单IP |
+| slices               | map数组    | 一主多从的物理实例，slice里map的具体字段可参照slice配置 |
+| shard_rules          | map数组    | 分库、分表、特殊表的配置内容，具体字段可参照shard配置 |
+| users                | map数组    | 应用端连接gaea所需要的用户配置，具体字段可参照users配置 |
+| global_sequences     | map       | 生成全局唯一序列号的配置, 具体字段可参考全局序列号配置 |
+| default_slice        | string    | show语句默认的执行分片 |
+| open_general_log     | bool    | 是否开启审计日志, [如何开启](https://github.com/XiaoMi/Gaea/issues/109)|                              |
+| max_sql_execute_time | int | 应用端查询最大执行时间, 超时后会被自动kill, 为0默认不开启此功能 |
+| max_sql_result_size  | int | gaea从后端mysql接收结果集的最大值, 限制单分片查询行数, 默认值10000, -1表示不开启|
+| down_after_no_alive  | int | 探测MySQL服务offline超过该时间后标记mysql为下线|
+| seconds_behind_master| uint64 | MySQL slave延迟超过该值将slave标记为down, 默认值为0，即无限大
 
 ### slice配置
 
