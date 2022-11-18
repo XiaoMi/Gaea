@@ -16,15 +16,15 @@ package server
 
 import (
 	"fmt"
+	"github.com/XiaoMi/Gaea/log"
+	"github.com/XiaoMi/Gaea/mysql"
+	"github.com/XiaoMi/Gaea/util"
+	uber_atomic "go.uber.org/atomic"
 	"net"
 	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
-
-	"github.com/XiaoMi/Gaea/log"
-	"github.com/XiaoMi/Gaea/mysql"
-	"github.com/XiaoMi/Gaea/util"
 )
 
 // DefaultCapability means default capability
@@ -85,6 +85,23 @@ func newSession(s *Server, co net.Conn) *Session {
 
 func (cc *Session) getNamespace() *Namespace {
 	return cc.manager.GetNamespace(cc.namespace)
+}
+
+func (cc *Session) clientConnectionReachLimit() (bool, int) {
+	var current interface{}
+	var ok bool
+
+	//can't find means this is the first connection
+	if current, ok = cc.manager.statistics.clientConnecions.Load(cc.namespace); !ok {
+		return false, 0
+	}
+
+	var v = int(current.(*uber_atomic.Int32).Load())
+	if v >= cc.getNamespace().maxClientConnections {
+		return true, v
+	}
+
+	return false, v
 }
 
 // IsAllowConnect check if allow to connect
@@ -237,9 +254,11 @@ func (cc *Session) Run() {
 		cc.Close()
 		cc.proxy.tw.Remove(cc)
 		cc.manager.GetStatisticManager().DescSessionCount(cc.namespace)
+		cc.manager.GetStatisticManager().DescConnectionCount(cc.namespace)
 	}()
 
 	cc.manager.GetStatisticManager().IncrSessionCount(cc.namespace)
+	cc.manager.GetStatisticManager().IncrConnectionCount(cc.namespace)
 
 	for !cc.IsClosed() {
 		cc.c.SetSequence(0)

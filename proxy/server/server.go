@@ -145,6 +145,14 @@ func (s *Server) onConn(c net.Conn) {
 		return
 	}
 
+	// check connection has reach the limit, must invote after handshake like ip white list
+	if reachLimit, connectionNum := cc.clientConnectionReachLimit(); reachLimit {
+		err := mysql.NewError(mysql.ErrAccessDenied, fmt.Sprintf("Too many connections, current: %d, max: %d",
+			connectionNum, cc.getNamespace().maxClientConnections))
+		cc.c.writeErrorPacket(err)
+		return
+	}
+
 	// added into time wheel
 	s.tw.Add(s.sessionTimeout, cc, cc.Close)
 	_ = s.manager.statistics.generalLogger.Notice("Connected conn_id=%d, %s@%s (%s) namespace:%s capability: %d",
