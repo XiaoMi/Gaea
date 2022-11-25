@@ -143,7 +143,7 @@ func initConnection(capacity int, resourceWrappers []resourceWrapper, rp *Resour
 		wg.Add(capacity)
 		for i := 0; i < capacity; i++ {
 			go func(idx int) {
-				defer func() { wg.Done() }()
+				defer wg.Done()
 				if resourceWrappers[idx].resource, err = rp.factory(); err != nil {
 					_ = log.Fatal("can't get resource: %s", err)
 					return
