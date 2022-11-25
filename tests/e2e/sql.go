@@ -20,7 +20,9 @@ var _ = ginkgo.Describe("sql", func() {
 	ginkgo.BeforeEach(func() {
 		cfg = config.TestConfig
 		gDB, err = util.Open(cfg.GaeaHost, cfg.GaeaPort, cfg.GaeaUser, cfg.GaeaPassword, 10, 3)
+		gomega.Expect(err).Should(gomega.BeNil())
 		mDB, err = util.Open(cfg.MasterHost, cfg.MasterPort, cfg.MasterUser, cfg.MasterPassword, 10, 3)
+		gomega.Expect(err).Should(gomega.BeNil())
 		sDB, err = util.Open(cfg.SlaveHost, cfg.SlavePort, cfg.SlaveUser, cfg.SlavePassword, 10, 3)
 		gomega.Expect(err).Should(gomega.BeNil())
 		// init DB
@@ -42,6 +44,7 @@ var _ = ginkgo.Describe("sql", func() {
 		sTx, err := sDB.Begin()
 		gomega.Expect(err).Should(gomega.BeNil())
 		_, err = sTx.Exec(fmt.Sprintf(`insert into %s.%s values(3,'d')`, cfg.Database, cfg.Tables[0]))
+		gomega.Expect(err).Should(gomega.BeNil())
 		err = sTx.Commit()
 		gomega.Expect(err).Should(gomega.BeNil())
 	})
