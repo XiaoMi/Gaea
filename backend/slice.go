@@ -200,7 +200,10 @@ func (s *Slice) ParseMaster(masterStr string) error {
 	}
 
 	connectionPool := NewConnectionPool(masterStr, s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability, s.Cfg.InitConnect)
-	connectionPool.Open()
+	if err := connectionPool.Open(); err != nil {
+		return err
+	}
+
 	status := sync.Map{}
 	status.Store(0, UP)
 
