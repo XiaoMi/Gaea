@@ -227,6 +227,9 @@ func (s *Slice) ParseSlave(slaves []string) (*DBInfo, error) {
 
 	//parse addr and weight
 	for i := 0; i < count; i++ {
+		if slaves[i] == "" {
+			continue
+		}
 		addrAndWeight := strings.Split(slaves[i], weightSplit)
 		if len(addrAndWeight) == 2 {
 			weight, err = strconv.Atoi(addrAndWeight[1])
@@ -248,6 +251,9 @@ func (s *Slice) ParseSlave(slaves []string) (*DBInfo, error) {
 		connPool = append(connPool, cp)
 	}
 
+	if len(slaveWeights) == 0 {
+		return &DBInfo{}, nil
+	}
 	slaveBalancer := newBalancer(slaveWeights, len(connPool))
 	StatusMap := sync.Map{}
 	for idx := range connPool {
