@@ -30,6 +30,8 @@ log_path=./logs
 log_level=Notice
 log_filename=gaea
 log_output=file
+; 日志保留天数，默认为3天（所有日志）
+log_keep_days=3
 
 ;管理地址
 admin_addr=0.0.0.0:13307

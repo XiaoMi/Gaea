@@ -43,7 +43,7 @@ type XFileLog struct {
 const (
 	XFileLogDefaultLogID = "900000001"
 	SpliterDelay         = 5
-	CleanDays            = -3
+	DefaultLogKeepDays   = 3
 )
 
 // NewXFileLog is the constructor of XFileLog
@@ -110,8 +110,14 @@ func (p *XFileLog) Init(config map[string]string) (err error) {
 
 	hostname, _ := os.Hostname()
 	p.hostname = hostname
+
+	logKeepDays := DefaultLogKeepDays
+	if days, err := strconv.Atoi(config["log_keep_days"]); err == nil && days != 0 {
+		logKeepDays = days
+	}
+
 	body := func() {
-		go p.spliter()
+		go p.spliter(logKeepDays)
 	}
 	doSplit, ok := config["dosplit"]
 	if !ok {
@@ -124,14 +130,14 @@ func (p *XFileLog) Init(config map[string]string) (err error) {
 }
 
 // split the log file
-func (p *XFileLog) spliter() {
+func (p *XFileLog) spliter(keepDays int) {
 	preHour := time.Now().Hour()
 	splitTime := time.Now().Format("2006010215")
 	defer p.Close()
 	for {
 		time.Sleep(time.Second * SpliterDelay)
 		if time.Now().Hour() != preHour {
-			p.clean()
+			p.clean(keepDays)
 			p.rename(splitTime)
 			preHour = time.Now().Hour()
 			splitTime = time.Now().Format("2006010215")
@@ -170,8 +176,8 @@ func delayClose(fp *os.File) {
 	fp.Close()
 }
 
-func (p *XFileLog) clean() (err error) {
-	deadline := time.Now().AddDate(0, 0, CleanDays)
+func (p *XFileLog) clean(keepDays int) (err error) {
+	deadline := time.Now().AddDate(0, 0, -1*keepDays)
 	var files []string
 	files, err = filepath.Glob(fmt.Sprintf("%s/%s.log*", p.path, p.filename))
 	if err != nil {

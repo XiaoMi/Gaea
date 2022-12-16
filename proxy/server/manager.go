@@ -38,6 +38,10 @@ import (
 	"github.com/XiaoMi/Gaea/util/sync2"
 )
 
+const (
+	DefaultLogKeepDays = 3
+)
+
 // LoadAndCreateManager load namespace config, and create manager
 func LoadAndCreateManager(cfg *models.Proxy) (*Manager, error) {
 	namespaceConfigs, err := loadAllNamespace(cfg)
@@ -694,6 +698,12 @@ func initGeneralLogger(cfg *models.Proxy) (log.Logger, error) {
 	c["level"] = cfg.LogLevel
 	c["service"] = cfg.Service
 	c["runtime"] = "false"
+
+	c["log_keep_days"] = strconv.Itoa(DefaultLogKeepDays)
+	if cfg.LogKeepDays != 0 {
+		c["log_keep_days"] = strconv.Itoa(cfg.LogKeepDays)
+	}
+
 	return xlog.CreateLogManager(cfg.LogOutput, c)
 }
 

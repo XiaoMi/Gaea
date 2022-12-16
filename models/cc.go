@@ -40,6 +40,7 @@ type CCConfig struct {
 	LogLevel    string `ini:"log_level"`
 	LogFileName string `ini:"log_filename"`
 	LogOutput   string `ini:"log_output"`
+	LogKeepDays int    `ini:"log_keep_days"`
 
 	EncryptKey string `ini:"encrypt_key"`
 }

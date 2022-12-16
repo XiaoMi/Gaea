@@ -50,6 +50,7 @@ type Proxy struct {
 	LogLevel    string `ini:"log_level"`
 	LogFileName string `ini:"log_filename"`
 	LogOutput   string `ini:"log_output"`
+	LogKeepDays int    `ini:"log_keep_days"`
 
 	ProtoType      string `ini:"proto_type"`
 	ProxyAddr      string `ini:"proxy_addr"`

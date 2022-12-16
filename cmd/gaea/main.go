@@ -17,20 +17,24 @@ package main
 import (
 	"flag"
 	"fmt"
-	"os"
-	"os/signal"
-	"sync"
-	"syscall"
-
 	"github.com/XiaoMi/Gaea/core"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/log/xlog"
 	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/proxy/server"
+	"os"
+	"os/signal"
+	"strconv"
+	"sync"
+	"syscall"
 )
 
 var configFile = flag.String("config", "etc/gaea.ini", "gaea config file")
 var info = flag.Bool("info", false, "show info of gaea")
+
+const (
+	DefaultLogKeepDays = 3
+)
 
 func main() {
 	flag.Parse()
@@ -53,7 +57,7 @@ func main() {
 		return
 	}
 
-	if err = initXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service); err != nil {
+	if err = initXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service, cfg.LogKeepDays); err != nil {
 		fmt.Printf("init xlog error: %v\n", err.Error())
 		return
 	}
@@ -103,13 +107,17 @@ func main() {
 	wg.Wait()
 }
 
-func initXLog(output, path, filename, level, service string) error {
+func initXLog(output, path, filename, level, service string, logKeepDays int) error {
 	cfg := make(map[string]string)
 	cfg["path"] = path
 	cfg["filename"] = filename
 	cfg["level"] = level
 	cfg["service"] = service
 	cfg["skip"] = "5" // 设置xlog打印方法堆栈需要跳过的层数, 5目前为调用log.Debug()等方法的方法名, 比xlog默认值多一层.
+	cfg["log_keep_days"] = strconv.Itoa(DefaultLogKeepDays)
+	if logKeepDays != 0 {
+		cfg["log_keep_days"] = strconv.Itoa(logKeepDays)
+	}
 
 	logger, err := xlog.CreateLogManager(output, cfg)
 	if err != nil {
