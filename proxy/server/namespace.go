@@ -86,6 +86,7 @@ type Namespace struct {
 	planCache            *cache.LRUCache
 
 	maxClientConnections int
+	CheckSelectLock      bool
 }
 
 // DumpToJSON  means easy encode json
@@ -219,6 +220,7 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 	}
 
 	namespace.secondsBehindMaster = namespaceConfig.SecondsBehindMaster
+	namespace.CheckSelectLock = namespaceConfig.CheckSelectLock
 
 	return namespace, nil
 }
