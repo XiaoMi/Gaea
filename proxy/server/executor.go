@@ -627,6 +627,23 @@ func canExecuteFromSlave(c *SessionExecutor, sql string, stmt ast.StmtNode, comm
 		return false
 	}
 
+	// let sql `select ... for update` or `select ... in share mode` to master
+	if c.GetNamespace().CheckSelectLock {
+		tokens := strings.FieldsFunc(sql, func(r rune) bool {
+			return r == ' ' || r == ',' ||
+				r == '\t' || r == '/' ||
+				r == '\n' || r == '\r'
+		})
+		tokensLen := len(tokens)
+
+		if strings.ToLower(tokens[tokensLen-1]) == "update" && strings.ToLower(tokens[tokensLen-2]) == "for" {
+			return false
+		}
+		if strings.ToLower(tokens[tokensLen-1]) == "mode" && strings.ToLower(tokens[tokensLen-2]) == "share" {
+			return false
+		}
+	}
+
 	//use SQL parser
 	selectNode := stmt.(*ast.SelectStmt)
 	if selectNode.TableHints != nil {

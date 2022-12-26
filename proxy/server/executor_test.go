@@ -17,6 +17,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -66,6 +67,31 @@ func TestGetVariableExprResult(t *testing.T) {
 func (se *SessionExecutor) forTest(sql string, ctx *util.RequestContext) error {
 	_, err := se.doQuery(ctx, sql)
 	return err
+}
+
+// Test for CheckSelectLock
+func TestTokensSplit(t *testing.T) {
+	type testCase struct {
+		sql             string
+		expectedTrimmed []string
+	}
+
+	testCases := []testCase{
+		{"select id,name from t1", []string{"select", "id", "name", "from", "t1"}},
+		{"select id,name from t1\n", []string{"select", "id", "name", "from", "t1"}},
+		{"select id,name from t1\r", []string{"select", "id", "name", "from", "t1"}},
+		{"select \t id,name \nfrom t1", []string{"select", "id", "name", "from", "t1"}},
+		{"select / id,name from t1", []string{"select", "id", "name", "from", "t1"}},
+	}
+
+	for _, test := range testCases {
+		res := strings.FieldsFunc(test.sql, func(r rune) bool {
+			return r == ' ' || r == ',' ||
+				r == '\t' || r == '/' ||
+				r == '\n' || r == '\r'
+		})
+		assert.Equal(t, res, test.expectedTrimmed)
+	}
 }
 
 func TestExecute(t *testing.T) {

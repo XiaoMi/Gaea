@@ -90,6 +90,7 @@ namespace的配置格式为json，包含分表、非分表、实例等配置信�
 | max_sql_result_size  | int | gaea从后端mysql接收结果集的最大值, 限制单分片查询行数, 默认值10000, -1表示不开启|
 | down_after_no_alive  | int | 探测MySQL服务offline超过该时间后标记mysql为下线|
 | seconds_behind_master| uint64 | MySQL slave延迟超过该值将slave标记为down, 默认值为0，即无限大
+| check_select_lock | bool | 是否检查 `select ... for update` or `select ... in share mode` 语句，当设置为true时，会优先将语句发给主库（需要配置的权限支持）。 默认值为false，则默认不检查该语句。
 
 ### slice配置
 
