@@ -19,6 +19,14 @@ stages:
   - build
   - integrate_tests
   - e2e-test
+  - pre-release
+  - release
+
+.fusion-cli: &fusion-cli
+  image:
+    name: cr.d.xiaomi.net/container/xiaomi_alpine_fusion_cli
+  before_script:
+    - fusion-cli config --access-key ${CD_AK} --secret-key ${CD_SK}
 
 code_check:
   stage: check
@@ -38,7 +46,6 @@ build_branch:
   stage: build
   script:
     - make
-
 
 integrate_tests:
   stage: integrate_tests
@@ -61,3 +68,21 @@ e2e_test:
     - cp bin/gaea tests/e2e/cmd/
     - go install github.com/onsi/ginkgo/v2/ginkgo@v2.3.1
     - ginkgo --v --progress --trace --flake-attempts=1 ./tests/e2e/
+
+upload_fds:
+  stage: pre-release
+  <<: *fusion-cli
+  script:
+    - DAY=`date +%Y-%m-%d`
+    - fusion-cli fds --endpoint ${CD_FDS_ENDPOINT} copy bin/gaea fds://${CD_FDS_BUCKET}/${DAY}/gaea
+    - fusion-cli fds --endpoint ${CD_FDS_ENDPOINT} copy bin/gaea-cc fds://${CD_FDS_BUCKET}/${DAY}/gaea-cc
+
+release:
+  stage: release
+  <<: *fusion-cli
+  only:
+    - tags
+  script:
+    - fusion-cli fds --endpoint ${CD_FDS_ENDPOINT} copy bin/gaea fds://${CD_FDS_BUCKET}/${CI_COMMIT_TAG}/gaea
+    - fusion-cli fds --endpoint ${CD_FDS_ENDPOINT} copy bin/gaea-cc fds://${CD_FDS_BUCKET}/${CI_COMMIT_TAG}/gaea-cc
+
