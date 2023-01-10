@@ -71,6 +71,8 @@ e2e_test:
 
 upload_fds:
   stage: pre-release
+  only:
+    - staging
   <<: *fusion-cli
   script:
     - DAY=`date +%Y-%m-%d`
