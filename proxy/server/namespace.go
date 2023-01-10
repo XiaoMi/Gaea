@@ -619,10 +619,9 @@ func doCheckSlice(slice *backend.Slice, namespace *Namespace, ctx context.Contex
 
 					slaveInfo.StatusMap.Store(idx, status)
 
-					logValue := fmt.Sprintf("nameapce: %s, slice: %s, %s, IP:PORT:[%s] is find %s by auto check...,take = %d Milliseconds",
+					logValue := fmt.Sprintf("namespace: %s, slice: %s, IP:PORT:[%s] is find %s by auto check..., take = %d ms",
 						namespace.name,
 						slice.Cfg.Name,
-						role,
 						v.Addr(),
 						status.String(),
 						time.Since(now).Milliseconds())

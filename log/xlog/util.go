@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -109,8 +110,13 @@ func formatLineInfo(runtime bool, functionName, filename, logText string, lineno
 	var buffer bytes.Buffer
 	if runtime {
 		buffer.WriteString("[")
+		if strings.HasPrefix(functionName, "github") {
+			functionName = strings.TrimLeft(functionName, "github.com/XiaoMi/")
+		}
+		reg, _ := regexp.Compile("\\..*$")
+		functionName = reg.ReplaceAllString(functionName, "")
 		buffer.WriteString(functionName)
-		buffer.WriteString(":")
+		buffer.WriteString("/")
 
 		buffer.WriteString(filename)
 		buffer.WriteString(":")

@@ -82,7 +82,7 @@ func (p *XFileLog) Init(config map[string]string) (err error) {
 	}
 
 	runtime, ok := config["runtime"]
-	if !ok || runtime == "true" || runtime == "TRUE" {
+	if (!ok || runtime == "true" || runtime == "TRUE") && LevelFromStr(config["level"]) == DebugLevel {
 		p.runtime = true
 	} else {
 		p.runtime = false
@@ -403,9 +403,9 @@ func (p *XFileLog) GetHost() string {
 
 func (p *XFileLog) write(level int, msg *string, logID string) error {
 	levelText := levelTextArray[level]
-	time := time.Now().Format("2006-01-02 15:04:05")
+	time := time.Now().Format("2006-01-02 15:04:05.000")
 
-	logText := formatLog(msg, time, p.service, p.hostname, levelText, logID)
+	logText := formatLog(msg, time, levelText, logID)
 	file := p.file
 	if level >= WarnLevel {
 		file = p.errFile
