@@ -275,12 +275,7 @@ func (cc *ClientConn) writeEOFPacket(status uint16) error {
 }
 
 func (cc *ClientConn) writeErrorPacket(err error) error {
-	e := cc.WriteErrorPacketFromError(err)
-	if e != nil {
-		log.Warn("write error packet failed, %v", err)
-		return e
-	}
-	return nil
+	return cc.WriteErrorPacketFromError(err)
 }
 
 func (cc *ClientConn) writeColumnCount(count uint64) error {
