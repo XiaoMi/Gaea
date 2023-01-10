@@ -628,7 +628,7 @@ func doCheckSlice(slice *backend.Slice, namespace *Namespace, ctx context.Contex
 					if status == backend.DOWN {
 						_ = log.Warn(logValue)
 					} else {
-						_ = log.Notice(logValue)
+						_ = log.Debug(logValue)
 					}
 
 				}
