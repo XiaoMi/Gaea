@@ -1,5 +1,27 @@
 # Gaea Changelog
 
+## Gaea 2.0-Beta Release Notes
+
+### 新功能
+
+- 支持配置日志保留天数，默认保留 3 天
+- 支持将 `select ... for update` or `select ... in share mode` 语句优先发给主库
+
+### Bug修复
+
+- 修复了 Alpha 版本测试发现的旧版兼容性问题，如配置后端实例为空字符串（默认为空数组）
+
+### 优化提升
+
+- 优化了日志展示，去除了冗余字段及冗余日志
+- 新增二进制文件自动更新，用户可以自行拉取新版本。具体使用见用户文档
+- 新增监控项，用于 Gaea 中间件存活状态及后端实例存活告警
+
+### 其他说明
+
+- 本次新增了部署、迁移、用户等文档，便于后续使用。详见：https://xiaomi.f.mioffice.cn/wiki/wikk4RF3oZ2XMT5hOJm8ISb7Jqh
+
+
 ## Gaea 2.0-Alpha Release Notes
 
 ### 新功能
