@@ -133,8 +133,6 @@ func (cc *Session) Handshake() (*HandshakeResponseInfo, error) {
 			return nil, err
 		}
 
-		log.Warn("[server] Session writeInitialHandshake error, connId: %d, ip: %s, msg: %s, error: %s",
-			cc.c.GetConnectionID(), clientHost, " send initial handshake error", err.Error())
 		return nil, err
 	}
 
