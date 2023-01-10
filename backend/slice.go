@@ -52,8 +52,8 @@ const (
 type StatusCode uint32
 
 const (
-	UP   StatusCode = 0
-	DOWN StatusCode = 1
+	UP   StatusCode = 1
+	DOWN StatusCode = 0
 )
 
 func (s *StatusCode) String() string {

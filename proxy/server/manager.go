@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
+	"github.com/XiaoMi/Gaea/backend"
 	"go.uber.org/atomic"
 	"net/http"
 	"sort"
@@ -40,6 +41,8 @@ import (
 
 const (
 	DefaultLogKeepDays = 3
+	MasterRole         = "master"
+	SlaveRole          = "slave"
 )
 
 // LoadAndCreateManager load namespace config, and create manager
@@ -394,6 +397,7 @@ func (m *Manager) startConnectPoolMetricsTask(interval int) {
 			case <-m.GetStatisticManager().closeChan:
 				return
 			case <-t.C:
+				m.statistics.AddUptimeCount(time.Now().Unix() - m.statistics.startTime)
 				current, _, _ := m.switchIndex.Get()
 				for nameSpaceName, _ := range m.namespaces[current].namespaces {
 					m.recordBackendConnectPoolMetrics(nameSpaceName)
@@ -411,18 +415,22 @@ func (m *Manager) recordBackendConnectPoolMetrics(namespace string) {
 	}
 
 	for sliceName, slice := range ns.slices {
+		m.statistics.recordInstanceCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), getStatusMap(slice.Master.StatusMap, 0), MasterRole)
 		m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].InUse())
 		m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].Available())
 		m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].WaitCount())
-		for _, slave := range slice.Slave.ConnPool {
+
+		for i, slave := range slice.Slave.ConnPool {
 			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slave.Addr(), slave.InUse())
 			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slave.Addr(), slave.Available())
 			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slave.Addr(), slave.WaitCount())
+			m.statistics.recordInstanceCount(namespace, sliceName, slave.Addr(), getStatusMap(slice.Slave.StatusMap, i), SlaveRole)
 		}
-		for _, statisticSlave := range slice.StatisticSlave.ConnPool {
+		for i, statisticSlave := range slice.StatisticSlave.ConnPool {
 			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.InUse())
 			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.Available())
 			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.WaitCount())
+			m.statistics.recordInstanceCount(namespace, sliceName, statisticSlave.Addr(), getStatusMap(slice.Slave.StatusMap, i), SlaveRole)
 		}
 	}
 }
@@ -633,12 +641,14 @@ const (
 	statsLabelFlowDirection = "Flowdirection"
 	statsLabelSlice         = "Slice"
 	statsLabelIPAddr        = "IPAddr"
+	statsLabelRole          = "role"
 )
 
 // StatisticManager statistics manager
 type StatisticManager struct {
 	manager     *Manager
 	clusterName string
+	startTime   int64
 
 	statsType     string // 监控后端类型
 	handlers      map[string]http.Handler
@@ -660,6 +670,8 @@ type StatisticManager struct {
 	backendConnectPoolIdleCounts     *stats.GaugesWithMultiLabels   //后端空闲连接数统计
 	backendConnectPoolInUseCounts    *stats.GaugesWithMultiLabels   //后端正在使用连接数统计
 	backendConnectPoolWaitCounts     *stats.GaugesWithMultiLabels   //后端等待队列统计
+	backendInstanceCounts            *stats.GaugesWithMultiLabels   //后端实例状态统计
+	uptimeCounts                     *stats.GaugesWithMultiLabels   // 启动时间记录
 
 	slowSQLTime int64
 	closeChan   chan bool
@@ -722,6 +734,7 @@ func parseProxyStatsConfig(cfg *models.Proxy) (*proxyStatsConfig, error) {
 
 // Init init StatisticManager
 func (s *StatisticManager) Init(cfg *models.Proxy) error {
+	s.startTime = time.Now().Unix()
 	s.closeChan = make(chan bool, 0)
 	s.handlers = make(map[string]http.Handler)
 	s.slowSQLTime = cfg.SlowSQLTime
@@ -763,6 +776,10 @@ func (s *StatisticManager) Init(cfg *models.Proxy) error {
 		"gaea proxy backend in-use connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
 	s.backendConnectPoolWaitCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolWaitCounts",
 		"gaea proxy backend wait connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
+	s.backendInstanceCounts = stats.NewGaugesWithMultiLabels("backendInstanceCounts",
+		"gaea proxy backend DB status counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr, statsLabelRole})
+	s.uptimeCounts = stats.NewGaugesWithMultiLabels("UptimeCounts",
+		"gaea proxy uptime counts", []string{statsLabelCluster})
 	s.clientConnecions = sync.Map{}
 	s.startClearTask()
 	return nil
@@ -913,4 +930,26 @@ func (s *StatisticManager) recordConnectPoolInuseCount(namespace string, slice s
 func (s *StatisticManager) recordConnectPoolWaitCount(namespace string, slice string, addr string, count int64) {
 	statsKey := []string{s.clusterName, namespace, slice, addr}
 	s.backendConnectPoolWaitCounts.Set(statsKey, count)
+}
+
+//record wait queue length
+func (s *StatisticManager) recordInstanceCount(namespace string, slice string, addr string, count int64, role string) {
+	statsKey := []string{s.clusterName, namespace, slice, addr, role}
+	s.backendInstanceCounts.Set(statsKey, count)
+}
+
+// AddUptimeCount add uptime count
+func (s *StatisticManager) AddUptimeCount(count int64) {
+	statsKey := []string{s.clusterName}
+	s.uptimeCounts.Set(statsKey, count)
+}
+
+// getStatusMap get status from DBinfo.statusMap
+func getStatusMap(statusMap sync.Map, index int) int64 {
+	if v, ok := statusMap.Load(index); !ok {
+		return 0
+	} else if v != backend.UP {
+		return 0
+	}
+	return 1
 }
