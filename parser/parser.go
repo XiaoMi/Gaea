@@ -9586,7 +9586,7 @@ yynewstate:
 		}
 	case 755:
 		{
-			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(ast.PasswordFunc), Args: yyS[yypt-1].item.([]ast.ExprNode)}
+			parser.yyVAL.expr = &ast.FuncCallExpr{FnName: model.NewCIStr(yyS[yypt-3].ident), Args: yyS[yypt-1].item.([]ast.ExprNode)}
 		}
 	case 756:
 		{
@@ -10293,6 +10293,7 @@ yynewstate:
 				Distinct:       yyS[yypt-1].item.(*ast.SelectStmtOpts).Distinct,
 				Fields:         yyS[yypt-0].item.(*ast.FieldList),
 			}
+
 			parser.yyVAL.item = st
 		}
 	case 886:
