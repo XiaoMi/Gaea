@@ -3824,7 +3824,7 @@ FunctionCallKeyword:
 	}
 |	"PASSWORD" '(' ExpressionListOpt ')'
 	{
-		$$ = &ast.FuncCallExpr{FnName:model.NewCIStr(ast.PasswordFunc), Args: $3.([]ast.ExprNode)}
+		$$ = &ast.FuncCallExpr{FnName:model.NewCIStr($1), Args: $3.([]ast.ExprNode)}
 	}
 |	'{' ODBCDateTimeType stringLit '}'
 	{
