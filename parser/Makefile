@@ -1,19 +1,8 @@
-.PHONY: all parser clean
+.PHONY: all parser clean goyacc
 
 ARCH:="$(shell uname -s)"
 MAC:="Darwin"
 LINUX:="Linux"
-GOYACCBIN:=""
-GOYACC=`which goyacc`
-ifeq ($(ARCH), $(LINUX))
-	GOYACCBIN=./goyacc
-else
-	ifeq ($(ARCH), $(MAC))
-		GOYACCBIN=${GOYACC}
-	else
-		GOYACCBIN=${GOYACC}
-	endif
-endif
 
 all: parser.go fmt
 
@@ -23,9 +12,9 @@ test: parser.go fmt
 parser.go: parser.y
 	make parser
 
-parser: goyacc
-	${GOYACCBIN} -o /dev/null parser.y
-	$(GOYACCBIN) -o parser.go parser.y 2>&1 | egrep "(shift|reduce)/reduce" | awk '{print} END {if (NR > 0) {print "Find conflict in parser.y. Please check y.output for more information."; exit 1;}}'
+parser:
+	bin/goyacc -o /dev/null parser.y
+	bin/goyacc -o parser.go parser.y 2>&1 | egrep "(shift|reduce)/reduce" | awk '{print} END {if (NR > 0) {print "Find conflict in parser.y. Please check y.output for more information."; exit 1;}}'
 	rm -f y.output
 
 	@if [ $(ARCH) = $(LINUX) ]; \
@@ -41,7 +30,7 @@ parser: goyacc
 
 #bin/goyacc: goyacc/main.go
 goyacc:
-	#GO111MODULE=on go build -o bin/goyacc goyacc/main.go
+	GO111MODULE=on go build -o bin/goyacc goyacc/main.go
 
 fmt:
 	#@echo "gofmt (simplify)"
