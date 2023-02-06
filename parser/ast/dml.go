@@ -664,7 +664,8 @@ func (n *ByItem) Accept(v Visitor) (Node, bool) {
 // GroupByClause represents group by clause.
 type GroupByClause struct {
 	node
-	Items []*ByItem
+	Items      []*ByItem
+	WithRollup bool
 }
 
 // Restore implements Node interface.
@@ -677,6 +678,9 @@ func (n *GroupByClause) Restore(ctx *format.RestoreCtx) error {
 		if err := v.Restore(ctx); err != nil {
 			return errors.Annotatef(err, "An error occurred while restore GroupByClause.Items[%d]", i)
 		}
+	}
+	if n.WithRollup {
+		ctx.WriteKeyWord(" WITH ROLLUP")
 	}
 	return nil
 }

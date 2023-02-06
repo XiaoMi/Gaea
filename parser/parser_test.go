@@ -2449,6 +2449,14 @@ func (s *testParserSuite) TestSavePoint(c *C) {
 	s.RunTest(c, table)
 }
 
+func (s *testParserSuite) TestRollUp(c *C) {
+	table := []testCase{
+		{"select c2,c1 from t group by c1 with rollup", true, "SELECT `c2`,`c1` FROM `t` GROUP BY `c1` WITH ROLLUP"},
+		{"select coalesce(c1,'ALL'),c2,c1 from t group by c1 with rollup", true, "SELECT COALESCE(`c1`, 'ALL'),`c2`,`c1` FROM `t` GROUP BY `c1` WITH ROLLUP"},
+	}
+	s.RunTest(c, table)
+}
+
 func (s *testParserSuite) TestDeallocate(c *C) {
 	table := []testCase{
 		{"DEALLOCATE PREPARE test", true, "DEALLOCATE PREPARE `test`"},

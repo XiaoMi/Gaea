@@ -381,6 +381,7 @@ import (
 	reverse		"REVERSE"
 	role		"ROLE"
 	rollback	"ROLLBACK"
+	rollup		"ROLLUP"
 	routine		"ROUTINE"
 	rowCount	"ROW_COUNT"
 	rowFormat	"ROW_FORMAT"
@@ -842,6 +843,7 @@ import (
 	WhenClause		"When clause"
 	WhenClauseList		"When clause list"
 	WithReadLockOpt		"With Read Lock opt"
+	WithRollUpOpt		"WITH ROLLUP or empty"
 	WithGrantOptionOpt	"With Grant Option opt"
 	ElseOpt			"Optional else clause"
 	Type			"Types"
@@ -954,7 +956,8 @@ import (
 	FunctionNameDateArithMultiForms	"Date arith function call names (adddate or subdate)"
 
 %precedence empty
-
+%precedence lowerThanWith
+%precedence with
 %precedence sqlCache sqlNoCache
 %precedence lowerThanIntervalKeyword
 %precedence interval
@@ -2965,9 +2968,9 @@ FieldList:
 	}
 
 GroupByClause:
-	"GROUP" "BY" ByList
+	"GROUP" "BY" ByList WithRollUpOpt
 	{
-		$$ = &ast.GroupByClause{Items: $3.([]*ast.ByItem)}
+		$$ = &ast.GroupByClause{Items: $3.([]*ast.ByItem), WithRollup: $4.(bool)}
 	}
 
 HavingClause:
@@ -2977,6 +2980,15 @@ HavingClause:
 |	"HAVING" Expression
 	{
 		$$ = &ast.HavingClause{Expr: $2}
+	}
+
+WithRollUpOpt:
+	{
+		$$ = false
+	}  %prec lowerThanWith
+|	"WITH" "ROLLUP"
+	{
+		$$ = true
 	}
 
 IfExists:
@@ -3098,6 +3110,7 @@ UnReservedKeyword:
 | "NONE" | "NULLS" | "SUPER" | "EXCLUSIVE" | "STATS_PERSISTENT" | "ROW_COUNT" | "COALESCE" | "MONTH" | "PROCESS" | "PROFILES"
 | "MICROSECOND" | "MINUTE" | "PLUGINS" | "PRECEDING" | "QUERY" | "QUERIES" | "SECOND" | "SEPARATOR" | "SHARE" | "SHARED" | "SLOW" | "MAX_CONNECTIONS_PER_HOUR" | "MAX_QUERIES_PER_HOUR" | "MAX_UPDATES_PER_HOUR"
 | "MAX_USER_CONNECTIONS" | "REPLICATION" | "CLIENT" | "SLAVE" | "RELOAD" | "TEMPORARY" | "ROUTINE" | "EVENT" | "ALGORITHM" | "DEFINER" | "INVOKER" | "MERGE" | "TEMPTABLE" | "UNDEFINED" | "SECURITY" | "CASCADED" | "RECOVER"
+| "ROLLUP"
 
 
 
