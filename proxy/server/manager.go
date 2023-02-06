@@ -339,7 +339,7 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 		m.statistics.recordSessionErrorSQLFingerprint(namespace, operation, md5)
 	}
 
-	if OpenProcessGeneralQueryLog() && ns.openGeneralLog {
+	if ns.openGeneralLog {
 		m.statistics.generalLogger.Notice("client: %s, namespace: %s, db: %s, user: %s, cmd: %s, sql: %s, cost: %d ms, succ: %t",
 			se.clientAddr, namespace, se.db, se.user, operation, trimmedSql, duration, err == nil)
 	}
