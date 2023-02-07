@@ -41,11 +41,13 @@ unit_tests:
     - ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
     - ls -l /etc/localtime
     - make test
+    - echo "sql parser test"
+    - cd parser && make test
 
 build_branch:
   stage: build
   script:
-    - make
+    - make build
 
 integrate_tests:
   stage: integrate_tests

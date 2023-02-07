@@ -11,3 +11,4 @@ tests/e2e/cmd/gaea
 .integrate_coverage.func
 .integrate_coverage.html
 .integrate_coverage.out
+.coverage.*
