@@ -2466,6 +2466,14 @@ func (s *testParserSuite) TestExecute(c *C) {
 	s.RunTest(c, table)
 }
 
+func (s *testParserSuite) TestOrderBy(c *C) {
+	table := []testCase{
+		{"select c1 from t1 group by c1 order by null", true, "SELECT `c1` FROM `t1` GROUP BY `c1` ORDER BY NULL"},
+		{"select c1 from t1 group by c1 order by 1", true, "SELECT `c1` FROM `t1` GROUP BY `c1` ORDER BY 1"},
+	}
+	s.RunTest(c, table)
+}
+
 func (s *testParserSuite) TestTrace(c *C) {
 	table := []testCase{
 		{"trace select c1 from t1", true, "TRACE SELECT `c1` FROM `t1`"},
