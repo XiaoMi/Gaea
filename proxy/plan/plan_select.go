@@ -16,7 +16,6 @@ package plan
 
 import (
 	"fmt"
-
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/ast"
 	"github.com/XiaoMi/Gaea/parser/opcode"
@@ -338,6 +337,14 @@ func createSelectFieldFromByItem(p *SelectPlan, item *ast.ByItem) (*ast.SelectFi
 			return ret, nil
 		}
 		return nil, fmt.Errorf("ByItem.Expr is a FuncCallExpr but not DATABASE()")
+	}
+
+	// support order by null or order by 1
+	switch item.Expr.(type) {
+	case *driver.ValueExpr:
+		return &ast.SelectField{Expr: item.Expr}, nil
+	case *ast.PositionExpr:
+		return &ast.SelectField{Expr: item.Expr}, nil
 	}
 
 	columnExpr, ok := item.Expr.(*ast.ColumnNameExpr)
