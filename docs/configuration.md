@@ -60,6 +60,9 @@ encrypt_key=1234abcd5678efg*
 ;server_version 服务器版本号配置
 server_version=5.6.20-gaea
 
+;num_cpu gaea服务占用的CPU核数，默认4核
+num_cpu=4
+
 ;auth plugin mysql_native_password or caching_sha2_password or ''
 ;自定义认证插件，支持 5.x 和 8.x 版本认证，认证插件为 caching_sha2_password 时，不支持低版本客户端认证
 ;auth_plugin=mysql_native_password

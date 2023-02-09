@@ -68,6 +68,7 @@ type Proxy struct {
 
 	ServerVersion string `ini:"server_version"`
 	AuthPlugin    string `ini:"auth_plugin"`
+	NumCPU        int    `ini:"num_cpu"`
 }
 
 // ParseProxyConfigFromFile parser proxy config from file

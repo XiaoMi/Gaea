@@ -24,6 +24,7 @@ import (
 	"github.com/XiaoMi/Gaea/proxy/server"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"sync"
 	"syscall"
@@ -31,9 +32,11 @@ import (
 
 var configFile = flag.String("config", "etc/gaea.ini", "gaea config file")
 var info = flag.Bool("info", false, "show info of gaea")
+var numCPU = flag.Int("num-cpu", 0, "how many operating systems threads attempt to execute simultaneously")
 
 const (
 	DefaultLogKeepDays = 3
+	defaultCPUNum      = 4 //best practise
 )
 
 func main() {
@@ -56,6 +59,20 @@ func main() {
 		fmt.Printf("gaea.init is invalid: %v", err)
 		return
 	}
+
+	var cpuNums int
+	if *numCPU > 0 && *numCPU <= runtime.NumCPU() {
+		// best practice -num-cpu=4
+		fmt.Printf("max use cpu : %d\n(from command-line)", *numCPU)
+		cpuNums = *numCPU
+	} else if cfg.NumCPU > 0 && *numCPU <= runtime.NumCPU() {
+		fmt.Printf("max use cpu : %d\n(from cfg)", cfg.NumCPU)
+		cpuNums = cfg.NumCPU
+	} else {
+		fmt.Printf("max use cpu : %d\n(default)", defaultCPUNum)
+		cpuNums = defaultCPUNum
+	}
+	runtime.GOMAXPROCS(cpuNums)
 
 	if err = initXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service, cfg.LogKeepDays); err != nil {
 		fmt.Printf("init xlog error: %v\n", err.Error())
