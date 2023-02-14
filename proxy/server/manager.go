@@ -21,6 +21,7 @@ import (
 	"github.com/XiaoMi/Gaea/backend"
 	"go.uber.org/atomic"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,6 +38,7 @@ import (
 	"github.com/XiaoMi/Gaea/stats/prometheus"
 	"github.com/XiaoMi/Gaea/util"
 	"github.com/XiaoMi/Gaea/util/sync2"
+	"github.com/shirou/gopsutil/process"
 )
 
 const (
@@ -398,6 +400,7 @@ func (m *Manager) startConnectPoolMetricsTask(interval int) {
 				return
 			case <-t.C:
 				m.statistics.AddUptimeCount(time.Now().Unix() - m.statistics.startTime)
+				m.statistics.CalcCPUBusy()
 				current, _, _ := m.switchIndex.Get()
 				for nameSpaceName, _ := range m.namespaces[current].namespaces {
 					m.recordBackendConnectPoolMetrics(nameSpaceName)
@@ -661,6 +664,7 @@ type StatisticManager struct {
 	sqlForbidenCounts         *stats.CountersWithMultiLabels // SQL黑名单请求统计
 	flowCounts                *stats.CountersWithMultiLabels // 业务流量统计
 	sessionCounts             *stats.GaugesWithMultiLabels   // 前端会话数统计
+	CPUBusy                   *stats.GaugesWithMultiLabels   // Gaea服务器CPU消耗情况
 	clientConnecions          sync.Map                       // 等同于sessionCounts, 用于限制前端连接
 
 	backendSQLTimings                *stats.MultiTimings            // 后端SQL耗时统计
@@ -674,6 +678,7 @@ type StatisticManager struct {
 	uptimeCounts                     *stats.GaugesWithMultiLabels   // 启动时间记录
 
 	slowSQLTime int64
+	CPUNums     int // Gaea服务器使用的CPU核数
 	closeChan   chan bool
 }
 
@@ -687,6 +692,7 @@ func CreateStatisticManager(cfg *models.Proxy, manager *Manager) (*StatisticMana
 	mgr := NewStatisticManager()
 	mgr.manager = manager
 	mgr.clusterName = cfg.Cluster
+	mgr.CPUNums = cfg.NumCPU
 
 	var err error
 	if err = mgr.Init(cfg); err != nil {
@@ -738,6 +744,7 @@ func (s *StatisticManager) Init(cfg *models.Proxy) error {
 	s.closeChan = make(chan bool, 0)
 	s.handlers = make(map[string]http.Handler)
 	s.slowSQLTime = cfg.SlowSQLTime
+	s.CPUNums = cfg.NumCPU
 	statsCfg, err := parseProxyStatsConfig(cfg)
 	if err != nil {
 		return err
@@ -761,6 +768,7 @@ func (s *StatisticManager) Init(cfg *models.Proxy) error {
 		"gaea proxy flow counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelFlowDirection})
 	s.sessionCounts = stats.NewGaugesWithMultiLabels("SessionCounts",
 		"gaea proxy session counts", []string{statsLabelCluster, statsLabelNamespace})
+	s.CPUBusy = stats.NewGaugesWithMultiLabels("CPUBusy", "gaea proxy CPU busy", []string{statsLabelCluster})
 
 	s.backendSQLTimings = stats.NewMultiTimings("BackendSqlTimings",
 		"gaea proxy backend sql sqlTimings", []string{statsLabelCluster, statsLabelNamespace, statsLabelOperation})
@@ -942,6 +950,26 @@ func (s *StatisticManager) recordInstanceCount(namespace string, slice string, a
 func (s *StatisticManager) AddUptimeCount(count int64) {
 	statsKey := []string{s.clusterName}
 	s.uptimeCounts.Set(statsKey, count)
+}
+
+func (s *StatisticManager) CalcCPUBusy() {
+	cpuTime := int64(0)
+	p, err := process.NewProcess(int32(os.Getpid()))
+	if err != nil {
+		log.Notice("server", "gopsutil", "NewProcess", 0, err)
+		return
+	}
+	processCpuTime, err := p.Times()
+	if err == nil {
+		cpuUser, cpuSystem := processCpuTime.User, processCpuTime.System
+		if s.CPUNums != 0 {
+			// 为了适应CountersWithMultiLabels的数据类型，这里对cpuTime结果做了取整，grafana显示时需要还原
+			cpuTime = int64((cpuSystem + cpuUser) / float64(s.CPUNums) * 100 * 100)
+		}
+	}
+
+	statsKey := []string{s.clusterName}
+	s.CPUBusy.Set(statsKey, cpuTime)
 }
 
 // getStatusMap get status from DBinfo.statusMap

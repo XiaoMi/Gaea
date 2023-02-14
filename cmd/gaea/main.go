@@ -73,6 +73,7 @@ func main() {
 		cpuNums = defaultCPUNum
 	}
 	runtime.GOMAXPROCS(cpuNums)
+	cfg.NumCPU = cpuNums
 
 	if err = initXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service, cfg.LogKeepDays); err != nil {
 		fmt.Printf("init xlog error: %v\n", err.Error())

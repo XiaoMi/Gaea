@@ -93,6 +93,6 @@ groups:
 
 - gaea_proxy_uptime_counts：counter 类型，记录 gaea_proxy 的启动时间，单位为秒
 - gaea_proxy_backend_instance_counts：gauge 类型，记录后端主从库的实例状态，1 为存活，0 为不存活
-
+- gaea_proxy_cpu_busy: gauge 类型, 记录 gaea_proxy 的 CPU 负载情况（实际使用时需要除以 100 转化为小数）
 
  
