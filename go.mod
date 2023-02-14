@@ -15,7 +15,7 @@ require (
 	github.com/gin-gonic/gin v1.7.2
 	github.com/go-ini/ini v1.42.0
 	github.com/go-playground/validator/v10 v10.8.0 // indirect
-	github.com/gogo/protobuf v1.2.1 // indirect
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt v3.2.1+incompatible // indirect
 	github.com/golang/groupcache v0.0.0-20160516000752-02826c3e7903 // indirect
 	github.com/golang/mock v1.1.1
