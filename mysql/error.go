@@ -39,6 +39,8 @@ import (
 var (
 	// ErrBadConn bad connection error
 	ErrBadConn = errors.New("connection was bad")
+	// ErrResetConn receive tcp RST packet error
+	ErrResetConn = errors.New("connection reset by peer")
 	// ErrMalformPacket packet error
 	ErrMalformPacket = errors.New("Malform packet error")
 	// ErrTxDone transaction done error
