@@ -126,8 +126,8 @@ func (s *Server) onConn(c net.Conn) {
 	}()
 
 	if _, err := cc.Handshake(); err != nil {
-		log.Warn("[server] onConn error: %s", err.Error())
-		if err != mysql.ErrBadConn {
+		if err.Error() != mysql.ErrBadConn.Error() && err.Error() != mysql.ErrResetConn.Error() {
+			log.Warn("[server] onConn error: %s", err.Error())
 			cc.c.writeErrorPacket(err)
 		}
 		return

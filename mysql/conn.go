@@ -173,11 +173,8 @@ func (c *Conn) readHeaderFrom(r io.Reader) (int, error) {
 		// The special casing of propagating io.EOF up
 		// is used by the server side only, to suppress an error
 		// message if a client just disconnects.
-		if err == io.EOF {
-			return 0, err
-		}
 		if strings.HasSuffix(err.Error(), "read: connection reset by peer") {
-			return 0, io.EOF
+			return 0, ErrResetConn
 		}
 		return 0, fmt.Errorf("io.ReadFull(header size) failed: %v", err)
 	}
@@ -397,14 +394,20 @@ func (c *Conn) WritePacket(data []byte) error {
 		header[2] = byte(packetLength >> 16)
 		header[3] = c.sequence
 		if n, err := w.Write(header[:]); err != nil {
-			return fmt.Errorf("Write(header) failed: %v", err)
+			if strings.Contains(err.Error(), ErrResetConn.Error()) {
+				return ErrResetConn
+			}
+			return fmt.Errorf("Conn %v:Write(header) failed: %v", c.GetConnectionID(), err)
 		} else if n != 4 {
 			return fmt.Errorf("Write(header) returned a short write: %v < 4", n)
 		}
 
 		// Write the body.
 		if n, err := w.Write(data[index : index+packetLength]); err != nil {
-			return fmt.Errorf("Write(packet) failed: %v", err)
+			if strings.Contains(err.Error(), ErrResetConn.Error()) {
+				return ErrResetConn
+			}
+			return fmt.Errorf("Conn %v:Write(packet) failed: %v", c.GetConnectionID(), err)
 		} else if n != packetLength {
 			return fmt.Errorf("Write(packet) returned a short write: %v < %v", n, packetLength)
 		}
@@ -454,7 +457,7 @@ func (c *Conn) WriteEphemeralPacket() error {
 	switch c.currentEphemeralPolicy {
 	case ephemeralWrite:
 		if err := c.WritePacket(*c.currentEphemeralBuffer); err != nil {
-			return fmt.Errorf("Conn %v: %v", c.GetConnectionID(), err)
+			return err
 		}
 	case ephemeralUnused, ephemeralRead:
 		// Programming error.
