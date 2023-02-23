@@ -1,5 +1,30 @@
 # Gaea Changelog
 
+## Gaea 2.0-GA Release Notes
+
+### 新功能
+
+- 支持限制 Gaea 的 CPU 核数，便于将 Gaea 作为单租户使用
+
+### Bug修复
+
+- 修复不兼容 SQL：支持 `password` 函数
+- 修复不兼容 SQL：支持 `group by ... with rollup` 语句
+- 修复不兼容 SQL：支持分片情况下 `order by null` 语句
+- 修复 LVS 探活引起的 Broken Pipe 问题
+- 修复后端从库探活偶尔失败的问题
+
+### 优化提升
+
+- 优化了 general_log 配置项，直接修改 namespace 配置即可在所有 Gaea 节点生效
+- 增加监控项，监控 Gaea CPU 使用情况
+- 修复本地 Mac 环境下无法生成 parser 文件的问题
+
+### 其他说明
+
+- 进行了 Gaea 与 Miproxy 的做了基本的性能对比，两者各有较小优劣，整体对比差距不大。详见：https://xiaomi.f.mioffice.cn/wiki/wikk4HMGGB0A56lU1NyCj5likQb
+
+
 ## Gaea 2.0-Beta Release Notes
 
 ### 新功能
