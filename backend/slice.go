@@ -52,8 +52,9 @@ const (
 type StatusCode uint32
 
 const (
-	UP   StatusCode = 1
-	DOWN StatusCode = 0
+	UP         StatusCode = 1
+	DOWN       StatusCode = 0
+	PingPeriod int64      = 4
 )
 
 func (s *StatusCode) String() string {
