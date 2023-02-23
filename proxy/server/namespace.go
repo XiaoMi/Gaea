@@ -45,7 +45,7 @@ const (
 	defaultSlowSQLTime       = 1000  // millisecond
 	defaultMaxSqlExecuteTime = 0     // 默认为0，不开启慢sql熔断功能
 	defaultMaxSqlResultSize  = 10000 // 默认为10000, 限制查询返回的结果集大小不超过该阈值
-	defaultTimeAfterNoAlive  = 8     // 如果发现slave状态异常，则每sleep 1，2，4，8秒再检查， 8s之后
+	defaultTimeAfterNoAlive  = 32    // 如果发现slave状态异常，则每sleep 1，2，4，8秒再检查， 默认 32秒后
 	// 认为Slave已下线，如果需要快速判定状态，可减少该值
 	defaultMaxClientConnections = 100000000 //Big enough
 
@@ -590,13 +590,15 @@ func doCheckSlice(slice *backend.Slice, namespace *Namespace, ctx context.Contex
 		}
 
 		for {
+			time.Sleep(time.Duration(backend.PingPeriod) * time.Second)
+
 			select {
 			case <-ctx.Done():
-				_ = log.Fatal("cancel by parent ......")
+				_ = log.Fatal("checkStatus canceled by parent. ns:%s", namespace.name)
 				return
 			default:
 				for idx, v := range slaveInfo.ConnPool {
-					_ = log.Debug("namespace: %s, slice: %s, start to check %s %s by auto check...",
+					_ = log.Debug("ns:%s, slice:%s, start check %s %s by auto check",
 						namespace.name,
 						role,
 						slice.Cfg.Name,
@@ -619,7 +621,7 @@ func doCheckSlice(slice *backend.Slice, namespace *Namespace, ctx context.Contex
 
 					slaveInfo.StatusMap.Store(idx, status)
 
-					logValue := fmt.Sprintf("namespace: %s, slice: %s, IP:PORT:[%s] is find %s by auto check..., take = %d ms",
+					logValue := fmt.Sprintf("ns:%s, slice:%s, %s find %s by auto check, takes %dms",
 						namespace.name,
 						slice.Cfg.Name,
 						v.Addr(),
@@ -634,8 +636,6 @@ func doCheckSlice(slice *backend.Slice, namespace *Namespace, ctx context.Contex
 				}
 			}
 
-			//every 2 second to check
-			time.Sleep(2 * time.Second)
 		}
 	}
 
