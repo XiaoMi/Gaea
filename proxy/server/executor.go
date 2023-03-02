@@ -644,9 +644,25 @@ func canExecuteFromSlave(c *SessionExecutor, sql string, stmt ast.StmtNode, comm
 		}
 	}
 
+	// use regx directly
+	lcomment := strings.ToLower(strings.TrimSpace(comments.Leading))
+	if lcomment == masterComment {
+		return false
+	}
+
 	//use SQL parser
-	selectNode := stmt.(*ast.SelectStmt)
-	if selectNode.TableHints != nil {
+	selectNode := &ast.SelectStmt{}
+	switch stmt.(type) {
+	case *ast.SelectStmt:
+		selectNode = stmt.(*ast.SelectStmt)
+	case *ast.UnionStmt:
+		selectStmts := stmt.(*ast.UnionStmt).SelectList.Selects
+		if len(selectStmts) > 0 {
+			selectNode = selectStmts[0]
+		}
+	}
+
+	if selectNode != nil && selectNode.TableHints != nil {
 		//for simplicity, we only consider one hint
 		hint := selectNode.TableHints[0].HintName
 		if masterHint == strings.ToLower(strings.TrimSpace(hint.L)) {
@@ -654,9 +670,7 @@ func canExecuteFromSlave(c *SessionExecutor, sql string, stmt ast.StmtNode, comm
 		}
 	}
 
-	// use regx directly
-	lcomment := strings.ToLower(strings.TrimSpace(comments.Leading))
-	return masterComment != lcomment
+	return true
 }
 
 // 如果是只读用户, 且SQL是INSERT, UPDATE, DELETE, 则拒绝执行, 返回true
