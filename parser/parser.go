@@ -7864,8 +7864,7 @@ yynewstate:
 		}
 	case 112:
 		{
-			nowFunc := &ast.FuncCallExpr{FnName: model.NewCIStr("CURRENT_TIMESTAMP")}
-			parser.yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionOnUpdate, Expr: nowFunc}
+			parser.yyVAL.item = &ast.ColumnOption{Tp: ast.ColumnOptionOnUpdate, Expr: yyS[yypt-0].expr}
 		}
 	case 113:
 		{
