@@ -16,6 +16,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/XiaoMi/Gaea/core"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -96,6 +97,7 @@ func NewAdminServer(proxy *Server, cfg *models.Proxy) (*AdminServer, error) {
 	s.registerURL()
 	s.registerMetric()
 	s.registerProf()
+	s.registerVersion()
 
 	proxyInfo, err := NewProxyInfo(cfg, s.proxy.Listener().Addr().String())
 	if err != nil {
@@ -187,6 +189,11 @@ func (s *AdminServer) registerProf() {
 	profGroup.GET("/mutex", gin.WrapF(pprof.Handler("mutex").ServeHTTP))
 	profGroup.GET("/threadcreate", gin.WrapF(pprof.Handler("threadcreate").ServeHTTP))
 	profGroup.GET("/allocs", gin.WrapF(pprof.Handler("allocs").ServeHTTP))
+}
+
+func (s *AdminServer) registerVersion() {
+	versionGroup := s.engine.Group("/api/proxy")
+	versionGroup.GET("/version", s.ProxyVersion)
 }
 
 // NewProxyInfo create proxy information
@@ -430,4 +437,13 @@ func (s *AdminServer) clearNamespaceBackendSQLFingerprint(c *gin.Context) {
 	namespace.ClearBackendErrorSQLFingerprints()
 
 	c.JSON(http.StatusOK, "OK")
+}
+
+// @Summary 获取gaea版本信息
+// @Description  获取gaea版本信息，2.0版本新增接口
+// @Success 200 {string} string "version"
+// @Security 不需要鉴权
+// @Router /api/proxy/config/version [get]
+func (s *AdminServer) ProxyVersion(c *gin.Context) {
+	c.JSON(http.StatusOK, core.Info.Version)
 }
