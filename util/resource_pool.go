@@ -22,7 +22,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/XiaoMi/Gaea/log"
 	"sync"
 	"time"
 
@@ -107,15 +106,8 @@ func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Dur
 		Dynamic:      true, // 动态扩展连接池
 	}
 
-	resourceWrappers := make([]resourceWrapper, 0, capacity)
 	for i := 0; i < capacity; i++ {
-		resourceWrappers = append(resourceWrappers, resourceWrapper{})
-	}
-
-	err := initConnection(capacity, resourceWrappers, rp)
-
-	for _, rw := range resourceWrappers {
-		rp.resources <- rw
+		rp.resources <- resourceWrapper{}
 	}
 
 	if idleTimeout != 0 {
@@ -124,36 +116,7 @@ func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Dur
 	}
 	rp.capTimer = timer.NewTimer(5 * time.Second)
 	rp.capTimer.Start(rp.scaleInResources)
-	return rp, err
-}
-
-func initConnection(capacity int, resourceWrappers []resourceWrapper, rp *ResourcePool) error {
-	var err error = nil
-	//TODO make this value configuratable, currently set it the value of one fourth of capacity
-	if capacity <= 4 {
-		for i := 0; i < capacity; i++ {
-			if resourceWrappers[i].resource, err = rp.factory(); err != nil {
-				break
-			}
-			rp.active.Add(1)
-		}
-	} else {
-		// we need to do it in async method
-		wg := sync.WaitGroup{}
-		wg.Add(capacity)
-		for i := 0; i < capacity; i++ {
-			go func(idx int) {
-				defer wg.Done()
-				if resourceWrappers[idx].resource, err = rp.factory(); err != nil {
-					_ = log.Fatal("can't get resource: %s", err)
-					return
-				}
-				rp.active.Add(1)
-			}(i)
-		}
-		wg.Wait()
-	}
-	return err
+	return rp, nil
 }
 
 // Close empties the pool calling Close on all its resources.
