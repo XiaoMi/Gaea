@@ -995,6 +995,7 @@ import (
 %right	collate
 
 %precedence '('
+%precedence ')'
 %precedence quick
 %precedence escape
 %precedence lowerThanComma
@@ -3577,7 +3578,7 @@ SimpleExpr:
 	{
 		$$ = &ast.UnaryOperationExpr{Op: opcode.Not, V: $2}
 	}
-|	SubSelect
+|	SubSelect %prec neg
 |	'(' Expression ')' {
 		startOffset := parser.startOffset(&yyS[yypt-1])
 		endOffset := parser.endOffset(&yyS[yypt])
@@ -5096,16 +5097,10 @@ TableFactor:
 		tn.IndexHints = $4.([]*ast.IndexHint)
 		$$ = &ast.TableSource{Source: tn, AsName: $3.(model.CIStr)}
 	}
-|	'(' SelectStmt ')' TableAsName
+|   SubSelect TableAsName
 	{
-		st := $2.(*ast.SelectStmt)
-		endOffset := parser.endOffset(&yyS[yypt-1])
-		parser.setLastSelectFieldText(st, endOffset)
-		$$ = &ast.TableSource{Source: $2.(*ast.SelectStmt), AsName: $4.(model.CIStr)}
-	}
-|	'(' UnionStmt ')' TableAsName
-	{
-		$$ = &ast.TableSource{Source: $2.(*ast.UnionStmt), AsName: $4.(model.CIStr)}
+	    resultNode := $1.(*ast.SubqueryExpr).Query
+        $$ = &ast.TableSource{Source: resultNode, AsName: $2.(model.CIStr)}
 	}
 |	'(' TableRefs ')'
 	{
@@ -5467,6 +5462,29 @@ SubSelect:
 		// See the implementation of yyParse function
 		s.SetText(src[yyS[yypt-1].offset:yyS[yypt].offset])
 		$$ = &ast.SubqueryExpr{Query: s}
+	}
+|	'(' SubSelect ')'
+	{
+	    subQuery := $2.(*ast.SubqueryExpr).Query
+        isRecursive := true
+        // remove redundant brackets like '((select 1))'
+        for isRecursive {
+            if _, isRecursive = subQuery.(*ast.SubqueryExpr); isRecursive {
+                subQuery = subQuery.(*ast.SubqueryExpr).Query
+            }
+        }
+        switch rs := subQuery.(type) {
+        case *ast.SelectStmt:
+            endOffset := parser.endOffset(&yyS[yypt])
+            parser.setLastSelectFieldText(rs, endOffset)
+            src := parser.src
+            rs.SetText(src[yyS[yypt-1].offset:yyS[yypt].offset])
+            $$ = &ast.SubqueryExpr{Query: rs}
+        case *ast.UnionStmt:
+            src := parser.src
+            rs.SetText(src[yyS[yypt-1].offset:yyS[yypt].offset])
+            $$ = &ast.SubqueryExpr{Query: rs}
+        }
 	}
 
 // See https://dev.mysql.com/doc/refman/5.7/en/innodb-locking-reads.html
