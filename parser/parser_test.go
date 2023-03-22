@@ -2218,6 +2218,10 @@ func (s *testParserSuite) TestSubquery(c *C) {
 		{"SELECT NOT EXISTS (select 1)", true, "SELECT NOT EXISTS (SELECT 1)"},
 		{"SELECT + NOT EXISTS (select 1)", false, ""},
 		{"SELECT - NOT EXISTS (select 1)", false, ""},
+		{"select exists((select 1));", true, "SELECT EXISTS (SELECT 1)"},
+		{"select a.* from (select * from t1 where id>1000) as a where a.id<2000;", true, "SELECT `a`.* FROM (SELECT * FROM (`t1`) WHERE `id`>1000) AS `a` WHERE `a`.`id`<2000"},
+		{"select a.* from ((select * from t1 where id>1000)) as a where a.id<2000;", true, "SELECT `a`.* FROM (SELECT * FROM (`t1`) WHERE `id`>1000) AS `a` WHERE `a`.`id`<2000"},
+		{"select a.* from (((select * from t1 where id>1000))) as a where a.id<2000;", true, "SELECT `a`.* FROM (SELECT * FROM (`t1`) WHERE `id`>1000) AS `a` WHERE `a`.`id`<2000"},
 	}
 	s.RunTest(c, table)
 
