@@ -185,6 +185,10 @@ func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string, s
 		if !se.GetNamespace().IsAllowWrite(se.user) || se.GetNamespace().IsRWSplit(se.user) {
 			reqCtx.Set(util.FromSlave, 1)
 		}
+		// handle show variables like '%read_only%' default to master
+		if strings.Contains(sql, readonlyVariable) && se.GetNamespace().IsAllowWrite(se.user) {
+			reqCtx.Set(util.FromSlave, 0)
+		}
 		r, err := se.ExecuteSQL(reqCtx, se.GetNamespace().GetDefaultSlice(), se.db, sql)
 		if err != nil {
 			return nil, fmt.Errorf("execute sql error, sql: %s, err: %v", sql, err)

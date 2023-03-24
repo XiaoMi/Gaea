@@ -43,6 +43,7 @@ const (
 	standardMasterHint = "/*+ master */"
 	// general query log variable
 	gaeaGeneralLogVariable = "gaea_general_log"
+	readonlyVariable       = "read_only"
 )
 
 // SessionExecutor is bound to a session, so requests are serializable
@@ -622,8 +623,8 @@ func canExecuteFromSlave(c *SessionExecutor, sql string, stmt ast.StmtNode, comm
 	if parser.Preview(sql) != parser.StmtSelect {
 		return false
 	}
-
-	if !c.GetNamespace().IsRWSplit(c.user) {
+	// handle select @@read_only default to master
+	if isSQLSelectReadOnly(sql, stmt) && c.GetNamespace().IsAllowWrite(c.user) {
 		return false
 	}
 
@@ -680,6 +681,24 @@ func isSQLNotAllowedByUser(c *SessionExecutor, stmtType int) bool {
 	}
 
 	return stmtType == parser.StmtDelete || stmtType == parser.StmtInsert || stmtType == parser.StmtUpdate
+}
+
+// 判断 sql 是否是 `select @@read_only`
+func isSQLSelectReadOnly(sql string, stmt ast.StmtNode) bool {
+	if !strings.Contains(sql, "@@") {
+		return false
+	}
+
+	if stmtSelect, ok := stmt.(*ast.SelectStmt); ok {
+		if stmtSelect.Fields != nil && 1 == len(stmtSelect.Fields.Fields) {
+			if variableExpr, ok := stmtSelect.Fields.Fields[0].Expr.(*ast.VariableExpr); ok {
+				if variableExpr.Name == readonlyVariable && variableExpr.Value == nil {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func modifyResultStatus(r *mysql.Result, cc *SessionExecutor) {
