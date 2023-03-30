@@ -22,13 +22,19 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
-	"sort"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
 
-const MysqlDriverName = "mysql"
+const (
+	MysqlDriverName = "mysql"
+	BaseSqlDir      = "../../sql_cases/"
+	TestFilePattern = "test_*"
+	SqlStartFile    = "0-prepare.sql"
+	SqlEndFile      = "1-clean.sql"
+)
 
 func Test_Main(t *testing.T) {
 	main()
@@ -127,64 +133,76 @@ func TestIntegration(t *testing.T) {
 		_ = proxyDb.Close()
 	}()
 
-	//
-	sqlFiles, err := ioutil.ReadDir("../../sql_cases")
+	// 执行初始化文件
+	if err := execFileInMySQL(BaseSqlDir+SqlStartFile, mysqlDb); err != nil {
+		assert.Fail(t, err.Error())
+	}
+
+	// 遍历 SQL 测试文件
+	sqlFiles, err := filepath.Glob(BaseSqlDir + TestFilePattern)
 	if err != nil {
 		assert.Fail(t, err.Error())
 	}
 
-	sort.Slice(sqlFiles, func(i, j int) bool {
-		return sqlFiles[i].Name() < sqlFiles[j].Name()
-	})
-
 	for _, fs := range sqlFiles {
-		bys, err := ioutil.ReadFile("../../sql_cases/" + fs.Name())
+		bys, err := ioutil.ReadFile(fs)
 		if err != nil {
+			fmt.Printf("read file %s err:%s\n", SqlEndFile, err)
 			assert.Fail(t, err.Error())
 		}
 
-		fmt.Printf("start test file: %s-------------------------------------\n ", fs.Name())
-		sqls := strings.Split(string(bys), "\n")
-		for lineNum, sqlString := range sqls {
-			trimSql := strings.TrimSpace(sqlString)
-			if strings.HasPrefix(trimSql, "//") || strings.HasPrefix(trimSql, "#") || trimSql == "" {
-				continue
-			}
+		fmt.Printf("start test file: %s...\n", fs)
+		sqls := getSQLFromFile(string(bys))
 
-			isSelect, err := isSelectStmt(sqlString)
-			if err != nil {
-				fmt.Printf("filename: %s, line number: %d, sql = [%s]\n", fs.Name(), lineNum+1, sqlString)
-				assert.Fail(t, err.Error())
-			}
-
-			//This is schema sql, we should run it first
-			if strings.Contains(fs.Name(), "scheam") || !isSelect {
-				if _, err := mysqlDb.Exec(sqlString); err != nil {
-					fmt.Printf("filename: %s, line number: %d, sql = [%s]\n", fs.Name(), lineNum+1, sqlString)
-					assert.Fail(t, err.Error())
-				}
-
-				continue
+		for line, sqlString := range sqls {
+			if ok, err := isSQLReadOnly(sqlString); err != nil {
+				fmt.Printf("parse SQL err:%s\n", sqlString)
+			} else if !ok {
+				fmt.Printf("SQL not read_only.skip:%s\n", sqlString)
 			}
 
 			if err = retryer(proxyDb, mysqlDb, sqlString, doCheck); err != nil {
-				fmt.Printf("filename: %s, line number: %d, sql = [%s]\n", fs.Name(), lineNum+1, sqlString)
+				fmt.Printf("filename: %s, line number: %d, sql = [%s],err:%s\n", fs, line+1, sqlString, err)
 				assert.Fail(t, err.Error())
 			}
 		}
 
-		fmt.Printf("finish test file: %s-------------------------------------\n ", fs.Name())
+		fmt.Printf("finish test file: %s\n", fs)
+	}
+
+	// 执行清理文件
+	if err := execFileInMySQL(BaseSqlDir+SqlEndFile, mysqlDb); err != nil {
+		assert.Fail(t, err.Error())
 	}
 }
 
-func isSelectStmt(sqlString string) (bool, error) {
+func execFileInMySQL(path string, mysqlDb *sql.DB) error {
+	fmt.Printf("start exec whole file on in MySQL.file:%s\n", path)
+	bys, err := ioutil.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	cleanSQLs := getSQLFromFile(string(bys))
+	for l, sql := range cleanSQLs {
+		if _, err := mysqlDb.Exec(sql); err != nil {
+			fmt.Printf("filename: %s, line number: %d, sql = [%s]\n", SqlEndFile, l+1, sql)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func isSQLReadOnly(sqlString string) (bool, error) {
 	p := parser.New()
 	stmt, _, err := p.Parse(sqlString, "", "")
 	if err != nil {
 		return false, err
 	}
 	switch stmt[0].(type) {
-	case *ast.SelectStmt:
+	case *ast.SelectStmt, *ast.UnionStmt, *ast.ShowStmt:
 		return true, err
 	default:
 		return false, err
@@ -217,4 +235,17 @@ func doCheck(proxyDb, mysqlDb *sql.DB, sqlString string) error {
 	}
 
 	return checkResult(r1, r2)
+}
+
+func getSQLFromFile(sqls string) []string {
+	var res []string
+	sqlString := strings.Split(string(sqls), "\n")
+	for _, sql := range sqlString {
+		trimSql := strings.TrimSpace(sql)
+		if strings.HasPrefix(trimSql, "//") || strings.HasPrefix(trimSql, "#") || trimSql == "" || strings.HasPrefix(trimSql, "-- ") {
+			continue
+		}
+		res = append(res, sql)
+	}
+	return res
 }
