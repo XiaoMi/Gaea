@@ -328,8 +328,13 @@ func createSelectFieldsFromByItems(p *SelectPlan, items []*ast.ByItem) ([]*ast.S
 }
 
 func createSelectFieldFromByItem(p *SelectPlan, item *ast.ByItem) (*ast.SelectField, error) {
-	// 特殊处理DATABASE()这种情况
-	if funcExpr, ok := item.Expr.(*ast.FuncCallExpr); ok {
+	var columnExpr *ast.ColumnNameExpr
+
+	// support order by null/order by 1/order by max/order by min
+	switch item.Expr.(type) {
+	case *ast.FuncCallExpr:
+		// 特殊处理DATABASE()这种情况
+		funcExpr := item.Expr.(*ast.FuncCallExpr)
 		if funcExpr.FnName.L == "database" {
 			ret := &ast.SelectField{
 				Expr: item.Expr,
@@ -337,18 +342,16 @@ func createSelectFieldFromByItem(p *SelectPlan, item *ast.ByItem) (*ast.SelectFi
 			return ret, nil
 		}
 		return nil, fmt.Errorf("ByItem.Expr is a FuncCallExpr but not DATABASE()")
-	}
-
-	// support order by null or order by 1
-	switch item.Expr.(type) {
 	case *driver.ValueExpr:
 		return &ast.SelectField{Expr: item.Expr}, nil
 	case *ast.PositionExpr:
 		return &ast.SelectField{Expr: item.Expr}, nil
-	}
-
-	columnExpr, ok := item.Expr.(*ast.ColumnNameExpr)
-	if !ok {
+	case *ast.AggregateFuncExpr:
+		// 处理 order by max()/min() 等情况
+		return &ast.SelectField{Expr: item.Expr}, nil
+	case *ast.ColumnNameExpr:
+		columnExpr = item.Expr.(*ast.ColumnNameExpr)
+	default:
 		return nil, fmt.Errorf("ByItem.Expr is not a ColumnNameExpr")
 	}
 
@@ -363,7 +366,7 @@ func createSelectFieldFromByItem(p *SelectPlan, item *ast.ByItem) (*ast.SelectFi
 	}
 
 	ret := &ast.SelectField{
-		Expr: item.Expr,
+		Expr: columnExpr,
 	}
 	return ret, nil
 }
