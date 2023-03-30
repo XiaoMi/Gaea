@@ -51,6 +51,7 @@ build_branch:
 
 integrate_tests:
   stage: integrate_tests
+  timeout: 1h
   script:
     - echo "Start to build gaea"
     - make gaea
