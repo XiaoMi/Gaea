@@ -51,6 +51,7 @@ type Namespace struct {
 	DownAfterNoAlive     int               `json:"down_after_no_alive"`    // 如果探测MySQL服务offline超过该时间后标记mysql为下线
 	SecondsBehindMaster  uint64            `json:"seconds_behind_master"`  // slave延迟超过该值将slave标记为down, 默认值为0，即无限大
 	CheckSelectLock      bool              `json:"check_select_lock"`      // 是否将 select for update 语句打到主库
+	SupportMultiQuery    bool              `json:"support_multi_query"`    //是否支持多语句
 }
 
 // Encode encode json

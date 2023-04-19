@@ -74,9 +74,58 @@ func (se *SessionExecutor) handleQuery(sql string) (r *mysql.Result, err error) 
 	stmtType := parser.Preview(sql)
 	reqCtx.Set(util.StmtType, stmtType)
 
-	r, err = se.doQuery(reqCtx, sql)
+	if ns.supportMultiQuery {
+		r, err = se.doMultiStmts(reqCtx, sql)
+	} else {
+		r, err = se.doQuery(reqCtx, sql)
+	}
+
 	se.manager.RecordSessionSQLMetrics(reqCtx, se, sql, startTime, err)
 	return r, err
+}
+
+//handle multi-stmts,like `select 1;set autcommit=0;insert into...;`
+func (se *SessionExecutor) doMultiStmts(reqCtx *util.RequestContext, sql string) (r *mysql.Result, errRet error) {
+	if se.session.c.hasRecycledReadPacket.CompareAndSwap(false, true) {
+		se.session.c.RecycleReadPacket()
+	}
+
+	piecesSql, err := parser.SplitStatementToPieces(sql)
+	if err != nil {
+		log.Warn("parse sql error. sql: [%s], err: %v", sql, err)
+		return nil, err
+	}
+
+	stmtsNum := len(piecesSql)
+	if stmtsNum == 1 { //single statements
+		return se.doQuery(reqCtx, sql)
+	} else if stmtsNum > 1 && se.session.c.capability&mysql.ClientMultiStatements == 0 {
+		errRet = fmt.Errorf("client's Capabilities not support multi statements,but proxy receive multi statements:[%s]", sql)
+		return nil, errRet
+	}
+
+	//multi-query
+	for index, piece := range piecesSql {
+		reqCtx.Set(util.StmtType, parser.Preview(piece))
+		reqCtx.Set(util.FromSlave, 0)
+
+		r, errRet = se.doQuery(reqCtx, piece)
+		if errRet != nil {
+			return nil, errRet
+		}
+
+		if index < stmtsNum-1 {
+			//write result to client
+			response := CreateResultResponse(se.status|mysql.ServerMoreResultsExists, r)
+			if err = se.session.writeResponse(response); err != nil {
+				log.Warn("session write response error, error: %v", err)
+				se.session.Close()
+				return r, errRet
+			}
+		}
+	}
+
+	return r, errRet
 }
 
 func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*mysql.Result, error) {
