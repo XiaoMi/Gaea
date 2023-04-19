@@ -78,6 +78,7 @@ type Namespace struct {
 	defaultSlice        string
 	downAfterNoAlive    int
 	secondsBehindMaster uint64
+	supportMultiQuery   bool
 
 	slowSQLCache         *cache.LRUCache
 	errorSQLCache        *cache.LRUCache
@@ -115,6 +116,13 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 			namespace.Close(false)
 		}
 	}()
+
+	// init SupportMultiQuery default true
+	if namespaceConfig.SupportMultiQuery {
+		namespace.supportMultiQuery = namespaceConfig.SupportMultiQuery
+	} else {
+		namespace.supportMultiQuery = true
+	}
 
 	// init black sql
 	namespace.sqls = parseBlackSqls(namespaceConfig.BlackSQL)

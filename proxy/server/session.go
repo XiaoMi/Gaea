@@ -273,7 +273,10 @@ func (cc *Session) Run() {
 		data = data[1:]
 
 		rs := cc.executor.ExecuteCommand(cmd, data)
-		cc.c.RecycleReadPacket()
+		// 如果其他地方已经回收过,不再回收
+		if !cc.c.hasRecycledReadPacket.CompareAndSwap(true, false) {
+			cc.c.RecycleReadPacket()
+		}
 
 		if err = cc.writeResponse(rs); err != nil {
 			log.Warn("Session write response error, connId: %d, err: %v", cc.c.GetConnectionID(), err)

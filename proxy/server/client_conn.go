@@ -16,9 +16,11 @@ package server
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/mysql"
-	"strings"
+	"github.com/XiaoMi/Gaea/util/sync2"
 )
 
 // ClientConn session client connection
@@ -34,6 +36,8 @@ type ClientConn struct {
 	namespace string // TODO: remove it when refactor is done
 
 	proxy *Server
+
+	hasRecycledReadPacket sync2.AtomicBool
 }
 
 // HandshakeResponseInfo handshake response information
@@ -49,11 +53,13 @@ type HandshakeResponseInfo struct {
 // NewClientConn constructor of ClientConn
 func NewClientConn(c *mysql.Conn, manager *Manager) *ClientConn {
 	salt, _ := mysql.RandomBuf(20)
-	return &ClientConn{
+	cc := &ClientConn{
 		Conn:    c,
 		salt:    salt,
 		manager: manager,
 	}
+	cc.hasRecycledReadPacket.Set(false)
+	return cc
 }
 
 func (cc *ClientConn) CompactVersion(sv string) string {

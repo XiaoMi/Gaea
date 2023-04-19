@@ -254,7 +254,7 @@ func (se *SessionExecutor) SetCharset(charset string) {
 }
 
 // SetNamespaceDefaultCharset set session default charset
-func (se SessionExecutor) SetNamespaceDefaultCharset() {
+func (se *SessionExecutor) SetNamespaceDefaultCharset() {
 	se.charset = se.manager.GetNamespace(se.namespace).GetDefaultCharset()
 }
 
