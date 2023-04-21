@@ -140,7 +140,7 @@ func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*my
 	}
 
 	db := se.db
-	trimmedSql, comments := extractPrefixCommentsAndRewrite(sql)
+	trimmedSql, comments := extractPrefixCommentsAndRewrite(sql, se.session.proxy.ServerVersion)
 	p, stmt, err := se.getPlan(se.GetNamespace(), db, trimmedSql)
 	if err != nil {
 		return nil, fmt.Errorf("get plan error, db: %s, origin sql: %s, trimmedSql: %s, err: %v", db, sql, trimmedSql, err)

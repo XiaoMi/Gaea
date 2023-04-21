@@ -44,6 +44,9 @@ const (
 	// general query log variable
 	gaeaGeneralLogVariable = "gaea_general_log"
 	readonlyVariable       = "read_only"
+	TxTransactionLT5720    = "@@tx_isolation"
+	TxTransactionGT5720    = "@@transaction_isolation"
+	JdbcInitPrefix         = "/* mysql-connector-java"
 )
 
 // SessionExecutor is bound to a session, so requests are serializable
@@ -611,7 +614,12 @@ func getOnOffVariable(v string) (string, error) {
 	}
 }
 
-func extractPrefixCommentsAndRewrite(sql string) (trimmed string, comment parser.MarginComments) {
+// extractPrefixCommentsAndRewrite extractPrefixComments and rewrite origin SQL
+func extractPrefixCommentsAndRewrite(sql string, version string) (trimmed string, comment parser.MarginComments) {
+	// fix jdbc version mismatch gaea version
+	if strings.HasPrefix(sql, JdbcInitPrefix) && util.CheckMySQLVersion(version, util.LessThanMySQLVersion80) {
+		sql = strings.Replace(sql, TxTransactionGT5720, TxTransactionLT5720, 1)
+	}
 	_, comments := parser.SplitMarginComments(sql)
 	trimmed = strings.TrimPrefix(sql, comments.Leading)
 	return strings.Replace(trimmed, masterComment, standardMasterHint, -1), comments

@@ -16,8 +16,6 @@ package server
 
 import (
 	"fmt"
-	"strings"
-
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util/sync2"
@@ -62,24 +60,11 @@ func NewClientConn(c *mysql.Conn, manager *Manager) *ClientConn {
 	return cc
 }
 
-func (cc *ClientConn) CompactVersion(sv string) string {
-	version := strings.Trim(sv, " ")
-	if version != "" {
-		v := strings.Split(sv, ".")
-		if len(v) < 3 {
-			return mysql.ServerVersion
-		}
-		return version
-	} else {
-		return mysql.ServerVersion
-	}
-}
-
 func (cc *ClientConn) writeInitialHandshakeV10() error {
-	ServerVersion := cc.CompactVersion(cc.proxy.ServerVersion)
+
 	length :=
 		1 + // protocol version
-			mysql.LenNullString(ServerVersion) +
+			mysql.LenNullString(cc.proxy.ServerVersion) +
 			4 + // connection ID
 			8 + // first part of salt data
 			1 + // filler byte
@@ -103,7 +88,7 @@ func (cc *ClientConn) writeInitialHandshakeV10() error {
 
 	// Copy server version.
 	// server version data with terminate character 0x00, type: string[NUL].
-	pos = mysql.WriteNullString(data, pos, ServerVersion)
+	pos = mysql.WriteNullString(data, pos, cc.proxy.ServerVersion)
 
 	// Add connectionID in.
 	// connection id type: 4 bytes.

@@ -55,7 +55,7 @@ func NewServer(cfg *models.Proxy, manager *Manager) (*Server, error) {
 	// init key
 	s.EncryptKey = cfg.EncryptKey
 	s.manager = manager
-	s.ServerVersion = cfg.ServerVersion
+	s.ServerVersion = util.CompactServerVersion(cfg.ServerVersion)
 	s.AuthPlugin = cfg.AuthPlugin
 
 	if len(s.AuthPlugin) > 0 {
