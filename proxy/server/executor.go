@@ -631,8 +631,14 @@ func canExecuteFromSlave(c *SessionExecutor, sql string, stmt ast.StmtNode, comm
 	if parser.Preview(sql) != parser.StmtSelect {
 		return false
 	}
+
+	// if user is ReadOnly,then only can
+	if !c.GetNamespace().IsAllowWrite(c.user) {
+		return true
+	}
+
 	// handle select @@read_only default to master
-	if isSQLSelectReadOnly(sql, stmt) && c.GetNamespace().IsAllowWrite(c.user) {
+	if isSQLSelectReadOnly(sql, stmt) {
 		return false
 	}
 
@@ -679,7 +685,7 @@ func canExecuteFromSlave(c *SessionExecutor, sql string, stmt ast.StmtNode, comm
 		}
 	}
 
-	return true
+	return c.GetNamespace().IsRWSplit(c.user)
 }
 
 // 如果是只读用户, 且SQL是INSERT, UPDATE, DELETE, 则拒绝执行, 返回true
