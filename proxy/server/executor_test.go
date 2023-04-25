@@ -34,6 +34,8 @@ import (
 	"gopkg.in/ini.v1"
 )
 
+var localManager *Manager
+
 func TestGetVariableExprResult(t *testing.T) {
 	tests := []struct {
 		variable []string
@@ -56,7 +58,7 @@ func TestGetVariableExprResult(t *testing.T) {
 				for _, v := range stmt.Variables {
 					actual := getVariableExprResult(v.Value)
 					if actual != test.expect {
-						t.Errorf("not equal, expect: %v, actual: %v", test.expect, actual)
+						t.Errorf("not equal, fromSlave: %v, actual: %v", test.expect, actual)
 					}
 				}
 			}
@@ -323,7 +325,22 @@ encrypt_key=1234abcd5678efg*
             "namespace": "test_executor_namespace",
             "rw_flag": 2,
             "rw_split": 1
+        },
+        {
+            "user_name": "test_executor_w",
+            "password": "test_executor",
+            "namespace": "test_executor_namespace",
+            "rw_flag": 2,
+            "rw_split": 0
+        },
+        {
+            "user_name": "test_executor_r",
+            "password": "test_executor",
+            "namespace": "test_executor_namespace",
+            "rw_flag": 1,
+            "rw_split": 1
         }
+
     ],
     "default_slice": "slice-0",
 	"max_sql_execute_time": 0
@@ -365,4 +382,97 @@ encrypt_key=1234abcd5678efg*
 	}
 	m.users[current] = user
 	return m, nil
+}
+
+func TestCanExecuteFromSlave(t *testing.T) {
+	type userPriv struct {
+		name string
+		user string
+	}
+	type TestCase struct {
+		name          string
+		sql           string
+		userList      []userPriv
+		fromSlaveList []bool
+	}
+
+	userList := []userPriv{
+		{
+			name: "read_write",
+			user: "test_executor",
+		},
+		{
+			name: "write_only",
+			user: "test_executor_w",
+		},
+		{
+			name: "read_only",
+			user: "test_executor_r",
+		},
+	}
+	testCases := []TestCase{
+		{
+			name:          "test select simple",
+			sql:           "select * from t",
+			userList:      userList,
+			fromSlaveList: []bool{true, false, true},
+		},
+		{
+			name:          "test select master hint",
+			sql:           "/*master*/ select * from t",
+			userList:      userList,
+			fromSlaveList: []bool{false, false, true},
+		},
+		{
+			name:          "test select master hint 2",
+			sql:           "/*master*/ select * from t",
+			userList:      userList,
+			fromSlaveList: []bool{false, false, true},
+		},
+		// test select ... for update/select ... lock in share mode
+		{
+			name:          "test select for update",
+			sql:           "select * from t where id=1 for update",
+			userList:      userList,
+			fromSlaveList: []bool{false, false, true},
+		},
+		// test update
+		{
+			name:          "test update",
+			sql:           "update t set col1='a' where id=1",
+			userList:      userList,
+			fromSlaveList: []bool{false, false, false},
+		},
+	}
+
+	for _, tt := range testCases {
+		for i, user := range tt.userList {
+			c, err := newDefaultSessionExecutor()
+			assert.Equal(t, err, nil)
+			c.user = user.user
+			trimmedSql, comments := extractPrefixCommentsAndRewrite(tt.sql, mysql.ServerVersion)
+			_, stmt, err := c.getPlan(c.GetNamespace(), c.db, trimmedSql)
+			if err != nil {
+				t.Fatal("getPlan error:", tt.name)
+			}
+			assert.Equal(t, canExecuteFromSlave(c, tt.sql, stmt, comments), tt.fromSlaveList[i], tt.name+"-"+tt.userList[i].name)
+		}
+
+	}
+}
+
+func newDefaultSessionExecutor() (*SessionExecutor, error) {
+	var err error
+	if localManager == nil {
+		localManager, err = prepareNamespaceManager()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	c := newSessionExecutor(localManager)
+	c.namespace = "test_executor_namespace"
+	c.user = "test_executor"
+	c.db = "db_ks"
+	return c, nil
 }

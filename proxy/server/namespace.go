@@ -118,10 +118,15 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 	}()
 
 	// init SupportMultiQuery default true
+	namespace.supportMultiQuery = true
 	if namespaceConfig.SupportMultiQuery {
 		namespace.supportMultiQuery = namespaceConfig.SupportMultiQuery
-	} else {
-		namespace.supportMultiQuery = true
+	}
+
+	// init CheckSelectLock default true
+	namespace.CheckSelectLock = true
+	if namespaceConfig.CheckSelectLock {
+		namespace.CheckSelectLock = namespaceConfig.CheckSelectLock
 	}
 
 	// init black sql
@@ -228,7 +233,6 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 	}
 
 	namespace.secondsBehindMaster = namespaceConfig.SecondsBehindMaster
-	namespace.CheckSelectLock = namespaceConfig.CheckSelectLock
 
 	return namespace, nil
 }
