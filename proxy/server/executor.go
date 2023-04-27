@@ -47,6 +47,9 @@ const (
 	TxTransactionLT5720    = "@@tx_isolation"
 	TxTransactionGT5720    = "@@transaction_isolation"
 	JdbcInitPrefix         = "/* mysql-connector-java"
+
+	// multiBackendAddrMark marks the backend addr is one of multi backend addrs
+	multiBackendAddrMark = ">"
 )
 
 // SessionExecutor is bound to a session, so requests are serializable
@@ -72,9 +75,10 @@ type SessionExecutor struct {
 	stmtID uint32
 	stmts  map[uint32]*Stmt //prepare相关,client端到proxy的stmt
 
-	parser     *parser.Parser
-	session    *Session
-	serverAddr net.Addr
+	parser      *parser.Parser
+	session     *Session
+	serverAddr  net.Addr
+	backendAddr string //记录执行 SQL 后端实例的地址
 }
 
 // Response response info
@@ -281,8 +285,8 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 	start := time.Now()
 	switch cmd {
 	case mysql.ComQuit:
-		_ = se.manager.statistics.generalLogger.Notice("Quit - conn_id=%d, %s, namespace:%s",
-			se.session.c.ConnectionID, se.clientAddr, se.namespace)
+		_ = se.manager.statistics.generalLogger.Notice("Quit - conn_id=%d, ns=%s, %s@%s",
+			se.session.c.ConnectionID, se.namespace, se.user, se.clientAddr)
 		se.handleRollback(nil)
 		// https://dev.mysql.com/doc/internals/en/com-quit.html
 		// either a connection close or a OK_Packet, OK_Packet will cause client RST sometimes, but doesn't affect sql execute
@@ -292,22 +296,24 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		// handle phase
 		r, err := se.handleQuery(sql)
 		if err != nil {
-			_ = se.manager.statistics.generalLogger.Notice("ERROR - %.1fms - namespace=%s, %s->%s, mysql_connect_id=%d|%v",
+			_ = se.manager.statistics.generalLogger.Notice("ERROR - %.1fms - ns=%s, %s@%s->%s, mysql_connect_id=%d|%v",
 				float64(time.Since(start).Microseconds())/1000.0,
 				se.namespace,
+				se.user,
 				se.clientAddr,
-				se.serverAddr,
+				se.backendAddr,
 				se.session.c.ConnectionID,
 				sql)
 
 			return CreateErrorResponse(se.status, err)
 		}
-		// Gaea support multi tenant, so we can set the server addr and port is a constant number
-		_ = se.manager.statistics.generalLogger.Notice("OK - %.1fms - namespace=%s, %s->%s, mysql_connect_id=%d|%v",
+		// Gaea support multi tenant, so the backendAddr may be one of backend addrs which begins with 0
+		_ = se.manager.statistics.generalLogger.Notice("OK - %.1fms - ns=%s, %s@%s->%s, mysql_connect_id=%d|%v",
 			float64(time.Since(start).Microseconds())/1000.0,
 			se.namespace,
+			se.user,
 			se.clientAddr,
-			se.serverAddr,
+			se.backendAddr,
 			se.session.c.ConnectionID,
 			sql)
 		return CreateResultResponse(se.status, r)
@@ -370,6 +376,8 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 
 func (se *SessionExecutor) getBackendConns(sqls map[string]map[string][]string, fromSlave bool) (pcs map[string]backend.PooledConnect, err error) {
 	pcs = make(map[string]backend.PooledConnect)
+	backendAddr := ""
+
 	for sliceName := range sqls {
 		var pc backend.PooledConnect
 		pc, err = se.getBackendConn(sliceName, fromSlave)
@@ -377,6 +385,11 @@ func (se *SessionExecutor) getBackendConns(sqls map[string]map[string][]string, 
 			return
 		}
 		pcs[sliceName] = pc
+		backendAddr = pc.GetAddr()
+	}
+	se.backendAddr = backendAddr
+	if len(pcs) > 1 {
+		se.backendAddr = multiBackendAddrMark + backendAddr
 	}
 	return
 }
