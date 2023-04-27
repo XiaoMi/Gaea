@@ -16,6 +16,8 @@ package models
 
 import (
 	"fmt"
+	"github.com/XiaoMi/Gaea/log"
+	"github.com/XiaoMi/Gaea/log/xlog"
 	"github.com/XiaoMi/Gaea/mysql"
 	"strconv"
 	"strings"
@@ -25,6 +27,7 @@ import (
 
 const (
 	defaultGaeaCluster = "gaea"
+	DefaultLogKeepDays = 3
 )
 
 // Proxy means proxy structure of proxy config
@@ -69,6 +72,7 @@ type Proxy struct {
 	ServerVersion string `ini:"server_version"`
 	AuthPlugin    string `ini:"auth_plugin"`
 	NumCPU        int    `ini:"num_cpu"`
+	ConfigFile    string
 }
 
 // ParseProxyConfigFromFile parser proxy config from file
@@ -91,6 +95,12 @@ func ParseProxyConfigFromFile(cfgFile string) (*Proxy, error) {
 		proxyConfig.Cluster = strings.TrimPrefix(proxyConfig.CoordinatorRoot, "/")
 	} else if proxyConfig.Cluster != "" {
 		proxyConfig.CoordinatorRoot = "/" + proxyConfig.Cluster
+	}
+
+	proxyConfig.ConfigFile = cfgFile
+
+	if err := proxyConfig.Verify(); err != nil {
+		return nil, err
 	}
 	return proxyConfig, err
 }
@@ -148,4 +158,38 @@ type ProxyInfo struct {
 // Encode encode proxy info
 func (p *ProxyInfo) Encode() []byte {
 	return JSONEncode(p)
+}
+
+func ReloadProxyConfig(cfgFile string) error {
+	cfg, err := ParseProxyConfigFromFile(cfgFile)
+	if err != nil {
+		return fmt.Errorf("parse config file error:%s", err)
+	}
+
+	if err = InitXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service, cfg.LogKeepDays); err != nil {
+		return fmt.Errorf("init xlog error:%s", err)
+	}
+
+	return nil
+}
+
+func InitXLog(output, path, filename, level, service string, logKeepDays int) error {
+	cfg := make(map[string]string)
+	cfg["path"] = path
+	cfg["filename"] = filename
+	cfg["level"] = level
+	cfg["service"] = service
+	cfg["skip"] = "5" // 设置xlog打印方法堆栈需要跳过的层数, 5目前为调用log.Debug()等方法的方法名, 比xlog默认值多一层.
+	cfg["log_keep_days"] = strconv.Itoa(DefaultLogKeepDays)
+	if logKeepDays != 0 {
+		cfg["log_keep_days"] = strconv.Itoa(logKeepDays)
+	}
+
+	logger, err := xlog.CreateLogManager(output, cfg)
+	if err != nil {
+		return err
+	}
+
+	log.SetGlobalLogger(logger)
+	return nil
 }

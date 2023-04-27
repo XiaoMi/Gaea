@@ -26,3 +26,13 @@
 
 - 当从库宕机时：会重新从主库获取连接，并请求到主库（无论权限如何）
 - 当 Select 处于显式开启的事务中，也都会请求到主库（包括只读用户，此处与 MiProxy 不一致，MiProxy 只读用户开启事务也会请求到从库）
+
+## 配置热加载
+目前 Gaea namespace 配置支持热加载，Gaea 本身的配置文件只支持日志的热加载，执行热加载的方式为
+```bash
+# 使用 signal 重新加载
+kill -SIGUSER1 ${gaea_pid}
+# 使用 API 热加载
+curl -X PUT 'http://127.0.0.1:13307/api/proxy/proxyconfig/reload' \
+-H 'Authorization: Basic YWRtaW46YWRtaW4='
+```
