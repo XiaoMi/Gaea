@@ -49,6 +49,8 @@ type AdminServer struct {
 	}
 	proxy *Server
 	model *models.ProxyInfo
+	// proxy config file path
+	configFile string
 
 	listener      net.Listener
 	adminUser     string
@@ -87,7 +89,7 @@ func NewAdminServer(proxy *Server, cfg *models.Proxy) (*AdminServer, error) {
 	s.coordinatorUsername = cfg.UserName
 	s.coordinatorPassword = cfg.Password
 	s.coordinatorRoot = cfg.CoordinatorRoot
-
+	s.configFile = cfg.ConfigFile
 	s.engine = gin.New()
 	l, err := net.Listen(cfg.ProtoType, cfg.AdminAddr)
 	if err != nil {
@@ -146,6 +148,7 @@ func (s *AdminServer) Close() error {
 func (s *AdminServer) registerURL() {
 	adminGroup := s.engine.Group("/api/proxy", gin.BasicAuth(gin.Accounts{s.adminUser: s.adminPassword}))
 	adminGroup.GET("/ping", s.ping)
+	adminGroup.PUT("/proxyconfig/reload", s.reloadProxyConfig)
 	adminGroup.PUT("/config/prepare/:name", s.prepareConfig)
 	adminGroup.PUT("/config/commit/:name", s.commitConfig)
 	adminGroup.PUT("/namespace/delete/:name", s.deleteNamespace)
@@ -273,6 +276,20 @@ func (s *AdminServer) unregisterProxy() error {
 // @Security BasicAuth
 // @Router /api/proxy/ping [get]
 func (s *AdminServer) ping(c *gin.Context) {
+	c.JSON(http.StatusOK, "OK")
+}
+
+// @Summary reload proxy config
+// @Description 通过管理接口, 重载 proxy 配置文件，当前仅支持 log 配置的重载
+// @Produce  json
+// @Success 200 {string} string "OK"
+// @Security BasicAuth
+// @Router /api/proxy/proxyconfig/reload [put]
+func (s *AdminServer) reloadProxyConfig(c *gin.Context) {
+	if err := models.ReloadProxyConfig(s.configFile); err != nil {
+		c.JSON(selfDefinedInternalError, fmt.Sprintf("reload config file Error:%s", err))
+	}
+	log.Notice("reload proxy config success")
 	c.JSON(http.StatusOK, "OK")
 }
 
