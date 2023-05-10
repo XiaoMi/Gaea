@@ -32,6 +32,8 @@ log_filename=gaea
 log_output=file
 ; 日志保留天数，默认为3天（所有日志）
 log_keep_days=3
+; 日志保留数量，默认为 72 个（所有归档的日志)），与 log_keep_days 取最小值
+log_keep_counts=72
 
 ;管理地址
 admin_addr=0.0.0.0:13307
