@@ -26,8 +26,9 @@ import (
 )
 
 const (
-	defaultGaeaCluster = "gaea"
-	DefaultLogKeepDays = 3
+	defaultGaeaCluster   = "gaea"
+	DefaultLogKeepDays   = 3
+	DefaultLogKeepCounts = 72
 )
 
 // Proxy means proxy structure of proxy config
@@ -49,11 +50,12 @@ type Proxy struct {
 	Service string `ini:"service_name"`
 	Cluster string `ini:"cluster_name"`
 
-	LogPath     string `ini:"log_path"`
-	LogLevel    string `ini:"log_level"`
-	LogFileName string `ini:"log_filename"`
-	LogOutput   string `ini:"log_output"`
-	LogKeepDays int    `ini:"log_keep_days"`
+	LogPath       string `ini:"log_path"`
+	LogLevel      string `ini:"log_level"`
+	LogFileName   string `ini:"log_filename"`
+	LogOutput     string `ini:"log_output"`
+	LogKeepDays   int    `ini:"log_keep_days"`
+	LogKeepCounts int    `ini:"log_keep_counts"`
 
 	ProtoType      string `ini:"proto_type"`
 	ProxyAddr      string `ini:"proxy_addr"`
@@ -166,14 +168,14 @@ func ReloadProxyConfig(cfgFile string) error {
 		return fmt.Errorf("parse config file error:%s", err)
 	}
 
-	if err = InitXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service, cfg.LogKeepDays); err != nil {
+	if err = InitXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service, cfg.LogKeepDays, cfg.LogKeepCounts); err != nil {
 		return fmt.Errorf("init xlog error:%s", err)
 	}
 
 	return nil
 }
 
-func InitXLog(output, path, filename, level, service string, logKeepDays int) error {
+func InitXLog(output, path, filename, level, service string, logKeepDays int, logKeepCounts int) error {
 	cfg := make(map[string]string)
 	cfg["path"] = path
 	cfg["filename"] = filename
@@ -185,6 +187,10 @@ func InitXLog(output, path, filename, level, service string, logKeepDays int) er
 		cfg["log_keep_days"] = strconv.Itoa(logKeepDays)
 	}
 
+	cfg["log_keep_counts"] = strconv.Itoa(DefaultLogKeepCounts)
+	if logKeepCounts != 0 {
+		cfg["log_keep_counts"] = strconv.Itoa(logKeepCounts)
+	}
 	logger, err := xlog.CreateLogManager(output, cfg)
 	if err != nil {
 		return err

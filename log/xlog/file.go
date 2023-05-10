@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -44,6 +45,7 @@ const (
 	XFileLogDefaultLogID = "900000001"
 	SpliterDelay         = 5
 	DefaultLogKeepDays   = 3
+	DefaultLogKeepCounts = 72
 )
 
 // NewXFileLog is the constructor of XFileLog
@@ -116,8 +118,13 @@ func (p *XFileLog) Init(config map[string]string) (err error) {
 		logKeepDays = days
 	}
 
+	logKeepCounts := DefaultLogKeepCounts
+	if counts, err := strconv.Atoi(config["log_keep_counts"]); err == nil && counts != 0 {
+		logKeepCounts = counts
+	}
+
 	body := func() {
-		go p.spliter(logKeepDays)
+		go p.spliter(logKeepDays, logKeepCounts)
 	}
 	doSplit, ok := config["dosplit"]
 	if !ok {
@@ -130,14 +137,15 @@ func (p *XFileLog) Init(config map[string]string) (err error) {
 }
 
 // split the log file
-func (p *XFileLog) spliter(keepDays int) {
+func (p *XFileLog) spliter(keepDays int, logKeepCounts int) {
 	preHour := time.Now().Hour()
 	splitTime := time.Now().Format("2006010215")
 	defer p.Close()
 	for {
 		time.Sleep(time.Second * SpliterDelay)
+		p.clean(keepDays, logKeepCounts)
 		if time.Now().Hour() != preHour {
-			p.clean(keepDays)
+			p.clean(keepDays, logKeepCounts)
 			p.rename(splitTime)
 			preHour = time.Now().Hour()
 			splitTime = time.Now().Format("2006010215")
@@ -176,19 +184,32 @@ func delayClose(fp *os.File) {
 	fp.Close()
 }
 
-func (p *XFileLog) clean(keepDays int) (err error) {
+func (p *XFileLog) clean(keepDays int, logKeepCounts int) (err error) {
 	deadline := time.Now().AddDate(0, 0, -1*keepDays)
+	fileTypeMap := make(map[string]int)
 	var files []string
-	files, err = filepath.Glob(fmt.Sprintf("%s/%s.log*", p.path, p.filename))
+	files, err = filepath.Glob(fmt.Sprintf("%s/%s*.log*", p.path, p.filename))
 	if err != nil {
 		return
 	}
 	var fileInfo os.FileInfo
-	for _, file := range files {
-		if filepath.Base(file) == fmt.Sprintf("%s.log", p.filename) {
+	for i := len(files) - 1; i >= 0; i-- {
+		file := files[i]
+		if canSkipClean(filepath.Base(file), p.filename) {
 			continue
 		}
-		if filepath.Base(file) == fmt.Sprintf("%s.log.wf", p.filename) {
+
+		reg := regexp.MustCompile("[0-9]+")
+		fileType := reg.ReplaceAllString(file, "")
+		fileTypeMap[fileType]++
+		if fileTypeMap[fileType] > logKeepCounts {
+			_ = os.Remove(file)
+			fileTypeMap[fileType]--
+		}
+	}
+
+	for _, file := range files {
+		if canSkipClean(filepath.Base(file), p.filename) {
 			continue
 		}
 		if fileInfo, err = os.Stat(file); err == nil {
@@ -421,4 +442,21 @@ func isDir(path string) (bool, error) {
 		return false, err
 	}
 	return stat.IsDir(), nil
+}
+
+// canSkipClean check if filename can be skipped by log clean
+func canSkipClean(file string, filePrefix string) bool {
+	skipList := []string{
+		filePrefix + ".log",
+		filePrefix + "_sql.log",
+		filePrefix + ".log.wf",
+		filePrefix + "_sql.log.wf",
+	}
+
+	for _, s := range skipList {
+		if file == s {
+			return true
+		}
+	}
+	return false
 }
