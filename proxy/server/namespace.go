@@ -699,7 +699,7 @@ func getInstanceStatus(namespace *Namespace, v backend.ConnectionPool, ctx conte
 			continue
 		}
 
-		if err = conn.Ping(); err == nil {
+		if err = conn.PingWithTimeout(backend.GetConnTimeout); err == nil {
 			break
 		}
 		if err = conn.Reconnect(); err == nil {

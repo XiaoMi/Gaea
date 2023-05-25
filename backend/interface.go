@@ -19,6 +19,7 @@ type PooledConnect interface {
 	Commit() error
 	Rollback() error
 	Ping() error
+	PingWithTimeout(timeout time.Duration) error
 	SetCharset(charset string, collation mysql.CollationID) (bool, error)
 	FieldList(table string, wildcard string) ([]*mysql.Field, error)
 	GetAddr() string

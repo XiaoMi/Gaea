@@ -213,13 +213,27 @@ func (rp *ResourcePool) get(ctx context.Context, wait bool) (resource Resource, 
 		return nil, ErrClosed
 	}
 
-	// Unwrap
 	if wrapper.resource == nil {
-		wrapper.resource, err = rp.factory() // 实际建立连接
-		if err != nil {
-			rp.resources <- resourceWrapper{}
-			return nil, err
+		errChan := make(chan error)
+		go func() {
+			wrapper.resource, err = rp.factory()
+			if err != nil {
+				errChan <- err
+				return
+			}
+			errChan <- nil
+		}()
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case err1 := <-errChan:
+			if err1 != nil {
+				rp.resources <- resourceWrapper{}
+				return nil, err1
+			}
 		}
+
 		rp.active.Add(1)
 	}
 	rp.available.Add(-1)
