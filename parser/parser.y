@@ -3796,20 +3796,20 @@ FunctionCallKeyword:
 	}
 |	"CHAR" '(' ExpressionList ')'
 	{
-		nilVal := ast.NewValueExpr(nil)
 		args := $3.([]ast.ExprNode)
 		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr(ast.CharFunc),
-			Args: append(args, nilVal),
+			FnName: model.NewCIStr($1),
+			Args: append(args),
 		}
 	}
 |	"CHAR" '(' ExpressionList "USING" StringName ')'
 	{
+	    using := ast.NewValueExpr("USING")
 		charset1 := ast.NewValueExpr($5)
 		args := $3.([]ast.ExprNode)
 		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr(ast.CharFunc),
-			Args: append(args, charset1),
+			FnName: model.NewCIStr($1),
+			Args: append(args,using,charset1),
 		}
 	}
 |	"DATE"  stringLit

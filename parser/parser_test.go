@@ -1048,6 +1048,12 @@ func (s *testParserSuite) TestBuiltin(c *C) {
 		{"select utc_time('1')", false, ""},
 		{"select utc_time(null)", false, ""},
 
+		{"select char(65)", true, "SELECT CHAR(65)"},
+		{"SELECT CHAR(65, 66, 67)", true, "SELECT CHAR(65, 66, 67)"},
+		{"SELECT HEX(CHAR(1, 0)), HEX(CHAR(256)), HEX(CHAR(1, 1)), HEX(CHAR(257))", true, "SELECT HEX(CHAR(1, 0)),HEX(CHAR(256)),HEX(CHAR(1, 1)),HEX(CHAR(257))"},
+		{"SELECT CHAR(0x027FA USING ucs2)", true, "SELECT CHAR(x'0027fa' USING 'ucs2')"},
+		{" SELECT CHAR(0xc2a7 USING utf8)", true, "SELECT CHAR(x'c2a7' USING 'utf8')"},
+
 		// for microsecond, second, minute, hour
 		{"SELECT MICROSECOND('2009-12-31 23:59:59.000010');", true, "SELECT MICROSECOND('2009-12-31 23:59:59.000010')"},
 		{"SELECT SECOND('10:05:03');", true, "SELECT SECOND('10:05:03')"},
@@ -1186,7 +1192,7 @@ func (s *testParserSuite) TestBuiltin(c *C) {
 
 		{`SELECT RPAD('hi', 6, 'c');`, true, "SELECT RPAD('hi', 6, 'c')"},
 		{`SELECT BIT_LENGTH('hi');`, true, "SELECT BIT_LENGTH('hi')"},
-		{`SELECT CHAR(65);`, true, "SELECT CHAR_FUNC(65, NULL)"},
+		//{`SELECT CHAR(65);`, true, "SELECT CHAR_FUNC(65, NULL)"},
 		{`SELECT CHAR_LENGTH('abc');`, true, "SELECT CHAR_LENGTH('abc')"},
 		{`SELECT CHARACTER_LENGTH('abc');`, true, "SELECT CHARACTER_LENGTH('abc')"},
 		{`SELECT FIELD('ej', 'Hej', 'ej', 'Heja', 'hej', 'foo');`, true, "SELECT FIELD('ej', 'Hej', 'ej', 'Heja', 'hej', 'foo')"},
