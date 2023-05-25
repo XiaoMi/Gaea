@@ -19,13 +19,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"net"
-	"strings"
-
 	sqlerr "github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util/sync2"
+	"net"
+	"strings"
+	"time"
 )
 
 // DirectConnection means connection to backend mysql
@@ -85,7 +85,10 @@ func (dc *DirectConnection) connect() error {
 		typ = "unix"
 	}
 
-	netConn, err := net.Dial(typ, dc.addr)
+	dialer := net.Dialer{
+		Timeout: GetConnTimeout,
+	}
+	netConn, err := dialer.Dial(typ, dc.addr)
 	if err != nil {
 		return err
 	}
@@ -384,6 +387,21 @@ func (dc *DirectConnection) Ping() error {
 		return errors.New("dc connection ping failed")
 	}
 	return fmt.Errorf("unexpected packet type: %d", data[0])
+}
+
+func (dc *DirectConnection) PingWithTimeout(timeout time.Duration) error {
+	pingChan := make(chan error)
+	go func() {
+		err := dc.Ping()
+		pingChan <- err
+	}()
+
+	select {
+	case <-time.After(timeout):
+		return errors.New("ping timeout")
+	case err1 := <-pingChan:
+		return err1
+	}
 }
 
 // UseDB send ComInitDB to backend mysql

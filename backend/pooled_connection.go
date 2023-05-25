@@ -76,6 +76,10 @@ func (pc *pooledConnectImpl) Ping() error {
 	return pc.directConnection.Ping()
 }
 
+func (pc *pooledConnectImpl) PingWithTimeout(timeout time.Duration) error {
+	return pc.directConnection.PingWithTimeout(timeout)
+}
+
 // Execute wrapper of direct connection, execute sql
 func (pc *pooledConnectImpl) Execute(sql string, maxRows int) (*mysql.Result, error) {
 	return pc.directConnection.Execute(sql, maxRows)

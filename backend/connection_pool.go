@@ -26,7 +26,7 @@ import (
 )
 
 const (
-	getConnTimeout = 2 * time.Second
+	GetConnTimeout = 2 * time.Second
 	PING_PEROID    = 1 * time.Second
 )
 
@@ -134,7 +134,7 @@ func (cp *connectionPoolImpl) Get(ctx context.Context) (pc PooledConnect, err er
 		return nil, ErrConnectionPoolClosed
 	}
 
-	getCtx, cancel := context.WithTimeout(ctx, getConnTimeout)
+	getCtx, cancel := context.WithTimeout(ctx, GetConnTimeout)
 	defer cancel()
 	r, err := p.Get(getCtx)
 	if err != nil {
@@ -145,10 +145,11 @@ func (cp *connectionPoolImpl) Get(ctx context.Context) (pc PooledConnect, err er
 
 	//do ping when over the ping time. if error happen, create new one
 	if !pc.GetReturnTime().IsZero() && time.Until(pc.GetReturnTime().Add(PING_PEROID)) < 0 {
-		if err = pc.Ping(); err != nil {
+		if err = pc.PingWithTimeout(GetConnTimeout); err != nil {
 			err = pc.Reconnect()
 		}
 	}
+
 	return pc, err
 }
 
