@@ -9564,20 +9564,20 @@ yynewstate:
 		}
 	case 751:
 		{
-			nilVal := ast.NewValueExpr(nil)
 			args := yyS[yypt-1].item.([]ast.ExprNode)
 			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(ast.CharFunc),
-				Args:   append(args, nilVal),
+				FnName: model.NewCIStr(yyS[yypt-3].ident),
+				Args:   append(args),
 			}
 		}
 	case 752:
 		{
+			using := ast.NewValueExpr("USING")
 			charset1 := ast.NewValueExpr(yyS[yypt-1].item)
 			args := yyS[yypt-3].item.([]ast.ExprNode)
 			parser.yyVAL.expr = &ast.FuncCallExpr{
-				FnName: model.NewCIStr(ast.CharFunc),
-				Args:   append(args, charset1),
+				FnName: model.NewCIStr(yyS[yypt-5].ident),
+				Args:   append(args, using, charset1),
 			}
 		}
 	case 753:

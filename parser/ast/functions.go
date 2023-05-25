@@ -416,6 +416,23 @@ func (n *FuncCallExpr) Restore(ctx *format.RestoreCtx) error {
 			}
 			i++
 		}
+	case "char":
+		hasComma := true
+		for i, argv := range n.Args {
+			if value, ok := argv.(ValueExpr); ok {
+				if value.GetString() == "USING" {
+					ctx.WriteKeyWord(" using ")
+					hasComma = false
+					continue
+				}
+			}
+			if i != 0 && hasComma {
+				ctx.WritePlain(", ")
+			}
+			if err := argv.Restore(ctx); err != nil {
+				return errors.Annotatef(err, "An error occurred while restore FuncCallExpr.Args %d", i)
+			}
+		}
 	default:
 		for i, argv := range n.Args {
 			if i != 0 {
