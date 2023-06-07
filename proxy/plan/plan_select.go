@@ -609,7 +609,7 @@ func handleFieldList(p *SelectPlan, stmt *ast.SelectStmt) (err error) {
 	for i, f := range fields.Fields {
 		switch field := f.Expr.(type) {
 		case *ast.AggregateFuncExpr:
-			merger, err := CreateAggregateFunctionMerger(field.F, i)
+			merger, err := CreateAggregateFunctionMerger(field, i)
 			if err != nil {
 				return fmt.Errorf("create aggregate function merger error, column index: %d, err: %v", i, err)
 			}
