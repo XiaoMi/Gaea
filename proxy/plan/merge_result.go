@@ -110,12 +110,14 @@ type AggregateFuncMerger interface {
 
 type aggregateFuncBaseMerger struct {
 	fieldIndex int // 所在列位置
+	distinct   bool
+	extra      string
 }
 
 // CreateAggregateFunctionMerger create AggregateFunctionMerger by function type
 // currently support: "count", "sum", "max", "min"
-func CreateAggregateFunctionMerger(funcType string, fieldIndex int) (AggregateFuncMerger, error) {
-	switch strings.ToLower(funcType) {
+func CreateAggregateFunctionMerger(aggregateFunc *ast.AggregateFuncExpr, fieldIndex int) (AggregateFuncMerger, error) {
+	switch strings.ToLower(aggregateFunc.F) {
 	case "count":
 		ret := new(AggregateFuncCountMerger)
 		ret.fieldIndex = fieldIndex
@@ -132,8 +134,13 @@ func CreateAggregateFunctionMerger(funcType string, fieldIndex int) (AggregateFu
 		ret := new(AggregateFuncMinMerger)
 		ret.fieldIndex = fieldIndex
 		return ret, nil
+	case "group_concat":
+		ret := new(AggregateFuncGroupConcatMerger)
+		ret.fieldIndex = fieldIndex
+		ret.distinct = aggregateFunc.Distinct
+		return ret, nil
 	default:
-		return nil, fmt.Errorf("aggregate function type is not support: %s", funcType)
+		return nil, fmt.Errorf("aggregate function type is not support: %s", aggregateFunc.F)
 	}
 }
 
@@ -334,6 +341,42 @@ func (a *AggregateFuncMinMerger) MergeTo(from, to ResultRow) error {
 	default:
 		return fmt.Errorf("cannot compare value %v (%T) to %v (%T)", fromValueI, fromValueI, toValueI, toValueI)
 	}
+}
+
+// AggregateFuncGroupConcatMerger merge group_concat columns in result
+type AggregateFuncGroupConcatMerger struct {
+	aggregateFuncBaseMerger
+}
+
+func (a *AggregateFuncGroupConcatMerger) concatToString(from, to ResultRow) error {
+	idx := a.fieldIndex // does not need to check
+	valueToMerge := fmt.Sprintf("%s", from.GetValue(idx))
+	originValue := fmt.Sprintf("%s", to.GetValue(idx))
+	// if distinct will remove duplicates
+	if a.distinct {
+		originSplits := strings.Split(originValue, ",")
+		valueSplit := strings.Split(valueToMerge, ",")
+		mergedSlice := removeDuplicatesString(originSplits, valueSplit)
+		to.SetValue(idx, strings.Join(mergedSlice, ","))
+		return nil
+	}
+
+	if originValue == "" {
+		to.SetValue(idx, valueToMerge)
+		return nil
+	}
+	to.SetValue(idx, originValue+","+valueToMerge)
+	return nil
+}
+
+// MergeTo implement AggregateFuncGroupConcatMerger
+func (a *AggregateFuncGroupConcatMerger) MergeTo(from, to ResultRow) error {
+	idx := a.fieldIndex
+	if idx >= len(from) || idx >= len(to) {
+		return fmt.Errorf("field index out of bound: %d", a.fieldIndex)
+	}
+
+	return a.concatToString(from, to)
 }
 
 // MergeExecResult merge execution results, like UPDATE, INSERT, DELETE, ...

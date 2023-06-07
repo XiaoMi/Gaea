@@ -233,3 +233,18 @@ func distinctList(l []int) []int {
 	}
 	return ret
 }
+
+func removeDuplicatesString(arr1 []string, arr2 []string) []string {
+	m := make(map[string]int)
+	for _, v := range arr1 {
+		m[v] = 1
+	}
+	for _, v := range arr2 {
+		m[v] = 1
+	}
+	var result []string
+	for k := range m {
+		result = append(result, k)
+	}
+	return result
+}
