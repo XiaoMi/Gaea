@@ -16,6 +16,7 @@ package plan
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 
 	"github.com/XiaoMi/Gaea/mysql"
@@ -338,7 +339,7 @@ func (s *StmtInfo) getSettedRuleByColumnName(column string) (router.Rule, bool, 
 }
 
 // 处理SELECT只含有全局表的情况
-// 这种情况只路由到默认分片
+// 这种情况会随机路由到各个分片表
 // 如果有多个全局表, 则只取第一个全局表的配置, 因此需要业务上保证这些全局表的配置是一致的.
 func postHandleGlobalTableRouteResultInQuery(p *StmtInfo) error {
 	if len(p.tableRules) == 0 && len(p.globalTableRules) != 0 {
@@ -351,7 +352,10 @@ func postHandleGlobalTableRouteResultInQuery(p *StmtInfo) error {
 		}
 		p.result.db = rule.GetDB()
 		p.result.table = tableName
-		p.result.indexes = []int{0} // 全局表SELECT只取默认分片
+
+		// 全局表SELECT随机分片
+		tableLen := len(rule.GetSubTableIndexes())
+		p.result.indexes = []int{rand.Intn(tableLen)}
 	}
 	return nil
 }
