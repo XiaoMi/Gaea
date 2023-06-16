@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -529,12 +530,21 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 	}
 	rs := make([]interface{}, resultCount)
 	f := func(reqCtx *util.RequestContext, rs []interface{}, i int, sliceName string, execSqls map[string][]string, pc backend.PooledConnect) {
-		for db, sqls := range execSqls {
+		// 对 execSqls 排序后处理
+		dbs := make([]string, 0, len(execSqls))
+		for k := range execSqls {
+			dbs = append(dbs, k)
+		}
+		sort.Slice(dbs, func(i, j int) bool {
+			return dbs[i] < dbs[j]
+		})
+		for _, db := range dbs {
 			err := initBackendConn(pc, db, se.GetCharset(), se.GetCollationID(), se.GetVariables())
 			if err != nil {
 				rs[i] = err
 				break
 			}
+			sqls := execSqls[db]
 			for _, v := range sqls {
 				startTime := time.Now()
 				r, err := pc.Execute(v, se.manager.GetNamespace(se.namespace).GetMaxResultSize())
@@ -551,9 +561,17 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 	}
 
 	offset := 0
-	for sliceName, pc := range pcs {
+	// 对 pcs 排序后处理
+	sliceNames := make([]string, 0, len(pcs))
+	for k := range pcs {
+		sliceNames = append(sliceNames, k)
+	}
+	sort.Slice(sliceNames, func(i, j int) bool {
+		return sliceNames[i] < sliceNames[j]
+	})
+	for _, sliceName := range sliceNames {
 		s := sqls[sliceName] //map[string][]string
-		go f(reqCtx, rs, offset, sliceName, s, pc)
+		go f(reqCtx, rs, offset, sliceName, s, pcs[sliceName])
 		for _, sqlDB := range sqls[sliceName] {
 			offset += len(sqlDB)
 		}
