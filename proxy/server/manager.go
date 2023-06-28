@@ -45,6 +45,7 @@ const (
 	DefaultLogKeepDays = 3
 	MasterRole         = "master"
 	SlaveRole          = "slave"
+	SQLExecTimeSize    = 5000
 )
 
 // LoadAndCreateManager load namespace config, and create manager
@@ -348,7 +349,7 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 }
 
 // RecordBackendSQLMetrics record backend SQL metrics, like response time, error
-func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace string, sql, backendAddr string, startTime time.Time, err error) {
+func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace string, sliceName, sql, backendAddr string, startTime time.Time, err error) {
 	trimmedSql := strings.ReplaceAll(sql, "\n", " ")
 	ns := m.GetNamespace(namespace)
 	if ns == nil {
@@ -365,7 +366,7 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace
 	}
 
 	// record sql timing
-	m.statistics.recordBackendSQLTiming(namespace, operation, startTime)
+	m.statistics.recordBackendSQLTiming(namespace, operation, sliceName, backendAddr, startTime)
 
 	// record slow sql
 	duration := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
@@ -388,12 +389,27 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace
 }
 
 func (m *Manager) startConnectPoolMetricsTask(interval int) {
+	current, _, _ := m.switchIndex.Get()
+	for _, ns := range m.namespaces[current].namespaces {
+		m.statistics.SQLResponsePercentile[ns.name] = &SQLResponse{
+			ns:                      ns.name,
+			sqlExecTimeRecordSwitch: false,
+			sQLExecTimeChan:         make(chan string, SQLExecTimeSize),
+			sQLTimeList:             []float64{},
+			response99Max:           make(map[string]float64),
+			response99Avg:           make(map[string]float64),
+			response95Max:           make(map[string]float64),
+			response95Avg:           make(map[string]float64),
+		}
+	}
+
 	if interval <= 0 {
 		interval = 10
 	}
 
 	go func() {
 		t := time.NewTicker(time.Duration(interval) * time.Second)
+		tSQLRecordTime := time.NewTicker(time.Duration(backend.PingPeriod) * time.Second)
 		for {
 			select {
 			case <-m.GetStatisticManager().closeChan:
@@ -401,10 +417,13 @@ func (m *Manager) startConnectPoolMetricsTask(interval int) {
 			case <-t.C:
 				m.statistics.AddUptimeCount(time.Now().Unix() - m.statistics.startTime)
 				m.statistics.CalcCPUBusy()
+
 				current, _, _ := m.switchIndex.Get()
 				for nameSpaceName, _ := range m.namespaces[current].namespaces {
 					m.recordBackendConnectPoolMetrics(nameSpaceName)
 				}
+			case <-tSQLRecordTime.C:
+				m.statistics.CalcAvgSQLTimes()
 			}
 		}
 	}()
@@ -416,7 +435,20 @@ func (m *Manager) recordBackendConnectPoolMetrics(namespace string) {
 		log.Warn("record backend connect pool metrics err, namespace: %s", namespace)
 		return
 	}
-
+	for n, v := range m.statistics.SQLResponsePercentile {
+		for backendAddr, val := range v.response99Max {
+			m.statistics.recordBackendSQLTimingP99Max(n, backendAddr, int64(val))
+		}
+		for backendAddr, val := range v.response99Avg {
+			m.statistics.recordBackendSQLTimingP99Avg(n, backendAddr, int64(val))
+		}
+		for backendAddr, val := range v.response95Max {
+			m.statistics.recordBackendSQLTimingP95Max(n, backendAddr, int64(val))
+		}
+		for backendAddr, val := range v.response95Avg {
+			m.statistics.recordBackendSQLTimingP95Avg(n, backendAddr, int64(val))
+		}
+	}
 	for sliceName, slice := range ns.slices {
 		m.statistics.recordInstanceCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), getStatusMap(slice.Master.StatusMap, 0), MasterRole)
 		m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].InUse())
@@ -676,10 +708,27 @@ type StatisticManager struct {
 	backendConnectPoolWaitCounts     *stats.GaugesWithMultiLabels   //后端等待队列统计
 	backendInstanceCounts            *stats.GaugesWithMultiLabels   //后端实例状态统计
 	uptimeCounts                     *stats.GaugesWithMultiLabels   // 启动时间记录
+	backendSQLResponse99MaxCounts    *stats.GaugesWithMultiLabels   // 后端 SQL 耗时 P99 最大响应时间
+	backendSQLResponse99AvgCounts    *stats.GaugesWithMultiLabels   // 后端 SQL 耗时 P99 平均响应时间
+	backendSQLResponse95MaxCounts    *stats.GaugesWithMultiLabels   // 后端 SQL 耗时 P95 最大响应时间
+	backendSQLResponse95AvgCounts    *stats.GaugesWithMultiLabels   // 后端 SQL 耗时 P95 平均响应时间
 
-	slowSQLTime int64
-	CPUNums     int // Gaea服务器使用的CPU核数
-	closeChan   chan bool
+	SQLResponsePercentile map[string]*SQLResponse // 用于记录 P99/P95 Max/AVG 响应时间
+	slowSQLTime           int64
+	CPUNums               int // Gaea服务器使用的CPU核数
+	closeChan             chan bool
+}
+
+//SQLResponse record one namespace SQL response like P99/P95
+type SQLResponse struct {
+	ns                      string
+	sqlExecTimeRecordSwitch bool
+	sQLExecTimeChan         chan string
+	sQLTimeList             []float64
+	response99Max           map[string]float64 // map[backendAddr]P99MaxValue
+	response99Avg           map[string]float64 // map[backendAddr]P99AvgValue
+	response95Max           map[string]float64 // map[backendAddr]P95MaxValue
+	response95Avg           map[string]float64 // map[backendAddr]P95AvgValue
 }
 
 // NewStatisticManager return empty StatisticManager
@@ -692,6 +741,7 @@ func CreateStatisticManager(cfg *models.Proxy, manager *Manager) (*StatisticMana
 	mgr := NewStatisticManager()
 	mgr.manager = manager
 	mgr.clusterName = cfg.Cluster
+	mgr.SQLResponsePercentile = make(map[string]*SQLResponse)
 	mgr.CPUNums = cfg.NumCPU
 
 	var err error
@@ -786,6 +836,14 @@ func (s *StatisticManager) Init(cfg *models.Proxy) error {
 		"gaea proxy backend wait connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
 	s.backendInstanceCounts = stats.NewGaugesWithMultiLabels("backendInstanceCounts",
 		"gaea proxy backend DB status counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr, statsLabelRole})
+	s.backendSQLResponse99MaxCounts = stats.NewGaugesWithMultiLabels("backendSQLResponse99MaxCounts",
+		"gaea proxy backend sql sqlTimings P99 max", []string{statsLabelCluster, statsLabelNamespace, statsLabelIPAddr})
+	s.backendSQLResponse99AvgCounts = stats.NewGaugesWithMultiLabels("backendSQLResponse99AvgCounts",
+		"gaea proxy backend sql sqlTimings P99 avg", []string{statsLabelCluster, statsLabelNamespace, statsLabelIPAddr})
+	s.backendSQLResponse95MaxCounts = stats.NewGaugesWithMultiLabels("backendSQLResponse95MaxCounts",
+		"gaea proxy backend sql sqlTimings P95 max", []string{statsLabelCluster, statsLabelNamespace, statsLabelIPAddr})
+	s.backendSQLResponse95AvgCounts = stats.NewGaugesWithMultiLabels("backendSQLResponse95AvgCounts",
+		"gaea proxy backend sql sqlTimings P95 avg", []string{statsLabelCluster, statsLabelNamespace, statsLabelIPAddr})
 	s.uptimeCounts = stats.NewGaugesWithMultiLabels("UptimeCounts",
 		"gaea proxy uptime counts", []string{statsLabelCluster})
 	s.clientConnecions = sync.Map{}
@@ -869,9 +927,19 @@ func (s *StatisticManager) recordBackendErrorSQLFingerprint(namespace string, op
 	s.backendSQLFingerprintErrorCounts.Add(fingerprintStatsKey, 1)
 }
 
-func (s *StatisticManager) recordBackendSQLTiming(namespace string, operation string, startTime time.Time) {
+func (s *StatisticManager) recordBackendSQLTiming(namespace string, operation string, sliceName, backendAddr string, startTime time.Time) {
 	operationStatsKey := []string{s.clusterName, namespace, operation}
 	s.backendSQLTimings.Record(operationStatsKey, startTime)
+
+	if !s.SQLResponsePercentile[namespace].sqlExecTimeRecordSwitch {
+		return
+	}
+	execTime := float64(time.Since(startTime).Milliseconds())
+	select {
+	case s.SQLResponsePercentile[namespace].sQLExecTimeChan <- fmt.Sprintf(sliceName + "__" + backendAddr + "__" + fmt.Sprintf("%f", execTime)):
+	case <-time.After(time.Millisecond):
+		s.SQLResponsePercentile[namespace].sqlExecTimeRecordSwitch = false
+	}
 }
 
 // RecordSQLForbidden record forbidden sql
@@ -946,6 +1014,27 @@ func (s *StatisticManager) recordInstanceCount(namespace string, slice string, a
 	s.backendInstanceCounts.Set(statsKey, count)
 }
 
+//record wait queue length
+func (s *StatisticManager) recordBackendSQLTimingP99Max(namespace, backendAddr string, count int64) {
+	statsKey := []string{s.clusterName, namespace, backendAddr}
+	s.backendSQLResponse99MaxCounts.Set(statsKey, count)
+}
+
+func (s *StatisticManager) recordBackendSQLTimingP99Avg(namespace, backendAddr string, count int64) {
+	statsKey := []string{s.clusterName, namespace, backendAddr}
+	s.backendSQLResponse99AvgCounts.Set(statsKey, count)
+}
+
+func (s *StatisticManager) recordBackendSQLTimingP95Max(namespace, backendAddr string, count int64) {
+	statsKey := []string{s.clusterName, namespace, backendAddr}
+	s.backendSQLResponse95MaxCounts.Set(statsKey, count)
+}
+
+func (s *StatisticManager) recordBackendSQLTimingP95Avg(namespace, backendAddr string, count int64) {
+	statsKey := []string{s.clusterName, namespace, backendAddr}
+	s.backendSQLResponse95AvgCounts.Set(statsKey, count)
+}
+
 // AddUptimeCount add uptime count
 func (s *StatisticManager) AddUptimeCount(count int64) {
 	statsKey := []string{s.clusterName}
@@ -970,6 +1059,58 @@ func (s *StatisticManager) CalcCPUBusy() {
 
 	statsKey := []string{s.clusterName}
 	s.CPUBusy.Set(statsKey, cpuTime)
+}
+
+func (s *StatisticManager) CalcAvgSQLTimes() {
+	for ns, sQLResponse := range s.SQLResponsePercentile {
+		sqlTimes := make([]float64, 0)
+		quit := false
+		backendAddr := ""
+		for !quit {
+			select {
+			case tmp := <-sQLResponse.sQLExecTimeChan:
+				if len(sqlTimes) >= SQLExecTimeSize {
+					quit = true
+				}
+				sqlTimeSplit := strings.Split(tmp, "__")
+				if len(sqlTimeSplit) < 3 {
+					log.Notice("sql time format error.get:%s", tmp)
+					quit = true
+				}
+				backendAddr = sqlTimeSplit[1]
+				etime, _ := strconv.ParseFloat(sqlTimeSplit[2], 64)
+				sqlTimes = append(sqlTimes, etime)
+			case <-time.After(time.Millisecond):
+				quit = true
+			}
+			sort.Float64s(sqlTimes)
+
+			sum := 0.0
+			p99sum := 0.0
+			p95sum := 0.0
+			if len(sqlTimes) != 0 {
+				s.SQLResponsePercentile[ns].response99Max[backendAddr] = sqlTimes[(len(sqlTimes)-1)*99/100]
+				s.SQLResponsePercentile[ns].response95Max[backendAddr] = sqlTimes[(len(sqlTimes)-1)*95/100]
+			}
+			for k, _ := range sqlTimes {
+				sum += sqlTimes[k]
+				if k < len(sqlTimes)*95/100 {
+					p95sum += sqlTimes[k]
+				}
+				if k < len(sqlTimes)*99/100 {
+					p99sum += sqlTimes[k]
+				}
+			}
+			if len(sqlTimes)*99/100 > 0 {
+				s.SQLResponsePercentile[ns].response99Avg[backendAddr] = p99sum / float64(len(sqlTimes)*99/100)
+			}
+			if len(sqlTimes)*95/100 > 0 {
+				s.SQLResponsePercentile[ns].response95Avg[backendAddr] = p95sum / float64(len(sqlTimes)*95/100)
+			}
+
+			s.SQLResponsePercentile[ns].sqlExecTimeRecordSwitch = true
+		}
+	}
 }
 
 // getStatusMap get status from DBinfo.statusMap
