@@ -451,7 +451,7 @@ func TestCanExecuteFromSlave(t *testing.T) {
 			assert.Equal(t, err, nil)
 			c.user = user.user
 			trimmedSql, comments := extractPrefixCommentsAndRewrite(tt.sql, mysql.ServerVersion)
-			_, stmt, err := c.getPlan(c.GetNamespace(), c.db, trimmedSql)
+			_, stmt, err := c.getPlan(c.GetNamespace(), c.db, trimmedSql, nil)
 			if err != nil {
 				t.Fatal("getPlan error:", tt.name)
 			}

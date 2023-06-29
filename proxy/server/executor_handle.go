@@ -141,7 +141,14 @@ func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*my
 
 	db := se.db
 	trimmedSql, comments := extractPrefixCommentsAndRewrite(sql, se.session.proxy.ServerVersion)
-	p, stmt, err := se.getPlan(se.GetNamespace(), db, trimmedSql)
+
+	hintPlan, err := checkMyCatHintPlan(se, db, comments)
+	// get MyCat hint plan error,will only log
+	if err != nil {
+		_ = log.Notice("check MyCat hint plan err:%s", err)
+	}
+
+	p, stmt, err := se.getPlan(se.GetNamespace(), db, trimmedSql, hintPlan)
 	if err != nil {
 		return nil, fmt.Errorf("get plan error, db: %s, origin sql: %s, trimmedSql: %s, err: %v", db, sql, trimmedSql, err)
 	}
@@ -160,6 +167,21 @@ func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*my
 	modifyResultStatus(r, se)
 
 	return r, nil
+}
+
+func checkMyCatHintPlan(se *SessionExecutor, db string, comments parser.MarginComments) (plan.Plan, error) {
+	if strings.HasPrefix(strings.TrimSpace(comments.Trailing), mycatHint) {
+		hintSQL := getMyCatHintSQL(comments.Trailing)
+		if hintSQL == "" {
+			return nil, fmt.Errorf("get nil hintSQL.comments:%+v", comments)
+		}
+		hintPlan, _, err := se.getPlan(se.GetNamespace(), db, hintSQL, nil)
+		if err != nil {
+			return nil, fmt.Errorf("get MyCat hintPlan error")
+		}
+		return hintPlan, nil
+	}
+	return nil, nil
 }
 
 // 处理逻辑较简单的SQL, 不走执行计划部分
@@ -202,7 +224,7 @@ func (se *SessionExecutor) handleUseDB(dbName string) error {
 	return mysql.NewDefaultError(mysql.ErrNoDB)
 }
 
-func (se *SessionExecutor) getPlan(ns *Namespace, db string, sql string) (plan.Plan, ast.StmtNode, error) {
+func (se *SessionExecutor) getPlan(ns *Namespace, db string, sql string, hintPlan plan.Plan) (plan.Plan, ast.StmtNode, error) {
 	n, err := se.Parse(sql)
 	if err != nil {
 		return nil, nil, fmt.Errorf("parse sql error, sql: %s, err: %v", sql, err)
@@ -211,7 +233,7 @@ func (se *SessionExecutor) getPlan(ns *Namespace, db string, sql string) (plan.P
 	rt := ns.GetRouter()
 	seq := ns.GetSequences()
 	phyDBs := ns.GetPhysicalDBs()
-	p, err := plan.BuildPlan(n, phyDBs, db, sql, rt, seq)
+	p, err := plan.BuildPlan(n, phyDBs, db, sql, rt, seq, hintPlan)
 	if err != nil {
 		return nil, nil, fmt.Errorf("create select plan error: %v", err)
 	}
@@ -448,4 +470,13 @@ func (se *SessionExecutor) handleFieldList(data []byte) ([]*mysql.Field, error) 
 	}
 
 	return fs, nil
+}
+
+// getMyCatHintSQL get SQL from MyCat hints
+func getMyCatHintSQL(hints string) string {
+	tmp := strings.Split(hints, mycatHint+"sql=")
+	if len(tmp) < 2 {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimRight(tmp[1], "*/"))
 }
