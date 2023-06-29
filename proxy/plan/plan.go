@@ -170,13 +170,13 @@ type TableAliasStmtInfo struct {
 }
 
 // BuildPlan build plan for ast
-func BuildPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string, router *router.Router, seq *sequence.SequenceManager) (Plan, error) {
+func BuildPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string, router *router.Router, seq *sequence.SequenceManager, hintPlan Plan) (Plan, error) {
 	if IsSelectLastInsertIDStmt(stmt) {
 		return CreateSelectLastInsertIDPlan(), nil
 	}
 
 	if estmt, ok := stmt.(*ast.ExplainStmt); ok {
-		return buildExplainPlan(estmt, phyDBs, db, sql, router, seq)
+		return buildExplainPlan(estmt, phyDBs, db, sql, router, seq, hintPlan)
 	}
 
 	checker := NewChecker(db, router)
@@ -187,15 +187,25 @@ func BuildPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string, rout
 	}
 
 	if checker.IsShard() {
-		return buildShardPlan(stmt, db, sql, router, seq)
+		return buildShardPlan(stmt, db, sql, router, seq, hintPlan)
 	}
 	return CreateUnshardPlan(stmt, phyDBs, db, checker.GetUnshardTableNames())
 }
 
-func buildShardPlan(stmt ast.StmtNode, db string, sql string, router *router.Router, seq *sequence.SequenceManager) (Plan, error) {
+func buildShardPlan(stmt ast.StmtNode, db string, sql string, router *router.Router, seq *sequence.SequenceManager, hintPlan Plan) (Plan, error) {
 	switch s := stmt.(type) {
 	case *ast.SelectStmt:
 		plan := NewSelectPlan(db, sql, router)
+		// convert MyCat hint Plan to hint DB
+		if p, ok := hintPlan.(*SelectPlan); ok {
+			hintSelectPlan := p
+			for _, v := range hintSelectPlan.sqls {
+				for db := range v {
+					plan.TableAliasStmtInfo.hintPhyDB = db
+				}
+			}
+
+		}
 		if err := HandleSelectStmt(plan, s); err != nil {
 			return nil, err
 		}

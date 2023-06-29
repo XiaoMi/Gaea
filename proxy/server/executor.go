@@ -41,6 +41,7 @@ const (
 	// master comments
 	masterComment      = "/*master*/"
 	masterHint         = "master"
+	mycatHint          = "/* !mycat:"
 	standardMasterHint = "/*+ master */"
 	// general query log variable
 	gaeaGeneralLogVariable = "gaea_general_log"
@@ -653,6 +654,7 @@ func extractPrefixCommentsAndRewrite(sql string, version string) (trimmed string
 	}
 	_, comments := parser.SplitMarginComments(sql)
 	trimmed = strings.TrimPrefix(sql, comments.Leading)
+	trimmed = strings.TrimPrefix(trimmed, comments.Trailing)
 	return strings.Replace(trimmed, masterComment, standardMasterHint, -1), comments
 }
 

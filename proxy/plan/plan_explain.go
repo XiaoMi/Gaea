@@ -35,13 +35,13 @@ type ExplainPlan struct {
 	sqls      map[string]map[string][]string
 }
 
-func buildExplainPlan(stmt *ast.ExplainStmt, phyDBs map[string]string, db, sql string, r *router.Router, seq *sequence.SequenceManager) (*ExplainPlan, error) {
+func buildExplainPlan(stmt *ast.ExplainStmt, phyDBs map[string]string, db, sql string, r *router.Router, seq *sequence.SequenceManager, hintPlan Plan) (*ExplainPlan, error) {
 	stmtToExplain := stmt.Stmt
 	if _, ok := stmtToExplain.(*ast.ExplainStmt); ok {
 		return nil, fmt.Errorf("nested explain")
 	}
 
-	p, err := BuildPlan(stmtToExplain, phyDBs, db, sql, r, seq)
+	p, err := BuildPlan(stmtToExplain, phyDBs, db, sql, r, seq, hintPlan)
 	if err != nil {
 		return nil, fmt.Errorf("build plan to explain error: %v", err)
 	}
