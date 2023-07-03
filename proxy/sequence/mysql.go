@@ -26,26 +26,28 @@ import (
 
 // MySQLSequence struct of sequence number with specific sequence name
 type MySQLSequence struct {
-	slice   *backend.Slice
-	pkName  string
-	seqName string
-	lock    *sync.Mutex
-	curr    int64
-	max     int64
-	sql     string
+	slice    *backend.Slice
+	pkName   string
+	seqName  string
+	lock     *sync.Mutex
+	curr     int64
+	max      int64
+	maxLimit int64 // 限制全局自增最大值
+	sql      string
 }
 
 // NewMySQLSequence init sequence item
 // TODO: 直接注入slice需要考虑关闭的问题, 目前是在Namespace中管理Slice的关闭的. 如果单独使用MySQLSequence, 需要注意.
-func NewMySQLSequence(slice *backend.Slice, seqName, pkName string) *MySQLSequence {
+func NewMySQLSequence(slice *backend.Slice, seqName, pkName string, maxLimit int64) *MySQLSequence {
 	t := &MySQLSequence{
-		slice:   slice,
-		seqName: seqName,
-		pkName:  pkName,
-		lock:    new(sync.Mutex),
-		curr:    0,
-		max:     0,
-		sql:     "SELECT mycat_seq_nextval('" + seqName + "') as seq_val",
+		slice:    slice,
+		seqName:  seqName,
+		pkName:   pkName,
+		lock:     new(sync.Mutex),
+		curr:     0,
+		max:      0,
+		maxLimit: maxLimit,
+		sql:      "SELECT mycat_seq_nextval('" + seqName + "') as seq_val",
 	}
 	return t
 }
@@ -61,6 +63,10 @@ func (s *MySQLSequence) NextSeq() (int64, error) {
 		}
 	}
 	s.curr++
+	// 设置上限
+	if s.maxLimit > 0 && s.curr >= s.maxLimit {
+		return 0, fmt.Errorf("seq reach max limit, curr: %d, max limit:%d", s.curr, s.maxLimit)
+	}
 	return s.curr, nil
 }
 
