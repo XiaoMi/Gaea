@@ -21,6 +21,7 @@ type GlobalSequence struct {
 	Type      string `json:"type"`       // 全局序列号类型,目前只兼容mycat的数据库方式
 	SliceName string `json:"slice_name"` // 对应sequence表所在的分片，默认都在0号片
 	PKName    string `json:"pk_name"`    // 全局序列号字段名称
+	MaxLimit  int64  `json:"max_limit"`  // 全局序列号上限设置
 }
 
 // Encode means encode for easy use

@@ -212,7 +212,7 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 			return nil, fmt.Errorf("init global sequence error: slice not found, sequence: %v", v)
 		}
 		seqName := strings.ToUpper(v.DB) + "." + strings.ToUpper(v.Table)
-		seq := sequence.NewMySQLSequence(globalSequenceSlice, seqName, v.PKName)
+		seq := sequence.NewMySQLSequence(globalSequenceSlice, seqName, v.PKName, v.MaxLimit)
 		sequences.SetSequence(v.DB, v.Table, seq)
 	}
 	namespace.sequences = sequences
