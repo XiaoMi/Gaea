@@ -16,6 +16,7 @@ package plan
 
 import (
 	"fmt"
+	"github.com/shopspring/decimal"
 	"strconv"
 	"strings"
 
@@ -89,6 +90,29 @@ func (r ResultRow) GetFloat(column int) (float64, error) {
 		return 0, nil
 	default:
 		return 0, fmt.Errorf("data type is %T", v)
+	}
+}
+
+// GetDecimal get decimal value from column
+func (r ResultRow) GetDecimal(column int) (decimal.Decimal, error) {
+	d := r[column]
+	switch v := d.(type) {
+	case decimal.Decimal:
+		return v, nil
+	case float64:
+		return decimal.NewFromFloat(v), nil
+	case uint64:
+		return decimal.NewFromString(strconv.FormatUint(v, 10))
+	case int64:
+		return decimal.NewFromInt(v), nil
+	case string:
+		return decimal.NewFromString(v)
+	case []byte:
+		return decimal.NewFromString(string(v))
+	case nil:
+		return decimal.NewFromInt(0), nil
+	default:
+		return decimal.NewFromInt(0), fmt.Errorf("data type is %T", v)
 	}
 }
 
@@ -193,7 +217,9 @@ func (a *AggregateFuncSumMerger) MergeTo(from, to ResultRow) error {
 	case uint64:
 		return a.sumToUint64(from, to)
 	case float64, string, []byte, nil:
-		return a.sumToFloat64(from, to)
+		return a.sumToDecimal(from, to)
+	case decimal.Decimal:
+		return a.sumToDecimal(from, to)
 	default:
 		fromValue := from.GetValue(idx)
 		toValue := to.GetValue(idx)
@@ -240,6 +266,20 @@ func (a *AggregateFuncSumMerger) sumToFloat64(from, to ResultRow) error {
 		return fmt.Errorf("get to int value error: %v", err)
 	}
 	to.SetValue(idx, originValue+valueToMerge)
+	return nil
+}
+
+func (a *AggregateFuncSumMerger) sumToDecimal(from, to ResultRow) error {
+	idx := a.fieldIndex // does not need to check
+	valueToMerge, err := from.GetDecimal(idx)
+	if err != nil {
+		return fmt.Errorf("get from decimal value error: %v", err)
+	}
+	originValue, err := to.GetDecimal(idx)
+	if err != nil {
+		return fmt.Errorf("get to decimal value error: %v", err)
+	}
+	to.SetValue(idx, originValue.Add(valueToMerge))
 	return nil
 }
 
@@ -742,7 +782,9 @@ func formatValue(value interface{}) ([]byte, error) {
 	case float32:
 		return strconv.AppendFloat(nil, float64(v), 'f', -1, 64), nil
 	case float64:
-		return strconv.AppendFloat(nil, float64(v), 'f', -1, 64), nil
+		return strconv.AppendFloat(nil, v, 'f', -1, 64), nil
+	case decimal.Decimal:
+		return []byte(v.String()), nil
 	case []byte:
 		return v, nil
 	case string:
