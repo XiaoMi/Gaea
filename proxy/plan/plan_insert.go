@@ -16,6 +16,7 @@ package plan
 
 import (
 	"fmt"
+	"github.com/XiaoMi/Gaea/parser/model"
 
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
@@ -314,19 +315,37 @@ func handleInsertGlobalSequenceValue(p *InsertPlan) error {
 
 	// global sequence column not found
 	if seqIndex == -1 {
-		return nil
+		// 有配置全局自增列但是没有指定自增列，自动补齐
+		p.stmt.Columns = append(p.stmt.Columns, &ast.ColumnName{
+			Name: model.NewCIStr(pkName),
+		})
+		seqIndex = len(p.stmt.Columns) - 1
+		p.stmt.Lists[0] = append(p.stmt.Lists[0], &ast.FuncCallExpr{FnName: model.NewCIStr("nextval")})
 	}
 
 	for _, valueList := range p.stmt.Lists {
-		if x, ok := valueList[seqIndex].(*ast.FuncCallExpr); ok {
+		generateNextSeq := false
+		switch x := valueList[seqIndex].(type) {
+		// insert into t(col) values(val)  ->  insert into t(col,id) values(val, nextSeq)
+		case *ast.FuncCallExpr:
 			if x.FnName.L == "nextval" {
-				id, err := seq.NextSeq()
-				if err != nil {
-					return fmt.Errorf("get next seq error: %v", err)
-				}
-				valueList[seqIndex] = ast.NewValueExpr(id)
+				generateNextSeq = true
+			}
+		// insert into t(id, col) values(null, val)  ->  insert into t(id,col) values(nextSeq, val)
+		case *driver.ValueExpr:
+			if x.IsNull() {
+				generateNextSeq = true
 			}
 		}
+
+		if generateNextSeq {
+			id, err := seq.NextSeq()
+			if err != nil {
+				return fmt.Errorf("get next seq error: %v", err)
+			}
+			valueList[seqIndex] = ast.NewValueExpr(id)
+		}
+
 	}
 
 	return nil
