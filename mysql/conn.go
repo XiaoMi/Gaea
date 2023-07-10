@@ -548,12 +548,13 @@ func (c *Conn) IsClosed() bool {
 // WriteOKPacket writes an OK packet.
 // Server -> Client.
 // This method returns a generic error, not a SQLError.
-func (c *Conn) WriteOKPacket(affectedRows, lastInsertID uint64, flags uint16, warnings uint16) error {
+func (c *Conn) WriteOKPacket(affectedRows, lastInsertID uint64, flags uint16, warnings uint16, info string) error {
 	length := 1 + // OKHeader
 		LenEncIntSize(affectedRows) +
 		LenEncIntSize(lastInsertID) +
 		2 + // flags
-		2 // warnings
+		2 + // warnings
+		len(info) // info
 	data := c.StartEphemeralPacket(length)
 	pos := 0
 	pos = WriteByte(data, pos, OKHeader)
@@ -561,6 +562,7 @@ func (c *Conn) WriteOKPacket(affectedRows, lastInsertID uint64, flags uint16, wa
 	pos = WriteLenEncInt(data, pos, lastInsertID)
 	pos = WriteUint16(data, pos, flags)
 	pos = WriteUint16(data, pos, warnings)
+	pos = WriteBytes(data, pos, []byte(info))
 
 	return c.WriteEphemeralPacket()
 }

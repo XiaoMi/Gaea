@@ -241,7 +241,7 @@ func (cc *ClientConn) readHandshakeResponse() (HandshakeResponseInfo, error) {
 }
 
 func (cc *ClientConn) writeOK(status uint16) error {
-	err := cc.WriteOKPacket(0, 0, status, 0)
+	err := cc.WriteOKPacket(0, 0, status, 0, "")
 	if err != nil {
 		log.Warn("write ok packet failed, %v", err)
 		return err
@@ -251,7 +251,7 @@ func (cc *ClientConn) writeOK(status uint16) error {
 
 func (cc *ClientConn) writeOKResult(status uint16, r *mysql.Result) error {
 	if r.Resultset == nil {
-		return cc.WriteOKPacket(r.AffectedRows, r.InsertID, status, 0)
+		return cc.WriteOKPacket(r.AffectedRows, r.InsertID, status, 0, r.Info)
 	}
 	return cc.writeResultset(status, r.Resultset)
 }

@@ -600,8 +600,8 @@ func (dc *DirectConnection) readResultSet(data []byte, binary bool, maxRows int)
 		Status:       0,
 		InsertID:     0,
 		AffectedRows: 0,
-
-		Resultset: &mysql.Resultset{},
+		Warnings:     0,
+		Resultset:    &mysql.Resultset{},
 	}
 
 	// column count
@@ -753,8 +753,8 @@ func (dc *DirectConnection) handleOKPacket(data []byte) (*mysql.Result, error) {
 		pos += 2
 
 		// TODO strict_mode, check warnings as error
-		// Warnings := binary.LittleEndian.Uint16(data[pos:])
-		// pos += 2
+		r.Warnings = binary.LittleEndian.Uint16(data[pos:])
+		pos += 2
 	} else if dc.capability&mysql.ClientTransactions > 0 {
 		r.Status = binary.LittleEndian.Uint16(data[pos:])
 		dc.status = r.Status
@@ -762,6 +762,7 @@ func (dc *DirectConnection) handleOKPacket(data []byte) (*mysql.Result, error) {
 	}
 
 	//info
+	r.Info = string(data[pos:])
 	return r, nil
 }
 
