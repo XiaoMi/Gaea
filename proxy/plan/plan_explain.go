@@ -27,6 +27,7 @@ import (
 const (
 	ShardTypeUnshard = "unshard"
 	ShardTypeShard   = "shard"
+	ExplainKey       = "explain"
 )
 
 // ExplainPlan is the plan for explain statement
@@ -69,9 +70,6 @@ func buildExplainPlan(stmt *ast.ExplainStmt, phyDBs map[string]string, db, sql s
 		ep.shardType = ShardTypeUnshard
 		ep.sqls = make(map[string]map[string][]string)
 		dbSQLs := make(map[string][]string)
-		if phyDB, ok := phyDBs[pl.db]; ok {
-			pl.db = phyDB
-		}
 		dbSQLs[pl.db] = []string{pl.sql}
 		ep.sqls[r.GetDefaultRule().GetSlice(0)] = dbSQLs
 		return ep, nil
@@ -81,7 +79,24 @@ func buildExplainPlan(stmt *ast.ExplainStmt, phyDBs map[string]string, db, sql s
 }
 
 // ExecuteIn implement Plan
-func (p *ExplainPlan) ExecuteIn(*util.RequestContext, Executor) (*mysql.Result, error) {
+func (p *ExplainPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysql.Result, error) {
+	if p.shardType == ShardTypeUnshard {
+		for slice, sqls := range p.sqls {
+			if len(sqls) > 1 {
+				return nil, fmt.Errorf("get multi or empty sqls in explain,sql:%s", sqls)
+			}
+			for db, sql := range sqls {
+				// 需要重新加 explain 前缀
+				r, err := se.ExecuteSQL(reqCtx, slice, db, ExplainKey+" "+sql[0])
+				if err != nil {
+					return nil, err
+				}
+				return r, nil
+			}
+
+		}
+		return nil, fmt.Errorf("get empty sqls in explain")
+	}
 	return createExplainResult(p.shardType, p.sqls), nil
 }
 
