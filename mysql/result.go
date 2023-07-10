@@ -279,7 +279,8 @@ type Result struct {
 
 	InsertID     uint64
 	AffectedRows uint64
-
+	Warnings     uint16 // OK包中的warnings信息，EOF包用的是Conn结构体中的warnings
+	Info         string // update请求返回的Rows matched: 1  Changed: 1  Warnings: 0在info中
 	*Resultset
 }
 
@@ -288,8 +289,7 @@ type Resultset struct {
 	Fields     []*Field        // columns information
 	FieldNames map[string]int  // column information, key: column name value: index in Fields
 	Values     [][]interface{} // values after sql handled
-
-	RowDatas []RowData // data will returned
+	RowDatas   []RowData       // data will returned
 }
 
 // RowNumber return row number of results
