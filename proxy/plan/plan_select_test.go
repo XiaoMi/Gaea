@@ -3314,6 +3314,17 @@ func TestSelectGlobalTableMycat(t *testing.T) {
 				},
 			},
 		},
+		{
+			db:  "db_mycat",
+			sql: "select A.name, B.name from db_mycat.tbl_mycat_global_one A, db_mycat.tbl_mycat_global_two B  where A.name='haha' and B.name='hehe' order by B.col2 desc",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {
+						"SELECT `A`.`name`,`B`.`name`,`B`.`col2` FROM (`db_mycat_1`.`tbl_mycat_global_one` AS `A`) JOIN `db_mycat_1`.`tbl_mycat_global_two` AS `B` WHERE `A`.`name`='haha' AND `B`.`name`='hehe' ORDER BY `B`.`col2` DESC",
+					},
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {

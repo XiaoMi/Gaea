@@ -76,8 +76,8 @@ func (s *SelectPlan) ExecuteIn(reqCtx *util.RequestContext, sess Executor) (*mys
 	if err != nil {
 		return nil, fmt.Errorf("execute in SelectPlan error: %v", err)
 	}
-
-	if s.isExecOnSingleNode() {
+	// fix: 修复全局表或分片表 order by/group by等情况下单分片执行时多一列的问题
+	if s.isExecOnSingleNode() && s.noAddColumns() {
 		return rs[0], nil
 	}
 
@@ -154,6 +154,10 @@ func (s *SelectPlan) isExecOnSingleNode() bool {
 	return len(s.result.indexes) == 1
 }
 
+func (s *SelectPlan) noAddColumns() bool {
+	return s.originColumnCount == s.columnCount
+}
+
 // HandleSelectStmt build a SelectPlan
 // 处理SelectStmt语法树, 改写其中一些节点, 并获取路由信息和结果聚合函数
 func HandleSelectStmt(p *SelectPlan, stmt *ast.SelectStmt) error {
@@ -209,6 +213,11 @@ func HandleSelectStmt(p *SelectPlan, stmt *ast.SelectStmt) error {
 
 		if err := handleLimit(p, stmt); err != nil {
 			return fmt.Errorf("handle Limit error: %v", err)
+		}
+	} else {
+		// 即使在单个分片执行，也会产生加列的情况
+		if stmt.Fields != nil {
+			p.columnCount = len(stmt.Fields.Fields)
 		}
 	}
 
