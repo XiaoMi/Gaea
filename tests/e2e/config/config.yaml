@@ -1,17 +1,17 @@
 gaea_host: "127.0.0.1"
 gaea_port: 13306
-gaea_user: "IT_USER"
-gaea_password: "IT_PASSWORD"
+gaea_user: "gaea_user"
+gaea_password: "gaea_pass"
 database: "test_gaea"
 tables:
   - "tb_0"
   - "tb_1"
-master_host: "10.38.164.125"
-master_port: 3308
-master_user: "IT_USER"
-master_password: "IT_PASSWORD"
+master_host: "127.0.0.1"
+master_port: 3319
+master_user: "superroot"
+master_password: "superroot"
 
-slave_host: "10.38.200.43"
-slave_port: 3308
-slave_user: "IT_USER"
-slave_password: "IT_PASSWORD"
+slave_host: "127.0.0.1"
+slave_port: 3329
+slave_user: "superroot"
+slave_password: "superroot"
