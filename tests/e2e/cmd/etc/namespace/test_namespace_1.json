@@ -4,7 +4,8 @@
     "read_only": false,
     "allowed_dbs": {
         "sbtest1": true,
-        "sbtest2": true
+        "sbtest2": true,
+        "test_gaea": true
     },
     "slow_sql_time": "1000",
     "black_sql": [
@@ -14,21 +15,21 @@
     "slices": [
         {
             "name": "slice-0",
-            "user_name": "IT_USER",
-            "password": "IT_PASSWORD",
-            "master": "10.38.164.125:3308",
-            "slaves": ["10.38.200.43:3308"],
+            "user_name": "superroot",
+            "password": "superroot",
+            "master": "127.0.0.1:3319",
+            "slaves": ["127.0.0.1:3329"],
             "statistic_slaves": null,
             "capacity": 12,
-            "max_capacity": 24,
+            "max_capacity": 240,
             "idle_timeout": 60
         }
     ],
     "shard_rules": null,
     "users": [
         {
-            "user_name": "IT_USER",
-            "password": "IT_PASSWORD",
+            "user_name": "gaea_user",
+            "password": "gaea_pass",
             "namespace": "test_namespace_1",
             "rw_flag": 2,
             "rw_split": 1,

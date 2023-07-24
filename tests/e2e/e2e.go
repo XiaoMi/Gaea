@@ -4,11 +4,10 @@ import (
 	"database/sql"
 	"github.com/XiaoMi/Gaea/tests/e2e/config"
 	"github.com/XiaoMi/Gaea/tests/e2e/util"
-	"testing"
-	"time"
-
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
+	"testing"
+	"time"
 )
 
 var err error
