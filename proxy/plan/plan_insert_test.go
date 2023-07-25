@@ -625,6 +625,46 @@ func TestMycatInsertGlobalTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			// global insert value with AssignmentMode will not use global sequence
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat_global_3 set a = 'hi'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"INSERT INTO `tbl_mycat_global_3` SET `a`='hi'"},
+					"db_mycat_1": {"INSERT INTO `tbl_mycat_global_3` SET `a`='hi'"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"INSERT INTO `tbl_mycat_global_3` SET `a`='hi'"},
+					"db_mycat_3": {"INSERT INTO `tbl_mycat_global_3` SET `a`='hi'"},
+				},
+			},
+		},
+		{
+			// global table insert value use global sequence
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat_global_3(a) values('hi')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"INSERT INTO `tbl_mycat_global_3` (`a`,`id`) VALUES ('hi',1)"},
+					"db_mycat_1": {"INSERT INTO `tbl_mycat_global_3` (`a`,`id`) VALUES ('hi',1)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"INSERT INTO `tbl_mycat_global_3` (`a`,`id`) VALUES ('hi',1)"},
+					"db_mycat_3": {"INSERT INTO `tbl_mycat_global_3` (`a`,`id`) VALUES ('hi',1)"},
+				},
+			},
+		},
+		{
+			// use global table replace single table to use global sequence
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat_global_4(a) values('hi')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"INSERT INTO `tbl_mycat_global_4` (`a`,`id`) VALUES ('hi',1)"},
+				},
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.sql, getTestFunc(ns, test))
