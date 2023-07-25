@@ -67,16 +67,21 @@ func HandleInsertStmt(p *InsertPlan, stmt *ast.InsertStmt) error {
 	}
 
 	// 处理全局表成功时会触发fastReturn
-	fastReturn, err := handleInsertTableRefs(p)
+	isGlobalTable, err := handleInsertTableRefs(p)
 	if err != nil {
 		return fmt.Errorf("handleInsertTableRefs error: %v", err)
-	}
-	if fastReturn {
-		return nil
 	}
 
 	if err := handleInsertGlobalSequenceValue(p); err != nil {
 		return fmt.Errorf("handleInsertGlobalSequenceValue error: %v", err)
+	}
+
+	// 全局表直接生成 SQL 返回
+	if isGlobalTable {
+		if err := generateGlobalShardingSQLs(p); err != nil {
+			return fmt.Errorf("generate global table sharding sqls error: %v", err)
+		}
+		return nil
 	}
 
 	if err := handleInsertColumnNames(p); err != nil {
@@ -127,7 +132,7 @@ func precheckInsertStmt(p *InsertPlan) error {
 	return nil
 }
 
-func handleInsertTableRefs(p *InsertPlan) (fastReturn bool, err error) {
+func handleInsertTableRefs(p *InsertPlan) (isGlobalTable bool, err error) {
 	if p.stmt.Table.TableRefs.Right != nil {
 		return false, fmt.Errorf("have multi tables in insert")
 	}
@@ -155,20 +160,34 @@ func handleInsertTableRefs(p *InsertPlan) (fastReturn bool, err error) {
 
 	tableSource.Source = decorator
 
-	// 如果是全局表, 则将记录写入所有分片
 	if rule.GetType() == router.GlobalTableRuleType {
-		p.result.db = rule.GetDB()
-		p.result.table = rule.GetTable()
-		p.result.indexes = rule.GetSubTableIndexes()
-		sqls, err := generateShardingSQLs(p.stmt, p.result, p.router)
-		if err != nil {
-			return false, fmt.Errorf("generate global table insert sql error: %v", err)
-		}
-		p.sqls = sqls
 		return true, nil
 	}
 
 	return false, nil
+}
+
+func generateGlobalShardingSQLs(p *InsertPlan) error {
+	tableSource, ok := p.stmt.Table.TableRefs.Left.(*ast.TableSource)
+	if !ok {
+		return fmt.Errorf("not a table source")
+	}
+	if dec, ok := tableSource.Source.(*TableNameDecorator); ok {
+		if dec.rule.GetType() != router.GlobalTableRuleType {
+			return fmt.Errorf("not global table rule type")
+		}
+
+		p.result.db = dec.rule.GetDB()
+		p.result.table = dec.rule.GetTable()
+		p.result.indexes = dec.rule.GetSubTableIndexes()
+		sqls, err := generateShardingSQLs(p.stmt, p.result, p.router)
+		if err != nil {
+			return fmt.Errorf("generate global table insert sql error: %v", err)
+		}
+		p.sqls = sqls
+		return nil
+	}
+	return fmt.Errorf("global table source not TableNameDecorator")
 }
 
 func handleInsertColumnNames(p *InsertPlan) error {

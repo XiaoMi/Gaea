@@ -432,6 +432,34 @@ func preparePlanInfo() (*PlanInfo, error) {
                 "db_mycat_[0-3]"
             ]
         },
+		{
+            "db": "db_mycat",
+            "table": "tbl_mycat_global_3",
+            "type": "global",
+            "locations": [
+                2,
+                2
+            ],
+            "slices": [
+                "slice-0",
+                "slice-1"
+            ],
+            "databases": [
+                "db_mycat_[0-3]"
+            ]
+        },
+		{
+            "db": "db_mycat",
+            "table": "tbl_mycat_global_4",
+            "type": "global",
+            "locations": [1],
+            "slices": [
+                "slice-0"
+            ],
+            "databases": [
+                "db_mycat_0"
+            ]
+        },
         {
             "db": "db_mycat",
             "table": "tbl_mycat_string",
@@ -465,6 +493,18 @@ func preparePlanInfo() (*PlanInfo, error) {
 			"table": "tbl_ks",
 			"type": "test",
 			"pk_name": "user_id"
+		},
+		{
+			"db": "db_mycat",
+			"table": "tbl_mycat_global_3",
+			"type": "mycat",
+			"pk_name": "id"
+		},
+		{
+			"db": "db_mycat",
+			"table": "tbl_mycat_global_4",
+			"type": "mycat",
+			"pk_name": "id"
 		}
 	],
     "users": [
