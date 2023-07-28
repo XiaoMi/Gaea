@@ -205,6 +205,9 @@ func (m *Manager) ReloadNamespacePrepare(namespaceConfig *models.Namespace) erro
 	newUserManager := CloneUserManager(currentUserManager)
 	newUserManager.RebuildNamespaceUsers(namespaceConfig)
 	m.users[other] = newUserManager
+	if _, ok := m.statistics.SQLResponsePercentile[name]; !ok {
+		m.statistics.SQLResponsePercentile[name] = NewSQLResponse(name)
+	}
 	m.reloadPrepared.Set(true)
 
 	return nil
@@ -391,16 +394,7 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace
 func (m *Manager) startConnectPoolMetricsTask(interval int) {
 	current, _, _ := m.switchIndex.Get()
 	for _, ns := range m.namespaces[current].namespaces {
-		m.statistics.SQLResponsePercentile[ns.name] = &SQLResponse{
-			ns:                      ns.name,
-			sqlExecTimeRecordSwitch: false,
-			sQLExecTimeChan:         make(chan string, SQLExecTimeSize),
-			sQLTimeList:             []float64{},
-			response99Max:           make(map[string]float64),
-			response99Avg:           make(map[string]float64),
-			response95Max:           make(map[string]float64),
-			response95Avg:           make(map[string]float64),
-		}
+		m.statistics.SQLResponsePercentile[ns.name] = NewSQLResponse(ns.name)
 	}
 
 	if interval <= 0 {
@@ -729,6 +723,20 @@ type SQLResponse struct {
 	response99Avg           map[string]float64 // map[backendAddr]P99AvgValue
 	response95Max           map[string]float64 // map[backendAddr]P95MaxValue
 	response95Avg           map[string]float64 // map[backendAddr]P95AvgValue
+}
+
+func NewSQLResponse(name string) *SQLResponse {
+	return &SQLResponse{
+		ns:                      name,
+		sqlExecTimeRecordSwitch: false,
+		sQLExecTimeChan:         make(chan string, SQLExecTimeSize),
+		sQLTimeList:             []float64{},
+		response99Max:           make(map[string]float64),
+		response99Avg:           make(map[string]float64),
+		response95Max:           make(map[string]float64),
+		response95Avg:           make(map[string]float64),
+	}
+
 }
 
 // NewStatisticManager return empty StatisticManager
