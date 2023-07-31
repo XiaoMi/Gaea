@@ -461,6 +461,112 @@ func TestCanExecuteFromSlave(t *testing.T) {
 	}
 }
 
+func TestCanExecuteJDBCPrefix(t *testing.T) {
+	type TestCase struct {
+		name         string
+		mysqlVersion string
+		sql          string
+		trimmedSql   string
+	}
+
+	testCases := []TestCase{
+		{
+			name:       "test jdbc more than 8030 with mysql ",
+			sql:        "/* mysql-connector-j-8.0.31 (Revision: 0c86fc148d567b62266c2302bdad0f1e7a7e4eba) */SELECT  @@session.auto_increment_increment AS auto_increment_increment, @@character_set_client AS character_set_client, @@character_set_connection AS character_set_connection, @@character_set_results AS character_set_results, @@character_set_server AS character_set_server, @@collation_server AS collation_server, @@collation_connection AS collation_connection, @@init_connect AS init_connect, @@interactive_timeout AS interactive_timeout, @@license AS license, @@lower_case_table_names AS lower_case_table_names, @@max_allowed_packet AS max_allowed_packet, @@net_write_timeout AS net_write_timeout, @@performance_schema AS performance_schema, @@query_cache_size AS query_cache_size, @@query_cache_type AS query_cache_type, @@sql_mode AS sql_mode, @@system_time_zone AS system_time_zone, @@time_zone AS time_zone, @@transaction_isolation AS transaction_isolation, @@wait_timeout AS wait_timeout",
+			trimmedSql: "SELECT  @@session.auto_increment_increment AS auto_increment_increment, @@character_set_client AS character_set_client, @@character_set_connection AS character_set_connection, @@character_set_results AS character_set_results, @@character_set_server AS character_set_server, @@collation_server AS collation_server, @@collation_connection AS collation_connection, @@init_connect AS init_connect, @@interactive_timeout AS interactive_timeout, @@license AS license, @@lower_case_table_names AS lower_case_table_names, @@max_allowed_packet AS max_allowed_packet, @@net_write_timeout AS net_write_timeout, @@performance_schema AS performance_schema, @@query_cache_size AS query_cache_size, @@query_cache_type AS query_cache_type, @@sql_mode AS sql_mode, @@system_time_zone AS system_time_zone, @@time_zone AS time_zone, @@tx_isolation AS transaction_isolation, @@wait_timeout AS wait_timeout",
+		},
+		{
+			name:       "test jdbc less than 8030",
+			sql:        "/* mysql-connector-j-8.0.31 (Revision: 0c86fc148d567b62266c2302bdad0f1e7a7e4eba) */SELECT  @@session.auto_increment_increment AS auto_increment_increment, @@character_set_client AS character_set_client, @@character_set_connection AS character_set_connection, @@character_set_results AS character_set_results, @@character_set_server AS character_set_server, @@collation_server AS collation_server, @@collation_connection AS collation_connection, @@init_connect AS init_connect, @@interactive_timeout AS interactive_timeout, @@license AS license, @@lower_case_table_names AS lower_case_table_names, @@max_allowed_packet AS max_allowed_packet, @@net_write_timeout AS net_write_timeout, @@performance_schema AS performance_schema, @@query_cache_size AS query_cache_size, @@query_cache_type AS query_cache_type, @@sql_mode AS sql_mode, @@system_time_zone AS system_time_zone, @@time_zone AS time_zone, @@transaction_isolation AS transaction_isolation, @@wait_timeout AS wait_timeout",
+			trimmedSql: "SELECT  @@session.auto_increment_increment AS auto_increment_increment, @@character_set_client AS character_set_client, @@character_set_connection AS character_set_connection, @@character_set_results AS character_set_results, @@character_set_server AS character_set_server, @@collation_server AS collation_server, @@collation_connection AS collation_connection, @@init_connect AS init_connect, @@interactive_timeout AS interactive_timeout, @@license AS license, @@lower_case_table_names AS lower_case_table_names, @@max_allowed_packet AS max_allowed_packet, @@net_write_timeout AS net_write_timeout, @@performance_schema AS performance_schema, @@query_cache_size AS query_cache_size, @@query_cache_type AS query_cache_type, @@sql_mode AS sql_mode, @@system_time_zone AS system_time_zone, @@time_zone AS time_zone, @@tx_isolation AS transaction_isolation, @@wait_timeout AS wait_timeout",
+		},
+	}
+
+	for _, tt := range testCases {
+		c, err := newDefaultSessionExecutor()
+		assert.Equal(t, err, nil)
+		trimmedSql, _ := extractPrefixCommentsAndRewrite(tt.sql, mysql.ServerVersion)
+		fmt.Println("trimmedSql:", trimmedSql)
+		_, _, err = c.getPlan(c.GetNamespace(), c.db, trimmedSql, nil)
+		if err != nil {
+			t.Fatal("getPlan error:", tt.name)
+		}
+		assert.Equal(t, trimmedSql, tt.trimmedSql, tt.name+"-"+tt.sql)
+	}
+}
+
+func TestPreRewriteSQL(t *testing.T) {
+	type TestCase struct {
+		name         string
+		mysqlVersion string
+		sql          string
+		expectSQL    string
+	}
+
+	testCases := []TestCase{
+		{
+			mysqlVersion: "5.7.25-gaea",
+			sql:          "/* mysql-connector-j-8.0.31 (Revision: 0c86fc148d567b62266c2302bdad0f1e7a7e4eba) */SELECT  @@session.auto_increment_increment AS auto_increment_increment, @@character_set_client AS character_set_client, @@character_set_connection AS character_set_connection, @@character_set_results AS character_set_results, @@character_set_server AS character_set_server, @@collation_server AS collation_server, @@collation_connection AS collation_connection, @@init_connect AS init_connect, @@interactive_timeout AS interactive_timeout, @@license AS license, @@lower_case_table_names AS lower_case_table_names, @@max_allowed_packet AS max_allowed_packet, @@net_write_timeout AS net_write_timeout, @@performance_schema AS performance_schema, @@query_cache_size AS query_cache_size, @@query_cache_type AS query_cache_type, @@sql_mode AS sql_mode, @@system_time_zone AS system_time_zone, @@time_zone AS time_zone, @@transaction_isolation AS transaction_isolation, @@wait_timeout AS wait_timeout",
+			expectSQL:    "/* mysql-connector-j-8.0.31 (Revision: 0c86fc148d567b62266c2302bdad0f1e7a7e4eba) */SELECT  @@session.auto_increment_increment AS auto_increment_increment, @@character_set_client AS character_set_client, @@character_set_connection AS character_set_connection, @@character_set_results AS character_set_results, @@character_set_server AS character_set_server, @@collation_server AS collation_server, @@collation_connection AS collation_connection, @@init_connect AS init_connect, @@interactive_timeout AS interactive_timeout, @@license AS license, @@lower_case_table_names AS lower_case_table_names, @@max_allowed_packet AS max_allowed_packet, @@net_write_timeout AS net_write_timeout, @@performance_schema AS performance_schema, @@query_cache_size AS query_cache_size, @@query_cache_type AS query_cache_type, @@sql_mode AS sql_mode, @@system_time_zone AS system_time_zone, @@time_zone AS time_zone, @@tx_isolation AS transaction_isolation, @@wait_timeout AS wait_timeout",
+		},
+		{
+			mysqlVersion: "5.7.25-gaea",
+			sql:          "/* mysql-connector-j-8.0.31 (Revision: 0c86fc148d567b62266c2302bdad0f1e7a7e4eba) */SELECT  @@session.auto_increment_increment AS auto_increment_increment, @@character_set_client AS character_set_client, @@character_set_connection AS character_set_connection, @@character_set_results AS character_set_results, @@character_set_server AS character_set_server, @@collation_server AS collation_server, @@collation_connection AS collation_connection, @@init_connect AS init_connect, @@interactive_timeout AS interactive_timeout, @@license AS license, @@lower_case_table_names AS lower_case_table_names, @@max_allowed_packet AS max_allowed_packet, @@net_write_timeout AS net_write_timeout, @@performance_schema AS performance_schema, @@query_cache_size AS query_cache_size, @@query_cache_type AS query_cache_type, @@sql_mode AS sql_mode, @@system_time_zone AS system_time_zone, @@time_zone AS time_zone, @@transaction_isolation AS transaction_isolation, @@wait_timeout AS wait_timeout",
+			expectSQL:    "/* mysql-connector-j-8.0.31 (Revision: 0c86fc148d567b62266c2302bdad0f1e7a7e4eba) */SELECT  @@session.auto_increment_increment AS auto_increment_increment, @@character_set_client AS character_set_client, @@character_set_connection AS character_set_connection, @@character_set_results AS character_set_results, @@character_set_server AS character_set_server, @@collation_server AS collation_server, @@collation_connection AS collation_connection, @@init_connect AS init_connect, @@interactive_timeout AS interactive_timeout, @@license AS license, @@lower_case_table_names AS lower_case_table_names, @@max_allowed_packet AS max_allowed_packet, @@net_write_timeout AS net_write_timeout, @@performance_schema AS performance_schema, @@query_cache_size AS query_cache_size, @@query_cache_type AS query_cache_type, @@sql_mode AS sql_mode, @@system_time_zone AS system_time_zone, @@time_zone AS time_zone, @@tx_isolation AS transaction_isolation, @@wait_timeout AS wait_timeout",
+		},
+		{
+			mysqlVersion: "5.7.25-gaea",
+			sql:          "/* mysql-connector-java-5.1.39 ( Revision: 3289a357af6d09ecc1a10fd3c26e95183e5790ad ) */SELECT  @@session.auto_increment_increment AS auto_increment_increment, @@character_set_client AS character_set_client, @@character_set_connection AS character_set_connection, @@character_set_results AS character_set_results, @@character_set_server AS character_set_server, @@init_connect AS init_connect, @@interactive_timeout AS interactive_timeout, @@license AS license, @@lower_case_table_names AS lower_case_table_names, @@max_allowed_packet AS max_allowed_packet, @@net_buffer_length AS net_buffer_length, @@net_write_timeout AS net_write_timeout, @@query_cache_size AS query_cache_size, @@query_cache_type AS query_cache_type, @@sql_mode AS sql_mode, @@system_time_zone AS system_time_zone, @@time_zone AS time_zone, @@tx_isolation AS tx_isolation, @@wait_timeout AS wait_timeout",
+			expectSQL:    "/* mysql-connector-java-5.1.39 ( Revision: 3289a357af6d09ecc1a10fd3c26e95183e5790ad ) */SELECT  @@session.auto_increment_increment AS auto_increment_increment, @@character_set_client AS character_set_client, @@character_set_connection AS character_set_connection, @@character_set_results AS character_set_results, @@character_set_server AS character_set_server, @@init_connect AS init_connect, @@interactive_timeout AS interactive_timeout, @@license AS license, @@lower_case_table_names AS lower_case_table_names, @@max_allowed_packet AS max_allowed_packet, @@net_buffer_length AS net_buffer_length, @@net_write_timeout AS net_write_timeout, @@query_cache_size AS query_cache_size, @@query_cache_type AS query_cache_type, @@sql_mode AS sql_mode, @@system_time_zone AS system_time_zone, @@time_zone AS time_zone, @@tx_isolation AS tx_isolation, @@wait_timeout AS wait_timeout",
+		},
+		{
+			mysqlVersion: "5.7.25-gaea",
+			sql:          "select @@transaction_read_only",
+			expectSQL:    "select @@tx_read_only",
+		},
+		{
+			mysqlVersion: "5.7.25-gaea",
+			sql:          "select @@session.transaction_read_only",
+			expectSQL:    "select @@session.tx_read_only",
+		},
+		{
+			mysqlVersion: "5.7.25-gaea",
+			sql:          "select /*master*/ @@session.transaction_read_only",
+			expectSQL:    "select /*master*/ @@session.tx_read_only",
+		},
+		{
+			mysqlVersion: "5.7.25-gaea",
+			sql:          "select @@session.transaction_read_only /*test*/",
+			expectSQL:    "select @@session.transaction_read_only /*test*/",
+		},
+		{
+			mysqlVersion: "5.7.25-gaea",
+			sql:          "SELECT @@session.transaction_isolation",
+			expectSQL:    "SELECT @@session.tx_isolation",
+		},
+		{
+			mysqlVersion: "5.7.25-gaea",
+			sql:          "SELECT @@transaction_isolation",
+			expectSQL:    "SELECT @@tx_isolation",
+		},
+		{
+			mysqlVersion: "8.0.25-gaea",
+			sql:          "select @@session.transaction_read_only",
+			expectSQL:    "select @@session.transaction_read_only",
+		},
+		{
+			mysqlVersion: "8.0.25-gaea",
+			sql:          "SELECT @@transaction_isolation",
+			expectSQL:    "SELECT @@transaction_isolation",
+		},
+	}
+
+	for _, tt := range testCases {
+		sql := preRewriteSQL(tt.sql, tt.mysqlVersion)
+		assert.Equal(t, tt.expectSQL, sql, tt.sql+"-"+tt.mysqlVersion)
+	}
+}
+
 func newDefaultSessionExecutor() (*SessionExecutor, error) {
 	var err error
 	if localManager == nil {

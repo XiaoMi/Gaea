@@ -44,11 +44,18 @@ const (
 	mycatHint          = "/* !mycat:"
 	standardMasterHint = "/*+ master */"
 	// general query log variable
-	gaeaGeneralLogVariable = "gaea_general_log"
-	readonlyVariable       = "read_only"
-	TxTransactionLT5720    = "@@tx_isolation"
-	TxTransactionGT5720    = "@@transaction_isolation"
-	JdbcInitPrefix         = "/* mysql-connector-java"
+	gaeaGeneralLogVariable   = "gaea_general_log"
+	readonlyVariable         = "read_only"
+	TxReadonlyLT5720         = "@@tx_read_only"
+	TxReadonlyGT5720         = "@@transaction_read_only"
+	SessionTxReadonlyLT5720  = "@@session.tx_read_only"
+	SessionTxReadonlyGT5720  = "@@session.transaction_read_only"
+	TxIsolationLT5720        = "@@tx_isolation"
+	TxIsolationGT5720        = "@@transaction_isolation"
+	SessionTxIsolationLT5720 = "@@session.tx_isolation"
+	SessionTxIsolationGT5720 = "@@session.transaction_isolation"
+	// JdbcInitPrefix jdbc prefix: /* mysql-connector-java (<8.0.30); /* mysql-connector-j-8...(>8.0.30)
+	JdbcInitPrefix = "/* mysql-connector-j"
 
 	// multiBackendAddrMark marks the backend addr is one of multi backend addrs
 	multiBackendAddrMark = ">"
@@ -648,10 +655,8 @@ func getOnOffVariable(v string) (string, error) {
 
 // extractPrefixCommentsAndRewrite extractPrefixComments and rewrite origin SQL
 func extractPrefixCommentsAndRewrite(sql string, version string) (trimmed string, comment parser.MarginComments) {
-	// fix jdbc version mismatch gaea version
-	if strings.HasPrefix(sql, JdbcInitPrefix) && util.CheckMySQLVersion(version, util.LessThanMySQLVersion80) {
-		sql = strings.Replace(sql, TxTransactionGT5720, TxTransactionLT5720, 1)
-	}
+	sql = preRewriteSQL(sql, version)
+
 	_, comments := parser.SplitMarginComments(sql)
 	trimmed = strings.TrimPrefix(sql, comments.Leading)
 	trimmed = strings.TrimPrefix(trimmed, comments.Trailing)
@@ -746,6 +751,41 @@ func isSQLSelectReadOnly(sql string, stmt ast.StmtNode) bool {
 		}
 	}
 	return false
+}
+
+// preRewriteSQL pre rewite sql with string
+func preRewriteSQL(sql string, version string) string {
+	if !util.CheckMySQLVersion(version, util.LessThanMySQLVersion80) {
+		return sql
+	}
+
+	// fix jdbc version mismatch gaea version
+	if strings.HasPrefix(sql, JdbcInitPrefix) {
+		return strings.Replace(sql, TxIsolationGT5720, TxIsolationLT5720, 1)
+	}
+
+	if !strings.Contains(sql, "@@") {
+		return sql
+	}
+
+	// fix `select @@transaction_isolation`
+	if strings.HasSuffix(sql, TxIsolationGT5720) {
+		return strings.Replace(sql, TxIsolationGT5720, TxIsolationLT5720, 1)
+	}
+	// fix `select @@session.transaction_isolation`
+	if strings.HasSuffix(sql, SessionTxIsolationGT5720) {
+		return strings.Replace(sql, SessionTxIsolationGT5720, SessionTxIsolationLT5720, 1)
+	}
+
+	// fix `select @@transaction_read_only`
+	if strings.HasSuffix(sql, TxReadonlyGT5720) {
+		return strings.Replace(sql, TxReadonlyGT5720, TxReadonlyLT5720, 1)
+	}
+	// fix `select @@session.transaction_read_only`
+	if strings.HasSuffix(sql, SessionTxReadonlyGT5720) {
+		return strings.Replace(sql, SessionTxReadonlyGT5720, SessionTxReadonlyLT5720, 1)
+	}
+	return sql
 }
 
 func modifyResultStatus(r *mysql.Result, cc *SessionExecutor) {
