@@ -4,6 +4,8 @@ set -euo pipefail
 
 # install mysql
 yum install -y wget perl net-tools etcd curl libaio libaio-devel numactl make git gcc
+yum install -y glibc
+yum update -y
 
 # modify timezone
 ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime

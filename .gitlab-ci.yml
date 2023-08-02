@@ -69,6 +69,8 @@ e2e_test:
   script:
     - cp bin/gaea tests/e2e/cmd/
     - cp bin/gaea-cc tests/e2e/cmd/
+    - go install github.com/onsi/ginkgo/v2/ginkgo@v2.3.1
+    - chmod +x ./hack/e2e.sh
     - ./hack/e2e.sh
     - ginkgo --v --progress --trace --flake-attempts=1 ./tests/e2e/
 

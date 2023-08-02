@@ -25,6 +25,12 @@ mysqld --defaults-file=/data/etc/my3329.cnf --user=work --initialize-insecure
 mysqld --defaults-file=/data/etc/my3329.cnf --user=work &
 sleep 3
 
+# start mysql slave
+cp ./tests/docker/my3339_example.cnf /data/etc/my3339.cnf
+mysqld --defaults-file=/data/etc/my3339.cnf --user=work --initialize-insecure
+mysqld --defaults-file=/data/etc/my3339.cnf --user=work &
+sleep 3
+
 # 授权
 mysql -hlocalhost -P3319 -uroot -S/data/tmp/mysql3319.sock <<EOF
 reset master;
@@ -35,6 +41,16 @@ EOF
 
 # 构建主从关系
 mysql -hlocalhost -P3329 -uroot -S/data/tmp/mysql3329.sock <<EOF
+GRANT REPLICATION SLAVE, REPLICATION CLIENT on *.* to 'mysqlsync'@'%' IDENTIFIED BY 'mysqlsync';
+-- User for superroot system
+GRANT ALL ON *.* TO 'superroot'@'%' IDENTIFIED BY 'superroot' WITH GRANT OPTION;
+CHANGE MASTER TO MASTER_HOST='127.0.0.1', MASTER_PORT=3319, MASTER_USER='mysqlsync', MASTER_PASSWORD='mysqlsync', MASTER_AUTO_POSITION=1;
+START SLAVE;
+DO SLEEP(1);
+EOF
+
+# 构建主从关系
+mysql -hlocalhost -P3339 -uroot -S/data/tmp/mysql3339.sock <<EOF
 GRANT REPLICATION SLAVE, REPLICATION CLIENT on *.* to 'mysqlsync'@'%' IDENTIFIED BY 'mysqlsync';
 -- User for superroot system
 GRANT ALL ON *.* TO 'superroot'@'%' IDENTIFIED BY 'superroot' WITH GRANT OPTION;
