@@ -32,8 +32,8 @@ import (
 type InsertPlan struct {
 	basePlan
 	*StmtInfo
-
-	stmt *ast.InsertStmt
+	rewriteStmts []ast.StmtNode
+	stmt         *ast.InsertStmt
 
 	table               string
 	isAssignmentMode    bool
@@ -47,6 +47,7 @@ type InsertPlan struct {
 // NewInsertPlan constructor of InsertPlan
 func NewInsertPlan(db string, sql string, r *router.Router, seq *sequence.SequenceManager) *InsertPlan {
 	return &InsertPlan{
+		rewriteStmts:        []ast.StmtNode{},
 		StmtInfo:            NewStmtInfo(db, sql, r),
 		shardingColumnIndex: -1,
 		sequences:           seq,
@@ -96,7 +97,7 @@ func HandleInsertStmt(p *InsertPlan, stmt *ast.InsertStmt) error {
 		return fmt.Errorf("handleInsertValues error: %v", err)
 	}
 
-	sqls, err := generateShardingSQLs(p.stmt, p.result, p.router)
+	sqls, err := generateMultiShardingSQLs(p.rewriteStmts, p.result, p.router)
 	if err != nil {
 		log.Warn("generate insert sql failed, %v", err)
 		return err
@@ -251,6 +252,7 @@ func handleInsertValues(p *InsertPlan) error {
 	}
 
 	// not assignment mode
+	routeIdxs := make([]int, 0, len(p.result.indexes))
 	for _, valueList := range p.stmt.Lists {
 		valueItem := valueList[p.shardingColumnIndex]
 		switch x := valueItem.(type) {
@@ -266,12 +268,15 @@ func handleInsertValues(p *InsertPlan) error {
 			if err != nil {
 				return fmt.Errorf("find table index error: %v", err)
 			}
-			p.result.Inter([]int{routeIdx})
+			routeIdxs = append(routeIdxs, routeIdx)
+			newStmt := *p.stmt
+			newStmt.Lists = [][]ast.ExprNode{valueList}
+			p.rewriteStmts = append(p.rewriteStmts, &newStmt)
 		}
 	}
-	if len(p.result.GetShardIndexes()) == 0 {
-		return fmt.Errorf("batch insert has cross slice values or no route found")
-	}
+
+	p.result.indexes = routeIdxs
+
 	return nil
 }
 
@@ -339,7 +344,10 @@ func handleInsertGlobalSequenceValue(p *InsertPlan) error {
 			Name: model.NewCIStr(pkName),
 		})
 		seqIndex = len(p.stmt.Columns) - 1
-		p.stmt.Lists[0] = append(p.stmt.Lists[0], &ast.FuncCallExpr{FnName: model.NewCIStr("nextval")})
+		// for batch insert, we should append every list
+		for i := 0; i < len(p.stmt.Lists); i++ {
+			p.stmt.Lists[i] = append(p.stmt.Lists[i], &ast.FuncCallExpr{FnName: model.NewCIStr("nextval")})
+		}
 	}
 
 	for _, valueList := range p.stmt.Lists {

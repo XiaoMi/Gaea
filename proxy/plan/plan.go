@@ -509,6 +509,7 @@ func (t *TableAliasStmtInfo) getAliasTable(alias string) (string, bool) {
 	return table, ok
 }
 
+// TODO: 删除该函数
 // 根据StmtNode和路由信息生成分片SQL
 func generateShardingSQLs(stmt ast.StmtNode, result *RouteResult, router *router.Router) (map[string]map[string][]string, error) {
 	ret := make(map[string]map[string][]string)
@@ -520,6 +521,41 @@ func generateShardingSQLs(stmt ast.StmtNode, result *RouteResult, router *router
 			return nil, err
 		}
 
+		index := result.Next()
+		rule, ok := router.GetShardRule(result.db, result.table)
+		if !ok {
+			return nil, fmt.Errorf("cannot find shard rule, db: %s, table: %s", result.db, result.table)
+		}
+		sliceIndex := rule.GetSliceIndexFromTableIndex(index)
+		sliceName := rule.GetSlice(sliceIndex)
+		dbName, _ := rule.GetDatabaseNameByTableIndex(index)
+		sliceSQLs, ok := ret[sliceName]
+		if !ok {
+			sliceSQLs = make(map[string][]string)
+			ret[sliceName] = sliceSQLs
+		}
+
+		ret[sliceName][dbName] = append(ret[sliceName][dbName], sb.String())
+	}
+
+	result.Reset() // must reset the cursor for next call
+
+	return ret, nil
+}
+
+// 根据多个StmtNode和路由信息生成分片SQL，适用于 batch insert
+func generateMultiShardingSQLs(stmts []ast.StmtNode, result *RouteResult, router *router.Router) (map[string]map[string][]string, error) {
+	if len(stmts) != len(result.GetShardIndexes()) {
+		return nil, fmt.Errorf("stmt not equal result")
+	}
+	ret := make(map[string]map[string][]string)
+
+	for result.HasNext() {
+		sb := &strings.Builder{}
+		ctx := format.NewRestoreCtx(format.EscapeRestoreFlags, sb)
+		if err := stmts[result.currentIndex].Restore(ctx); err != nil {
+			return nil, err
+		}
 		index := result.Next()
 		rule, ok := router.GetShardRule(result.db, result.table)
 		if !ok {
