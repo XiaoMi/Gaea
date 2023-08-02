@@ -18,8 +18,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
-	"github.com/XiaoMi/Gaea/backend"
-	"go.uber.org/atomic"
 	"net/http"
 	"os"
 	"sort"
@@ -27,6 +25,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/XiaoMi/Gaea/backend"
+	"go.uber.org/atomic"
 
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
@@ -190,7 +191,6 @@ func (m *Manager) Close() {
 func (m *Manager) ReloadNamespacePrepare(namespaceConfig *models.Namespace) error {
 	name := namespaceConfig.Name
 	current, other, _ := m.switchIndex.Get()
-
 	// reload namespace prepare
 	currentNamespaceManager := m.namespaces[current]
 	newNamespaceManager := ShallowCopyNamespaceManager(currentNamespaceManager)
@@ -713,7 +713,7 @@ type StatisticManager struct {
 	closeChan             chan bool
 }
 
-//SQLResponse record one namespace SQL response like P99/P95
+// SQLResponse record one namespace SQL response like P99/P95
 type SQLResponse struct {
 	ns                      string
 	sqlExecTimeRecordSwitch bool
@@ -998,31 +998,31 @@ func (s *StatisticManager) AddWriteFlowCount(namespace string, byteCount int) {
 	s.flowCounts.Add(statsKey, int64(byteCount))
 }
 
-//record idle connect count
+// record idle connect count
 func (s *StatisticManager) recordConnectPoolIdleCount(namespace string, slice string, addr string, count int64) {
 	statsKey := []string{s.clusterName, namespace, slice, addr}
 	s.backendConnectPoolIdleCounts.Set(statsKey, count)
 }
 
-//record in-use connect count
+// record in-use connect count
 func (s *StatisticManager) recordConnectPoolInuseCount(namespace string, slice string, addr string, count int64) {
 	statsKey := []string{s.clusterName, namespace, slice, addr}
 	s.backendConnectPoolInUseCounts.Set(statsKey, count)
 }
 
-//record wait queue length
+// record wait queue length
 func (s *StatisticManager) recordConnectPoolWaitCount(namespace string, slice string, addr string, count int64) {
 	statsKey := []string{s.clusterName, namespace, slice, addr}
 	s.backendConnectPoolWaitCounts.Set(statsKey, count)
 }
 
-//record wait queue length
+// record wait queue length
 func (s *StatisticManager) recordInstanceCount(namespace string, slice string, addr string, count int64, role string) {
 	statsKey := []string{s.clusterName, namespace, slice, addr, role}
 	s.backendInstanceCounts.Set(statsKey, count)
 }
 
-//record wait queue length
+// record wait queue length
 func (s *StatisticManager) recordBackendSQLTimingP99Max(namespace, backendAddr string, count int64) {
 	statsKey := []string{s.clusterName, namespace, backendAddr}
 	s.backendSQLResponse99MaxCounts.Set(statsKey, count)
