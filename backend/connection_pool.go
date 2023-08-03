@@ -17,6 +17,7 @@ package backend
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +42,7 @@ var (
 type connectionPoolImpl struct {
 	mu          sync.RWMutex
 	connections *util.ResourcePool
+	checkConn   *pooledConnectImpl
 
 	addr     string
 	user     string
@@ -117,6 +119,11 @@ func (cp *connectionPoolImpl) Close() {
 	}
 	p.Close()
 	cp.mu.Lock()
+	// close check conn
+	if cp.checkConn != nil {
+		cp.checkConn.Close()
+		cp.checkConn = nil
+	}
 	cp.connections = nil
 	cp.mu.Unlock()
 	return
@@ -151,6 +158,44 @@ func (cp *connectionPoolImpl) Get(ctx context.Context) (pc PooledConnect, err er
 	}
 
 	return pc, err
+}
+
+// GetCheck return a check backend db connection, which independent with connection pool
+func (cp *connectionPoolImpl) GetCheck(ctx context.Context) (PooledConnect, error) {
+	if cp.checkConn != nil && !cp.checkConn.IsClosed() {
+		return cp.checkConn, nil
+	}
+
+	getCtx, cancel := context.WithTimeout(ctx, GetConnTimeout)
+	defer cancel()
+
+	getConnChan := make(chan error)
+	go func() {
+		// connect timeout will be in 2s
+		checkConn, err := cp.connect()
+		if err != nil {
+			return
+		}
+		cp.checkConn = checkConn.(*pooledConnectImpl)
+
+		if cp.checkConn.IsClosed() {
+			if err := cp.checkConn.Reconnect(); err != nil {
+				return
+			}
+		}
+		getConnChan <- err
+	}()
+
+	select {
+	case <-getCtx.Done():
+		return nil, fmt.Errorf("get conn timeout")
+	case err1 := <-getConnChan:
+		if err1 != nil {
+			return nil, err1
+		}
+		return cp.checkConn, nil
+	}
+
 }
 
 // Put recycle a connection into the pool

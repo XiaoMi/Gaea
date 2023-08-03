@@ -45,7 +45,7 @@ const (
 	defaultSlowSQLTime       = 1000  // millisecond
 	defaultMaxSqlExecuteTime = 0     // 默认为0，不开启慢sql熔断功能
 	defaultMaxSqlResultSize  = 10000 // 默认为10000, 限制查询返回的结果集大小不超过该阈值
-	defaultTimeAfterNoAlive  = 32    // 如果发现slave状态异常，则每sleep 1，2，4，8秒再检查， 默认 32秒后
+	defaultTimeAfterNoAlive  = 32    // 每间隔4秒进行一次检查， 默认 32秒后会探测到实例失败
 	// 认为Slave已下线，如果需要快速判定状态，可减少该值
 	defaultMaxClientConnections = 100000000 //Big enough
 
@@ -60,34 +60,34 @@ type UserProperty struct {
 
 // Namespace is struct driected used by server
 type Namespace struct {
-	name                string
-	allowedDBs          map[string]bool
-	defaultPhyDBs       map[string]string // logicDBName-phyDBName
-	sqls                map[string]string //key: sql fingerprint
-	slowSQLTime         int64             // session slow sql time, millisecond, default 1000
-	allowips            []util.IPInfo
-	router              *router.Router
-	sequences           *sequence.SequenceManager
-	slices              map[string]*backend.Slice // key: slice name
-	userProperties      map[string]*UserProperty  // key: user name ,value: user's properties
-	defaultCharset      string
-	defaultCollationID  mysql.CollationID
-	openGeneralLog      bool
-	maxSqlExecuteTime   int // session max sql execute time,millisecond
-	maxSqlResultSize    int
-	defaultSlice        string
-	downAfterNoAlive    int
-	secondsBehindMaster uint64
-	supportMultiQuery   bool
+	name                 string
+	allowedDBs           map[string]bool
+	defaultPhyDBs        map[string]string // logicDBName-phyDBName
+	sqls                 map[string]string //key: sql fingerprint
+	slowSQLTime          int64             // session slow sql time, millisecond, default 1000
+	allowips             []util.IPInfo
+	router               *router.Router
+	sequences            *sequence.SequenceManager
+	slices               map[string]*backend.Slice // key: slice name
+	userProperties       map[string]*UserProperty  // key: user name ,value: user's properties
+	defaultCharset       string
+	defaultCollationID   mysql.CollationID
+	openGeneralLog       bool
+	maxSqlExecuteTime    int // session max sql execute time,millisecond
+	maxSqlResultSize     int
+	defaultSlice         string
+	downAfterNoAlive     int
+	secondsBehindMaster  uint64
+	supportMultiQuery    bool
+	maxClientConnections int
+	CheckSelectLock      bool
 
 	slowSQLCache         *cache.LRUCache
 	errorSQLCache        *cache.LRUCache
 	backendSlowSQLCache  *cache.LRUCache
 	backendErrorSQLCache *cache.LRUCache
 	planCache            *cache.LRUCache
-
-	maxClientConnections int
-	CheckSelectLock      bool
+	CloseCancel          context.CancelFunc
 }
 
 // DumpToJSON  means easy encode json
@@ -116,6 +116,8 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 			namespace.Close(false)
 		}
 	}()
+	var ctx context.Context
+	ctx, namespace.CloseCancel = context.WithCancel(context.TODO())
 
 	// init SupportMultiQuery default true
 	namespace.supportMultiQuery = true
@@ -193,7 +195,7 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 	}
 
 	//Check slice master and slave status and mark them as unavailable when detect down
-	if err = checkSlicesStatus(namespace.slices, namespace); err != nil {
+	if err = checkSlicesStatus(ctx, namespace.slices, namespace); err != nil {
 		return nil, fmt.Errorf("check salve in slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
 	}
 
@@ -495,6 +497,9 @@ func (n *Namespace) ClearBackendErrorSQLFingerprints() {
 // Close recycle resources of namespace
 func (n *Namespace) Close(delay bool) {
 	var err error
+	// close check alive
+	n.CloseCancel()
+
 	// delay close time
 	if delay {
 		time.Sleep(time.Second * namespaceDelayClose)
@@ -510,6 +515,8 @@ func (n *Namespace) Close(delay bool) {
 	n.errorSQLCache.Clear()
 	n.backendSlowSQLCache.Clear()
 	n.backendErrorSQLCache.Clear()
+	n.planCache.Clear()
+	_ = log.Warn("close ns:%s", n.name)
 }
 
 func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID) (*backend.Slice, error) {
@@ -559,22 +566,15 @@ func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.Co
 	return slices, nil
 }
 
-func checkSlicesStatus(slices map[string]*backend.Slice, namespace *Namespace) error {
-	ctx, cancel := context.WithCancel(context.TODO())
-
+func checkSlicesStatus(ctx context.Context, slices map[string]*backend.Slice, namespace *Namespace) error {
 	defer func() {
 		if err := recover(); err != nil {
-			cancel()
-			log.Notice("find error: %s ...", err)
+			log.Notice("checkSlicesStatus recover error: %s", err)
 		}
 	}()
 
 	for _, v := range slices {
-		if err := doCheckSlice(v, namespace, ctx); err != nil {
-			cancel()
-			log.Fatal("fail to start check salve liveness, namespace: %s, slice: %s", namespace, v.Cfg.Name)
-			return err
-		}
+		doCheckSlice(v, namespace, ctx)
 	}
 
 	return nil
@@ -594,7 +594,7 @@ func shouldCheckSlaveDataSyncStatus(namespace *Namespace, crruentStatus backend.
 	return namespace.secondsBehindMaster != 0
 }
 
-func doCheckSlice(slice *backend.Slice, namespace *Namespace, ctx context.Context) error {
+func doCheckSlice(slice *backend.Slice, namespace *Namespace, ctx context.Context) {
 	checkStatus := func(slaveInfo *backend.DBInfo, isMaster bool) {
 		role := "Slave"
 		if isMaster {
@@ -609,16 +609,14 @@ func doCheckSlice(slice *backend.Slice, namespace *Namespace, ctx context.Contex
 				_ = log.Fatal("checkStatus canceled by parent. ns:%s", namespace.name)
 				return
 			default:
-				for idx, v := range slaveInfo.ConnPool {
+				for idx, cp := range slaveInfo.ConnPool {
 					_ = log.Debug("ns:%s, slice:%s, start check %s %s by auto check",
-						namespace.name,
-						role,
-						slice.Cfg.Name,
-						v.Addr())
+						namespace.name, role, slice.Cfg.Name, cp.Addr())
 
 					now := time.Now()
 
-					status, conn := getInstanceStatus(namespace, v, ctx)
+					status, conn := getInstanceStatus(namespace, cp)
+
 					// status is ok && this is slave && seconds_behind_master is not 0, we start to check master and slave lag
 					// Pay attention!!!!, if master is down, slave IO thread is close, so we should skip check slave when master is down
 					if shouldCheckSlaveDataSyncStatus(namespace, status, slice, isMaster) {
@@ -627,22 +625,18 @@ func doCheckSlice(slice *backend.Slice, namespace *Namespace, ctx context.Contex
 						}
 					}
 
-					if conn != nil {
-						conn.Recycle()
+					if v, ok := slaveInfo.StatusMap.Load(idx); ok {
+						if status == backend.UP && v != status {
+							_ = log.Warn("ns:%s, slice:%s, %s find UP by auto check",
+								namespace.name, slice.Cfg.Name, cp.Addr())
+						}
 					}
 
 					slaveInfo.StatusMap.Store(idx, status)
 
-					logValue := fmt.Sprintf("ns:%s, slice:%s, %s find %s by auto check, takes %dms",
-						namespace.name,
-						slice.Cfg.Name,
-						v.Addr(),
-						status.String(),
-						time.Since(now).Milliseconds())
 					if status == backend.DOWN {
-						_ = log.Warn(logValue)
-					} else {
-						_ = log.Debug(logValue)
+						_ = log.Warn("ns:%s, slice:%s, %s find down by auto check, takes %dms",
+							namespace.name, slice.Cfg.Name, cp.Addr(), time.Since(now).Milliseconds())
 					}
 
 				}
@@ -655,7 +649,6 @@ func doCheckSlice(slice *backend.Slice, namespace *Namespace, ctx context.Contex
 	go checkStatus(slice.StatisticSlave, false)
 	go checkStatus(slice.Master, true)
 
-	return nil
 }
 
 func slaveIsLagBehand(conn backend.PooledConnect, namespace *Namespace) (bool, error) {
@@ -684,37 +677,41 @@ func slaveIsLagBehand(conn backend.PooledConnect, namespace *Namespace) (bool, e
 	return false, nil
 }
 
-func getInstanceStatus(namespace *Namespace, v backend.ConnectionPool, ctx context.Context) (backend.StatusCode, backend.PooledConnect) {
-	var sleepTime = 1
+func getInstanceStatus(namespace *Namespace, cp backend.ConnectionPool) (backend.StatusCode, backend.PooledConnect) {
+	sleepTime := int(backend.PingPeriod)
+	status := backend.DOWN
 	var err error
 	var conn backend.PooledConnect
-	for ; sleepTime < namespace.downAfterNoAlive; sleepTime *= 2 {
-		conn, err = v.Get(ctx)
+
+	for i := 0; i < namespace.downAfterNoAlive; i += sleepTime {
+		// default 2s timeout
+		start := time.Now()
+		conn, err = cp.GetCheck(context.Background())
 		if err != nil {
 			if conn != nil {
-				conn.Recycle()
-				conn = nil
+				conn.Close()
 			}
-			time.Sleep(time.Duration(sleepTime) * time.Second)
+			_ = log.Warn("ns:%s, slice:%s, get check conn err:%s", namespace.name, cp.Addr(), err)
+			time.Sleep(time.Duration(sleepTime-int(time.Now().Sub(start).Seconds())) * time.Second)
 			continue
 		}
 
-		if err = conn.PingWithTimeout(backend.GetConnTimeout); err == nil {
-			break
-		}
-		if err = conn.Reconnect(); err == nil {
-			break
+		if conn == nil {
+			_ = log.Warn("ns:%s, slice:%s, get nil check conn, ins:%s", namespace.name, cp.Addr(), cp.Addr())
+			time.Sleep(time.Duration(sleepTime-int(time.Now().Sub(start).Seconds())) * time.Second)
+			continue
 		}
 
-		if conn != nil {
-			conn.Recycle()
+		if err = conn.PingWithTimeout(backend.GetConnTimeout); err != nil {
+			_ = log.Warn("ns:%s, slice:%s, ping conn error:%s", namespace.name, cp.Addr(), err)
+			conn.Close()
+			time.Sleep(time.Duration(sleepTime-int(time.Now().Sub(start).Seconds())) * time.Second)
+			continue
+		} else {
+			// ping ok, check alive success
+			status = backend.UP
+			break
 		}
-		time.Sleep(time.Duration(sleepTime) * time.Second)
-	}
-
-	status := backend.UP
-	if err != nil || sleepTime >= namespace.downAfterNoAlive {
-		status = backend.DOWN
 	}
 
 	return status, conn

@@ -15,6 +15,7 @@
 package backend
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/XiaoMi/Gaea/mysql"
@@ -73,6 +74,9 @@ func (pc *pooledConnectImpl) UseDB(db string) error {
 }
 
 func (pc *pooledConnectImpl) Ping() error {
+	if pc.directConnection == nil {
+		return fmt.Errorf("directConnection is nil, pc addr:%s", pc.GetAddr())
+	}
 	return pc.directConnection.Ping()
 }
 

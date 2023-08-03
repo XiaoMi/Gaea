@@ -149,10 +149,11 @@ func (s *Slice) GetSlaveConn(slavesInfo *DBInfo) (PooledConnect, error) {
 	}
 
 	var index int
-	// find the idx of the pooledconnect that isn't mark as down
+	// find the idx of the ConnPool that isn't mark as down
 	for size := len(slavesInfo.ConnPool); size > 0; size-- {
 		s.Lock()
-		index, err := slavesInfo.Balancer.next()
+		var err error
+		index, err = slavesInfo.Balancer.next()
 		s.Unlock()
 		if err != nil {
 			return nil, err
