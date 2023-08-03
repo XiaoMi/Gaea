@@ -34,6 +34,7 @@ type ConnectionPool interface {
 	Addr() string
 	Close()
 	Get(ctx context.Context) (PooledConnect, error)
+	GetCheck(ctx context.Context) (PooledConnect, error)
 	Put(pc PooledConnect)
 
 	SetCapacity(capacity int) (err error)

@@ -101,6 +101,29 @@ func (_m *ConnectionPool) Get(ctx context.Context) (backend.PooledConnect, error
 	return r0, r1
 }
 
+// GetCheck provides a mock function with given fields: ctx
+func (_m *ConnectionPool) GetCheck(ctx context.Context) (backend.PooledConnect, error) {
+	ret := _m.Called(ctx)
+
+	var r0 backend.PooledConnect
+	if rf, ok := ret.Get(0).(func(context.Context) backend.PooledConnect); ok {
+		r0 = rf(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(backend.PooledConnect)
+		}
+	}
+
+	var r1 error
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
 // IdleClosed provides a mock function with given fields:
 func (_m *ConnectionPool) IdleClosed() int64 {
 	ret := _m.Called()

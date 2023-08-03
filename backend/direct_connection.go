@@ -372,6 +372,9 @@ func (dc *DirectConnection) writeComFieldList(table string, wildcard string) err
 
 // Ping implements mysql ping command.
 func (dc *DirectConnection) Ping() error {
+	if dc.conn == nil {
+		return fmt.Errorf("get mysql conn of DirectConnection error.dc addr:%s", dc.GetAddr())
+	}
 	dc.conn.SetSequence(0)
 	if err := dc.writePacket([]byte{mysql.ComPing}); err != nil {
 		return err
