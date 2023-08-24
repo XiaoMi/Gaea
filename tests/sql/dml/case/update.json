@@ -1,0 +1,61 @@
+{
+    "execCases": [
+        {
+            "description": "Testing UPDATE LOW_PRIORITY IGNORE",
+            "setUp": [
+                {
+                    "slice": "slice-0",
+                    "sql": "DROP DATABASE IF EXISTS db_test_update"
+                },
+                {
+                    "slice": "slice-0",
+                    "sql": "CREATE DATABASE db_test_update"
+                },
+                {
+                    "slice": "slice-0",
+                    "sql": "USE db_test_update"
+                  }
+             ],
+            "gaeaActions": [
+                {
+                    "sql": "USE db_test_update"
+                },
+                {
+                    "sql": "CREATE TABLE tbl_test_update (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(50), age INT, score FLOAT)"
+                },
+                {
+                    "sql": "INSERT INTO tbl_test_update (name, age, score) VALUES ('User1', 30, 80.0), ('User2', 31, 70.0)"
+                },
+                {
+                    "sql": "UPDATE LOW_PRIORITY IGNORE tbl_test_update SET age = 31 WHERE id = 1"
+                },
+                {
+                    "sql": "UPDATE tbl_test_update SET name = 'newUser1' WHERE id = 1"
+                },
+                {
+                    "sql": "UPDATE tbl_test_update SET score = 80.0 WHERE name = 'User2' ORDER BY score DESC LIMIT 1"
+                }
+            ],
+            "masterCheckSQL": [
+                {
+                    "slice": "slice-0",
+                    "name": "Check result for LOW_PRIORITY IGNORE",
+                    "sql": "SELECT age FROM tbl_test_update WHERE name = 'newUser1'",
+                    "expect": "31"
+                },                
+                {
+                    "slice": "slice-0",
+                    "name": "Check result for ORDER BY LIMIT",
+                    "sql": "SELECT score FROM tbl_test_update WHERE name = 'User2'",
+                    "expect": "80"
+                }
+            ],
+            "tearDown": [
+                { 
+                    "slice": "slice-0",
+                    "sql": "DROP DATABASE IF EXISTS db_test_update"
+                }
+              ]
+        }
+    ]
+}

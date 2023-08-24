@@ -1,0 +1,42 @@
+[client]
+port                            = 3369
+socket                          = /data/tmp/mysql3359.sock
+
+[mysqld]
+default_password_lifetime       = 0
+lower_case_table_names          = 1
+character-set-server            = utf8
+tmpdir                          = /data/tmp
+port                            = 3369
+socket                          = /data/tmp/mysql3369.sock
+pid_file                        = /data/mysql/data3369/mysql3369.pid
+
+#gtid
+gtid-mode = ON
+enforce-gtid-consistency = ON
+
+datadir                         = /data/mysql/data3369
+memlock
+
+innodb_file_per_table
+innodb_buffer_pool_size         = 100M
+innodb_change_buffering         = all
+innodb_data_file_path           = ibdata1:12M:autoextend
+innodb_temp_data_file_path      = ibtmp1:12M:autoextend:max:100G
+
+innodb_log_group_home_dir       = /data/mysql/data3369
+
+server-id                       = 38166084
+sql_mode = "ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION,ALLOW_INVALID_DATES"
+log-slave-updates
+log-bin                         = /data/mysql/data3369/mysql-bin
+relay-log                       = /data/mysql/data3369/mysql-relay-bin
+binlog_format                   = row
+log_bin_trust_function_creators = 1
+skip_slave_start
+
+general-log                     = 0
+general_log_file                = /data/mysql/data3369/general.log
+
+log_warnings
+log_error                       = /data/mysql/data3369/log_error.err
