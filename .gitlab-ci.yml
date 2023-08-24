@@ -67,12 +67,12 @@ e2e_test:
   stage: e2e-test
   image: micr.cloud.mioffice.cn/devdba/centos-mysql-golang:v1.0.2
   script:
-    - cp bin/gaea tests/e2e/cmd/
-    - cp bin/gaea-cc tests/e2e/cmd/
+    - cp bin/gaea tests/cmd/
+    - cp bin/gaea-cc tests/cmd/
     - go install github.com/onsi/ginkgo/v2/ginkgo@v2.3.1
     - chmod +x ./hack/e2e.sh
     - ./hack/e2e.sh
-    - ginkgo --v --progress --trace --flake-attempts=1 ./tests/e2e/
+    - ginkgo --v --progress --trace --flake-attempts=1 ./tests/sql/
 
 upload_fds:
   stage: pre-release

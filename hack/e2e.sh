@@ -31,6 +31,18 @@ mysqld --defaults-file=/data/etc/my3339.cnf --user=work --initialize-insecure
 mysqld --defaults-file=/data/etc/my3339.cnf --user=work &
 sleep 3
 
+## start mysql shard master
+cp ./tests/docker/my3359_example.cnf /data/etc/my3359.cnf
+mysqld --defaults-file=/data/etc/my3359.cnf --user=work --initialize-insecure
+mysqld --defaults-file=/data/etc/my3359.cnf --user=work &
+sleep 3
+
+## start mysql shard master
+cp ./tests/docker/my3369_example.cnf /data/etc/my3369.cnf
+mysqld --defaults-file=/data/etc/my3369.cnf --user=work --initialize-insecure
+mysqld --defaults-file=/data/etc/my3369.cnf --user=work &
+sleep 3
+
 # 授权
 mysql -hlocalhost -P3319 -uroot -S/data/tmp/mysql3319.sock <<EOF
 reset master;
@@ -59,6 +71,19 @@ START SLAVE;
 DO SLEEP(1);
 EOF
 
+## shard master 授权
+mysql -hlocalhost -P3359 -uroot -S/data/tmp/mysql3359.sock <<EOF
+reset master;
+-- User for superroot system
+GRANT ALL ON *.* TO 'superroot'@'%' IDENTIFIED BY 'superroot' WITH GRANT OPTION;
+EOF
+
+## shard master 授权
+mysql -hlocalhost -P3369 -uroot -S/data/tmp/mysql3369.sock <<EOF
+reset master;
+-- User for superroot system
+GRANT ALL ON *.* TO 'superroot'@'%' IDENTIFIED BY 'superroot' WITH GRANT OPTION;
+EOF
 
 # start gaea
 ps aux | grep mysql

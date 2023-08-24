@@ -1,0 +1,152 @@
+{
+    "execCases": [
+        {
+            "description": "Testing SELECT variations",
+            "setUp": [
+                {
+                    "slice": "slice-0",
+                    "sql": "DROP DATABASE IF EXISTS db_test_select"
+                },
+                {
+                    "slice": "slice-0",
+                    "sql": "CREATE DATABASE  db_test_select"
+                },
+                {
+                    "slice": "slice-0",
+                    "sql": "USE db_test_select"
+                }
+             ],
+            "gaeaActions": [
+                {
+                    "sql": "USE db_test_select"
+                },
+                {
+                    "sql": "CREATE TABLE tbl_test (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(50), age INT, score FLOAT)"
+                },
+                {
+                    "sql": "CREATE TABLE tbl_another (id INT PRIMARY KEY AUTO_INCREMENT, user_id INT, description TEXT)"
+                },
+                {
+                    "sql": "INSERT INTO tbl_test (name, age, score) VALUES ('User1', 30, 80.5), ('User2', 20, 72.0), ('User3', 10, 90.2)"
+                },
+                {
+                    "sql": "INSERT INTO tbl_another (user_id, description) VALUES (1, 'Description for User1')"
+                },
+                {
+                    "sql": "SELECT name FROM tbl_test WHERE age =30 GROUP BY name"
+                },
+                {
+                    "sql": "SELECT DISTINCT name FROM tbl_test WHERE age = 20 GROUP BY name"
+                },
+                {
+                    "sql": "SELECT name FROM tbl_test WHERE age =10 GROUP BY name HAVING name = 'User3'"
+                },
+                {
+                    "sql": "SELECT name, AVG(score) as avg_score FROM tbl_test WHERE age = 10 GROUP BY name ORDER BY avg_score DESC LIMIT 5 OFFSET 0"
+                },
+                {
+                    "sql": "SELECT DISTINCTROW name FROM tbl_test WHERE age = 10"
+                },
+                {
+                    "sql": "SELECT HIGH_PRIORITY name FROM tbl_test WHERE age = 10"
+                },
+                {
+                    "sql": "SELECT STRAIGHT_JOIN t.name FROM tbl_test t JOIN tbl_another a ON t.id = a.user_id"
+                },
+                {
+                    "sql": "SELECT name FROM tbl_test WHERE age = 10 LOCK IN SHARE MODE"
+                },
+                {
+                    "sql": "CREATE TABLE t_order (order_id INT PRIMARY KEY AUTO_INCREMENT, user_id INT, order_description VARCHAR(255))"
+                },
+                {
+                    "sql": "CREATE TABLE t_order_item (item_id INT PRIMARY KEY AUTO_INCREMENT, order_id INT, product_name VARCHAR(255), user_id INT)"
+                },
+                {
+                    "sql": "INSERT INTO t_order (user_id, order_description) VALUES (1, 'Order 1'), (2, 'Order 2')"
+                },
+                {
+                    "sql": "INSERT INTO t_order_item (order_id, product_name, user_id) VALUES (1, 'Product A', 1), (2, 'Product B', 2)"
+                },
+                {
+                    "sql": "SELECT product_name FROM t_order o INNER JOIN t_order_item i ON o.order_id = i.order_id WHERE o.order_id = 1"
+                },
+                {
+                    "sql": "SELECT product_name FROM t_order o LEFT JOIN t_order_item i ON o.order_id = i.order_id WHERE o.order_id = 1"
+                },
+                {
+                    "sql": "SELECT product_name FROM t_order o RIGHT JOIN t_order_item i ON o.order_id = i.order_id WHERE o.order_id = 1"
+                }
+            ],
+            "masterCheckSQL": [
+                {
+                    "slice": "slice-0",
+                    "name": "Check result for GROUP BY",
+                    "sql": "SELECT name FROM tbl_test WHERE age =30 GROUP BY name",
+                    "expect": "User1"
+                },
+                {
+                    "slice": "slice-0",
+                    "name": "Check result for DISTINCT GROUP BY",
+                    "sql": "SELECT DISTINCT name FROM tbl_test WHERE age = 20 GROUP BY name",
+                    "expect": "User2"
+                },
+                {
+                    "slice": "slice-0",
+                    "name": "Check result for DISTINCT GROUP BY HAVING",
+                    "sql": "SELECT name FROM tbl_test WHERE age =10 GROUP BY name HAVING name = 'User3'",
+                    "expect": "User3"
+                },
+                {
+                    "slice": "slice-0",
+                    "name": "Check result for GROUP BY ORDER BY LIMIT OFFSET",
+                    "sql": "SELECT name FROM tbl_test WHERE age = 10",
+                    "expect": "User3"
+                },
+                {
+                    "slice": "slice-0",
+                    "name": "Check result for DISTINCTROW",
+                    "sql": "SELECT DISTINCTROW name FROM tbl_test WHERE age = 10",
+                    "expect": "User3"
+                },
+                {
+                    "slice": "slice-0",
+                    "name": "Check result for HIGH_PRIORITY",
+                    "sql": "SELECT HIGH_PRIORITY name FROM tbl_test WHERE age = 10",
+                    "expect": "User3"
+                },
+                {
+                    "slice": "slice-0",
+                    "name": "Check result for STRAIGHT_JOIN",
+                    "sql": "SELECT STRAIGHT_JOIN t.name FROM tbl_test t JOIN tbl_another a ON t.id = a.user_id",
+                    "expect": "User1"
+                },
+                {
+                    "slice": "slice-0",
+                    "name": "Check result for LOCK IN SHARE MODE (1)",
+                    "sql": "SELECT name FROM tbl_test WHERE age = 10 LOCK IN SHARE MODE",
+                    "expect": "User3"
+                },
+                {
+                    "slice": "slice-0",
+                    "name": "Check result for LOCK IN SHARE MODE (2)",
+                    "sql": "SELECT name FROM tbl_test WHERE age = 10 LOCK IN SHARE MODE",
+                    "expect": "User3"
+                },
+                {
+                    "slice": "slice-0",
+                    "name": "Check result for INNER JOIN",
+                    "sql": "SELECT product_name FROM t_order o INNER JOIN t_order_item i ON o.order_id = i.order_id WHERE o.order_id = 1",
+                    "expect": "Product A"
+                }
+            ],
+            "tearDown": [
+                {
+                    "slice": "slice-0",
+                    "sql": "DROP DATABASE IF EXISTS db_test_select"
+                }
+              ]
+        }
+    ]
+
+}
