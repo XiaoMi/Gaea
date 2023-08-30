@@ -1,0 +1,173 @@
+{
+    "execCases": [
+      {
+        "description": "Test King Shard DATE YEAR INSERT UPDATE DELETE ",
+        "setUp": [
+          {
+             "slice": "slice-0",
+              "sql": "DROP DATABASE IF EXISTS db_kingshard_date_year"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "CREATE DATABASE db_kingshard_date_year"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "USE db_kingshard_date_year"
+          },
+          {
+            "slice": "slice-1",
+             "sql": "DROP DATABASE IF EXISTS db_kingshard_date_year"
+         },
+         {
+           "slice": "slice-1",
+           "sql": "CREATE DATABASE db_kingshard_date_year"
+         },
+         {
+           "slice": "slice-1",
+           "sql": "USE db_kingshard_date_year"
+         },
+          {
+            "slice": "slice-0",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_shard_2016 ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+          },
+          {
+            "slice": "slice-0",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_shard_2017 ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"          },
+          {
+            "slice": "slice-1",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_shard_2018 ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+          },
+          {
+            "slice": "slice-1",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_shard_2019 ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+          }
+       ],
+        "gaeaActions": [
+          {
+            "sql":"USE db_kingshard_date_year",
+            "execType": "Default"
+          },
+          {
+            "sql": "insert into tbl_shard (id, col1,create_time) values(6, 'test6','2016-07-01'); ",
+            "execType": "Default"
+          },
+          {
+            "sql": "insert into tbl_shard (id, col1,create_time) values(7, 'test7','2017-07-01');",
+            "execType": "Default"
+          },
+          {
+            "sql": "insert into tbl_shard (id, col1,create_time) values(8, 'test8','2018-07-01'); ",
+            "execType": "Default"
+          },
+          {
+            "sql": "insert into tbl_shard (id, col1,create_time) values(9, 'test9','2019-07-01');",
+            "execType": "Default"
+          },
+          {
+            "sql": "insert into tbl_shard (id, col1,create_time) values(10, 'test10','2016-07-01'); ",
+            "execType": "Default"
+          },
+          {
+            "sql": "UPDATE tbl_shard SET col1='updated_test6' WHERE id=6",
+            "execType": "Default"
+          },
+          {
+            "sql": "DELETE FROM tbl_shard  WHERE id=10",
+            "execType": "Default"
+          }
+        ],
+        "masterCheckSQL": [
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_date_year",
+            "name": "tbl_shard_2016 check",
+            "sql": "SELECT col1 FROM tbl_shard_2016 WHERE id=6",
+            "execType": "QueryRow",
+            "expect": ["updated_test6"]
+          },
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_date_year",
+            "name": "tbl_shard_2016 check",
+            "sql": "SELECT * FROM tbl_shard_2016 WHERE id IN ('7', '8','9','10')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_date_year",
+            "name": "tbl_shard_2016 check",
+            "sql":  "SELECT col1 FROM tbl_shard_2016 WHERE id=10",
+            "execType": "Query",
+            "expect": []
+          },
+
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_date_year",
+            "name": "tbl_shard_2017 check",
+            "sql": "SELECT col1 FROM tbl_shard_2017 WHERE id =7 ",
+            "execType": "Query",
+            "expect": [
+                ["test7"]
+            ]
+          },
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_date_year",
+            "name": "tbl_shard_2017 check",
+            "sql": "SELECT col1 FROM tbl_shard_2017 WHERE id IN ('6', '8','9','10')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "slice": "slice-1",
+            "db": "db_kingshard_date_year",
+            "name": "tbl_shard_2018 check",
+            "sql":  "SELECT col1 FROM  tbl_shard_2018 WHERE id=8",
+            "execType": "Query",
+            "expect":[
+                ["test8"]
+            ]
+          },
+          {
+            "slice": "slice-1",
+            "db": "db_kingshard_date_year",
+            "name": "tbl_shard_2018 check",
+            "sql": "SELECT col1 FROM tbl_shard_2018 WHERE id IN ('6', '7','9','10')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "slice": "slice-1",
+            "db": "db_kingshard_date_year",
+            "name": "tbl_shard_2019 check",
+            "sql": "SELECT col1 FROM tbl_shard_2019 WHERE id=9",
+            "execType": "Query",
+            "expect": [
+                ["test9"]
+            ]
+          },
+          {
+            "slice": "slice-1",
+            "db": "db_kingshard_date_year",
+            "name": "tbl_shard_2019 check",
+            "sql": "SELECT col1 FROM tbl_shard_2019 WHERE id IN ('6', '7','8','10')",
+            "execType": "Query",
+            "expect": []
+          }
+        ],
+        "tearDown": [
+          {
+              "slice": "slice-0",
+              "sql": "DROP DATABASE IF EXISTS db_kingshard_date_year"
+          },
+          {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_kingshard_date_year"
+        }
+        ]
+      }
+    ]
+  }

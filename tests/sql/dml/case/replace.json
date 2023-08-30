@@ -14,63 +14,86 @@
             {
                 "slice": "slice-0",
                 "sql": "USE db_test_replace"
-              }
+              },
+              {
+                "slice": "slice-0",
+                "sql": "CREATE TABLE tbl_test_replace (id INT PRIMARY KEY, name VARCHAR(50), age INT)"
+            },
+            {
+                "slice": "slice-0",
+                "sql": "CREATE TABLE tbl_temp_replace  (id INT, name VARCHAR(50), age INT)"
+            }
          ],
           "gaeaActions": [
               {
-                  "sql": "USE db_test_replace"
+                  "sql": "USE db_test_replace",
+                  "execType": "Default"
               },
               {
-                  "sql": "CREATE TABLE tbl_test_replace (id INT PRIMARY KEY, name VARCHAR(50), age INT)"
+                  "sql": "INSERT INTO tbl_test_replace VALUES (1, 'User1', 35)",
+                  "execType": "Default"
               },
               {
-                  "sql": "CREATE TABLE tbl_temp_replace  (id INT, name VARCHAR(50), age INT)"
+                  "sql": "INSERT INTO  tbl_temp_replace VALUES (1, 'User1', 35)",
+                  "execType": "Default"
               },
               {
-                  "sql": "INSERT INTO tbl_test_replace VALUES (1, 'User1', 35)"
+                  "sql": "REPLACE INTO tbl_test_replace (id, name, age) VALUES (1, 'newUser1', 35)",
+                  "execType": "Default"
               },
               {
-                  "sql": "INSERT INTO  tbl_temp_replace VALUES (1, 'User1', 35)"
+                  "sql": "REPLACE INTO tbl_test_replace SET id = 2, name = 'User2', age = 30",
+                  "execType": "Default"
               },
               {
-                  "sql": "REPLACE INTO tbl_test_replace (id, name, age) VALUES (1, 'newUser1', 35)"
+                  "sql": "REPLACE INTO tbl_test_replace (id, name, age) SELECT id, name, age FROM tbl_temp_replace  WHERE id = 1",
+                  "execType": "Default"
               },
               {
-                  "sql": "REPLACE INTO tbl_test_replace SET id = 2, name = 'User2', age = 30"
-              },
-              {
-                  "sql": "REPLACE INTO tbl_test_replace (id, name, age) SELECT id, name, age FROM tbl_temp_replace  WHERE id = 1"
-              },
-              {
-                  "sql": "REPLACE LOW_PRIORITY INTO tbl_test_replace SET id = 1, name = 'User1', age = 40"
+                  "sql": "REPLACE LOW_PRIORITY INTO tbl_test_replace SET id = 1, name = 'User1', age = 40",
+                  "execType": "Default"
               }
-              
           ],
           "masterCheckSQL": [
+            {
+                "slice": "slice-0",
+                "db": "db_test_replace",
+                "name": "Ensure User1's name is correctly replaced",
+                "sql": "SELECT name FROM tbl_test_replace WHERE id = 1",
+                "execType": "Query",
+                "expect": [
+                  ["User1"]
+                ]
+              },              
+              {
+                "slice": "slice-0",
+                "db": "db_test_replace",
+                "name": "Ensure User2's name remains unchanged",
+                "sql": "SELECT name FROM tbl_test_replace WHERE id = 2",
+                "execType": "Query",
+                "expect": [
+                  ["User2"]
+                ]
+              },              
               {
                   "slice": "slice-0",
-                  "name": "Check replace with VALUES keyword",
-                  "sql": "SELECT name FROM tbl_test_replace WHERE id = 1",
-                  "expect": "newUser1"
-              },
-              {
-                  "slice": "slice-0",
-                  "name": "Check replace with SET keyword",
-                  "sql": "SELECT name FROM tbl_test_replace WHERE id = 2",
-                  "expect": "User2"
-              },
-              {
-                  "slice": "slice-0",
+                  "db": "db_test_replace",
                   "name": "Check replace with SELECT statement",
                   "sql": "SELECT name FROM tbl_test_replace WHERE id = 1",
-                  "expect": "User1"
+                  "execType": "Query",
+                  "expect": [
+                    ["User1"]
+                  ]
               },
               {
-
                   "slice": "slice-0",
+                  "db": "db_test_replace",
                   "name": "Check replace with LOW_PRIORITY keyword",
                   "sql": "SELECT age FROM tbl_test_replace WHERE id = 1",
-                  "expect": "40"
+                  "execType": "Query",
+                  "expect": [
+                    ["40"]
+                  ]
               }
           ],
           "tearDown": [

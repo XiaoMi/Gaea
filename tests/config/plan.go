@@ -11,6 +11,7 @@ import (
 	"reflect"
 
 	"github.com/XiaoMi/Gaea/models"
+	"github.com/XiaoMi/Gaea/tests/util"
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -31,13 +32,17 @@ type (
 	}
 
 	GaeaAction struct {
-		SQL string `json:"sql"`
+		SQL      string      `json:"sql"`
+		ExecType string      `json:"execType"`
+		Expect   interface{} `json:"expect"`
 	}
 
 	DBAction struct {
-		Slice  string `json:"slice"`
-		SQL    string `json:"sql"`
-		Expect string `json:"expect"`
+		Slice    string      `json:"slice"`
+		DB       string      `json:"db"`
+		SQL      string      `json:"sql"`
+		ExecType string      `json:"execType"`
+		Expect   interface{} `json:"expect"`
 	}
 
 	MysqlCluster struct {
@@ -60,21 +65,14 @@ type (
 )
 
 type (
-	MysqlClusterConn struct {
-		SlicesConn map[string]*SliceConn `json:"slices"`
-	}
-
 	SliceConn struct {
 		Master *sql.DB
 		Slaves []*sql.DB
 	}
 )
 
-func InitMysqlClusterConn(slices []*models.Slice) (*MysqlClusterConn, error) {
-	conn := &MysqlClusterConn{
-		SlicesConn: make(map[string]*SliceConn),
-	}
-
+func InitMysqlClusterConn(slices []*models.Slice) (map[string]*SliceConn, error) {
+	conn := make(map[string]*SliceConn)
 	for _, slice := range slices {
 		master, err := initDB(slice.UserName, slice.Password, slice.Master)
 		if err != nil {
@@ -92,7 +90,7 @@ func InitMysqlClusterConn(slices []*models.Slice) (*MysqlClusterConn, error) {
 			}
 			sliceConn.Slaves = append(sliceConn.Slaves, slaveDB)
 		}
-		conn.SlicesConn[slice.Name] = sliceConn
+		conn[slice.Name] = sliceConn
 	}
 	return conn, nil
 }
@@ -123,12 +121,125 @@ func initDB(username, password, host string) (*sql.DB, error) {
 func (e ExecCase) GaeaRun(gaeaDB *sql.DB) error {
 	// 执行在Gaea中的操作
 	for _, action := range e.GaeaActions {
-
-		if _, err := gaeaDB.Exec(action.SQL); err != nil {
-			return fmt.Errorf("failed to execute GaeaAction: %s", err)
+		isSuccess, err := DBExecAndCompare(gaeaDB, action.ExecType, action.SQL, action.Expect)
+		if err != nil || !isSuccess {
+			return fmt.Errorf("[gaeaAction] failed to execute SQL statement %s: %v", action.SQL, err)
 		}
 	}
 	return nil
+}
+
+func DBExecAndCompare(db *sql.DB, expectType string, execSql string, expect interface{}) (bool, error) {
+	switch expectType {
+	case "Query":
+		if !util.IsSlice(expect) {
+			return false, fmt.Errorf("expect is not slice")
+		}
+		if v, ok := expect.([]interface{}); ok {
+			// Convert []interface{} to [][]string
+			var values [][]string
+			for _, row := range v {
+				var rowValues []string
+				if rowItems, ok := row.([]interface{}); ok {
+					for _, item := range rowItems {
+						if strValue, ok := item.(string); ok {
+							rowValues = append(rowValues, strValue)
+						}
+					}
+				}
+				values = append(values, rowValues)
+			}
+			rows, err := db.Query(execSql)
+			if err != nil {
+				if err == sql.ErrNoRows && len(v) == 0 {
+					return true, nil
+				}
+				return false, fmt.Errorf("db Exec Error %v", err)
+			}
+			res, err := util.GetDataFromRows(rows)
+			if err != nil {
+				return false, fmt.Errorf("get data from rows error:%v", err)
+			}
+			// res为空代表没有查到数据
+			if (len(res) == 0 || res == nil) && len(v) == 0 {
+				return true, nil
+			}
+			if !reflect.DeepEqual(values, res) {
+
+				return false, fmt.Errorf("mismatch. Actual: %v, Expect: %v", res, values)
+			}
+		} else {
+			return false, fmt.Errorf("expect data assertion failed")
+		}
+		return true, nil // 所有数据都匹配
+	case "QueryRow":
+		if !util.IsSlice(expect) {
+			return false, fmt.Errorf("expect is not slice")
+		}
+		if v, ok := expect.([]interface{}); ok {
+			// Convert []interface{} to []string
+			values := []string{}
+			for _, item := range v {
+				if strValue, ok := item.(string); ok {
+					values = append(values, strValue)
+				}
+			}
+			row := db.QueryRow(execSql)
+			res, err := util.GetDataFromRow(row, len(v))
+			if err != nil {
+				if err == sql.ErrNoRows && len(v) == 0 {
+					return true, nil
+				}
+				return false, fmt.Errorf("get data from row error:%v", err)
+			}
+			if !reflect.DeepEqual(values, res) {
+				return false, fmt.Errorf("mismatch. Actual: %v, Expect: %v", res, values)
+			}
+		} else {
+			return false, fmt.Errorf("expect data assertion failed")
+		}
+		return true, nil // 所有数据都匹配
+	case "Exec":
+		result, err := db.Exec(execSql)
+		if err != nil {
+			return false, err
+		}
+		// Assuming expect is a map with possible keys "lastInsertId" and "rowsAffected"
+		expectedResults, ok := expect.(map[string]int64)
+		if !ok {
+			return false, errors.New("expect format for Exec type is incorrect")
+		}
+
+		// Check if "lastInsertId" is in expect and compare it with the result
+		if lastInsertId, exists := expectedResults["lastInsertId"]; exists {
+			actualLastInsertId, err := result.LastInsertId()
+			if err != nil {
+				return false, err
+			}
+			if lastInsertId != actualLastInsertId {
+				return false, nil
+			}
+		}
+		// Check if "rowsAffected" is in expect and compare it with the result
+		if rowsAffected, exists := expectedResults["rowsAffected"]; exists {
+			actualRowsAffected, err := result.RowsAffected()
+			if err != nil {
+				return false, err
+			}
+			if rowsAffected != actualRowsAffected {
+				return false, nil
+			}
+		}
+		return true, nil
+	case "Default":
+		_, err := db.Exec(execSql)
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	default:
+		return false, errors.New("unsupported expect type")
+	}
 }
 
 func (e *ExecCase) GetSetUpSQL() []EnvironmentSQL {
@@ -139,40 +250,43 @@ func (e *ExecCase) GetTearDownSQL() []EnvironmentSQL {
 	return e.TearDown
 }
 
-func (e EnvironmentSQL) MasterRun(cluster *MysqlClusterConn) error {
+func (e EnvironmentSQL) MasterRun(cluster map[string]*SliceConn) error {
 	// 执行
 	var masterDB *sql.DB
-	if slice, ok := cluster.SlicesConn[e.Slice]; ok {
+	if slice, ok := cluster[e.Slice]; ok {
 		masterDB = slice.Master
 	} else {
 		return fmt.Errorf("failed to get master database connection")
 	}
-
 	if _, err := masterDB.Exec(e.SQL); err != nil {
-		return fmt.Errorf("failed to execute environment sql : %s", err)
+		return fmt.Errorf("[environment set action] failed to execute sql: %s,error :%s", e.SQL, err)
 	}
 	return nil
 }
 
-func (e ExecCase) MasterRunAndCheck(cluster *MysqlClusterConn) error {
+func (e ExecCase) MasterRunAndCheck(cluster map[string]*SliceConn) error {
 	// 对主库执行的操作进行检查
 	for _, check := range e.MasterCheckSQL {
 		var masterDB *sql.DB
-		if slice, ok := cluster.SlicesConn[check.Slice]; ok {
+		if slice, ok := cluster[check.Slice]; ok {
 			masterDB = slice.Master
 		} else {
 			return fmt.Errorf("failed to get master database connection")
 		}
 		// 这里不能关闭
 		// defer masterDB.Close()
-		row := masterDB.QueryRow(check.SQL)
-		var result string
-		if err := row.Scan(&result); err != nil {
-			if err == sql.ErrNoRows && check.Expect == "" {
-				continue
-			} else {
-				return fmt.Errorf("failed to query master: %s", err)
+		if len(check.DB) != 0 {
+			res, err := masterDB.Exec(fmt.Sprintf("USE %s", check.DB))
+			if err != nil {
+				return fmt.Errorf("[checkAction] failed to use DB statement %s: %v", res, err)
 			}
+		}
+		isSuccess, err := DBExecAndCompare(masterDB, check.ExecType, check.SQL, check.Expect)
+		if err != nil {
+			return fmt.Errorf("[checkAction] failed to execute SQL statement %s: %v", check.SQL, err)
+		}
+		if !isSuccess {
+			return fmt.Errorf("[checkAction] SQL execution %s did not meet the expected result: %v", check.SQL, check.Expect)
 		}
 	}
 	return nil
@@ -217,7 +331,7 @@ func validInputIsPtr(conf interface{}) error {
 type PlanManager struct {
 	PlanPath         string
 	Plan             *Plan
-	MysqlClusterConn *MysqlClusterConn
+	MysqlClusterConn map[string]*SliceConn
 	GeaaDB           *sql.DB
 }
 
@@ -243,7 +357,7 @@ func WithGaeaConn(conn *sql.DB) PlanManagerOption {
 	}
 }
 
-func WithMysqlClusterConn(conn *MysqlClusterConn) PlanManagerOption {
+func WithMysqlClusterConn(conn map[string]*SliceConn) PlanManagerOption {
 	return func(m *PlanManager) {
 		m.MysqlClusterConn = conn
 	}
@@ -259,7 +373,7 @@ func (m *PlanManager) Init() error {
 
 func (m *PlanManager) GetMasterConnByName(sliceName string) (*sql.DB, error) {
 	var master *sql.DB
-	if slice, ok := m.MysqlClusterConn.SlicesConn[sliceName]; ok {
+	if slice, ok := m.MysqlClusterConn[sliceName]; ok {
 		master = slice.Master
 	} else {
 		return nil, fmt.Errorf("failed to get master database connection")
@@ -269,7 +383,7 @@ func (m *PlanManager) GetMasterConnByName(sliceName string) (*sql.DB, error) {
 
 func (m *PlanManager) GetSlaveConnByName(sliceName string) ([]*sql.DB, error) {
 	var master []*sql.DB
-	if slice, ok := m.MysqlClusterConn.SlicesConn[sliceName]; ok {
+	if slice, ok := m.MysqlClusterConn[sliceName]; ok {
 		master = slice.Slaves
 	} else {
 		return []*sql.DB{}, fmt.Errorf("failed to get master database connection")
@@ -311,7 +425,7 @@ func (m *PlanManager) Run() error {
 }
 
 func (m *PlanManager) MysqlClusterConnClose() {
-	for _, slice := range m.MysqlClusterConn.SlicesConn {
+	for _, slice := range m.MysqlClusterConn {
 		if slice.Master != nil {
 			slice.Master.Close()
 		}

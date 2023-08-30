@@ -14,58 +14,92 @@
         {
           "slice": "slice-0",
           "sql": "USE db_test_insert"
+        },
+        {
+          "slice": "slice-0",
+          "sql": "CREATE TABLE tbl_test_insert (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50), age INT, UNIQUE KEY unique_name (name))"
         }
      ],
       "gaeaActions": [
         {
-          "sql": "USE db_test_insert"
+          "sql": "USE db_test_insert",
+          "execType": "Default"
         },
         {
-          "sql": "CREATE TABLE tbl_test_insert (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50), age INT, UNIQUE KEY unique_name (name))"
+          "sql": "INSERT INTO tbl_test_insert (name, age) VALUES ('User1', 30)",
+          "execType": "Default"
         },
         {
-          "sql": "INSERT INTO tbl_test_insert (name, age) VALUES ('User1', 30)"
+          "sql": "INSERT LOW_PRIORITY INTO tbl_test_insert (name, age) VALUES ('User2', 25)",
+          "execType": "Default"
         },
         {
-          "sql": "INSERT LOW_PRIORITY INTO tbl_test_insert (name, age) VALUES ('User2', 25)"
+          "sql": "INSERT IGNORE INTO tbl_test_insert (name, age) VALUES ('User1', 31)",
+          "execType": "Default"
         },
         {
-          "sql": "INSERT IGNORE INTO tbl_test_insert (name, age) VALUES ('User1', 31)"
+          "sql": "INSERT INTO tbl_test_insert SET name = 'User3', age = 20",
+          "execType": "Default"
         },
         {
-          "sql": "INSERT INTO tbl_test_insert SET name = 'User3', age = 20"
+          "sql": "INSERT INTO tbl_test_insert (name, age) VALUES ('User1', 32) ON DUPLICATE KEY UPDATE age = 32",
+          "execType": "Default"
         },
         {
-          "sql": "INSERT INTO tbl_test_insert (name, age) VALUES ('User1', 32) ON DUPLICATE KEY UPDATE age = 32"
-        },
-        {
-          "sql": "INSERT INTO tbl_test_insert (name, age) SELECT 'User4', age FROM tbl_test_insert WHERE name = 'User3'"
+          "sql": "INSERT INTO tbl_test_insert (name, age) SELECT 'User4', age FROM tbl_test_insert WHERE name = 'User3'",
+          "execType": "Default"
         }
       ],
       "masterCheckSQL": [
         {
           "slice": "slice-0",
+          "db": "db_test_insert",
           "name": "Check age for User1 after operations",
           "sql": "SELECT age FROM tbl_test_insert WHERE name = 'User1'",
-          "expect": "32"
+          "execType": "Query",
+          "expect": [
+            ["32"]
+          ]
         },
         {
           "slice": "slice-0",
+          "db": "db_test_insert",
+          "name": "Ensure User1's age is not 31",
+          "sql": "SELECT COUNT(*) FROM tbl_test_insert WHERE name = 'User1' AND age = 31",
+          "execType": "Query",
+          "expect": [
+            ["0"]
+          ]
+        },
+        {
+          "slice": "slice-0",
+          "db": "db_test_insert",
           "name": "Check age for User2 after operations",
           "sql": "SELECT age FROM tbl_test_insert WHERE name = 'User2'",
-          "expect": "25"
+          "execType": "Query",
+          "expect": [
+            ["25"]
+          ]
         },
         {
           "slice": "slice-0",
+          "db": "db_test_insert",
           "name": "Check age for User3 after operations",
           "sql": "SELECT age FROM tbl_test_insert WHERE name = 'User3'",
-          "expect": "20"
+          "execType": "Query",
+          "expect": [
+            ["20"]
+          ]
         },
         {
           "slice": "slice-0",
+          "db": "db_test_insert",
           "name": "Check age for User4 after operations",
           "sql": "SELECT age FROM tbl_test_insert WHERE name = 'User4'",
-          "expect": "20"
+          "execType": "Query",
+          "expect": [
+            ["20"]
+          ]
         }
       ],
       "tearDown": [

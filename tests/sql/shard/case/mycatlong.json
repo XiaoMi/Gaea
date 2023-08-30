@@ -1,0 +1,255 @@
+{
+    "execCases": [
+      {
+        "description": "Test Mycat LONG",
+        "setUp": [
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_long_0"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_long_1"
+         },
+         {
+          "slice": "slice-0",
+          "sql": "CREATE DATABASE db_mycat_long_0"
+        },
+        {
+          "slice": "slice-0",
+          "sql": "CREATE DATABASE db_mycat_long_1"
+        },
+         {
+            "slice": "slice-0",
+            "sql": "USE db_mycat_long_0"
+         },
+         {
+            "slice": "slice-0",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+         },
+         {
+            "slice": "slice-0",
+            "sql": "USE db_mycat_long_1"
+         },
+         {
+            "slice": "slice-0",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+         },
+         {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_long_2"
+          },
+          {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_long_3"
+         },
+         {
+          "slice": "slice-1",
+          "sql": "CREATE DATABASE db_mycat_long_2"
+        },
+        {
+          "slice": "slice-1",
+          "sql": "CREATE DATABASE db_mycat_long_3"
+        },
+         {
+            "slice": "slice-1",
+            "sql": "USE db_mycat_long_2"
+         },
+         {
+            "slice": "slice-1",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+         },
+         {
+            "slice": "slice-1",
+            "sql": "USE db_mycat_long_3"
+         },
+         {
+            "slice": "slice-1",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+         }
+       ],
+        "gaeaActions": [
+          {
+            "sql":"USE db_mycat_long",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat (id ,col1) VALUES (1,'test1') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat (id ,col1) VALUES (255,'test255') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat (id ,col1) VALUES (256,'test256') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat (id ,col1) VALUES (511,'test511') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat  (id ,col1) VALUES (512,'test512') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat  (id ,col1) VALUES (767,'test767') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat  (id ,col1) VALUES (768,'test768') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat  (id ,col1) VALUES (1023,'test1023') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat  (id ,col1) VALUES (1024,'test1024') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "UPDATE tbl_mycat SET col1='updated_test1' WHERE id=1",
+            "execType": "Default"
+          },
+          {
+            "sql": "DELETE FROM tbl_mycat  WHERE id=1024",
+            "execType": "Default"
+          }
+        ],
+        "masterCheckSQL": [
+          {
+            "name": "slice-0.db_mycat_long_0 check",
+            "slice": "slice-0",
+            "db": "db_mycat_long_0",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id=1",
+            "execType": "Query",
+            "expect": [
+              ["updated_test1"]
+            ]
+          },
+          {
+            "name": "slice-0.db_mycat_long_0 check",
+            "slice": "slice-0",
+            "db": "db_mycat_long_0",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id=255",
+            "execType": "Query",
+            "expect": [
+              ["test255"]
+            ]
+          },
+          {
+            "name": "slice-0.db_mycat_long_0 check",
+            "slice": "slice-0",
+            "db": "db_mycat_long_0",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id IN ('1024', '256','511','512','767','768','1023')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "name": "slice-0.db_mycat_long_1 check",
+            "slice": "slice-0",
+            "db": "db_mycat_long_1",
+            "sql":  "SELECT col1 FROM tbl_mycat WHERE id=256",
+            "execType": "Query",
+            "expect": [
+                ["test256"]
+            ]
+          },
+          {
+            "name": "slice-0.db_mycat_long_1 check",
+            "slice": "slice-0",
+            "db": "db_mycat_long_1",
+            "sql":  "SELECT col1 FROM tbl_mycat WHERE id=511",
+            "execType": "Query",
+            "expect": [
+                ["test511"]
+            ]
+          },
+          {
+            "name": "slice-0.db_mycat_long_1 check",
+            "slice": "slice-0",
+            "db": "db_mycat_long_1",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id IN ('1024', '1','255','512','767','768','1023')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "name": "slice-1.db_mycat_long_2 check",
+            "slice": "slice-1",
+            "db": "db_mycat_long_2",
+            "sql":  "SELECT col1 FROM tbl_mycat WHERE id=512",
+            "execType": "Query",
+            "expect": [
+                ["test512"]
+            ]
+          },
+          {
+            "name": "slice-1.db_mycat_long_2 check",
+            "slice": "slice-1",
+            "db": "db_mycat_long_2",
+            "sql":  "SELECT col1 FROM tbl_mycat WHERE id=767",
+            "execType": "Query",
+            "expect": [
+                ["test767"]
+            ]
+          },
+          {
+            "name": "slice-1.db_mycat_long_2 check",
+            "slice": "slice-1",
+            "db": "db_mycat_long_2",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id IN ('1024', '1','255','511','768','1023')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "name": "slice-1.db_mycat_long_3 check",
+            "slice": "slice-1",
+            "db": "db_mycat_long_3",
+            "sql":  "SELECT col1 FROM tbl_mycat WHERE id=768",
+            "execType": "Query",
+            "expect": [
+                ["test768"]
+            ]
+          },
+          {
+            "name": "slice-1.db_mycat_long_3 check",
+            "slice": "slice-1",
+            "db": "db_mycat_long_3",
+            "sql":  "SELECT col1 FROM tbl_mycat WHERE id=1023",
+            "execType": "Query",
+            "expect": [
+                ["test1023"]
+            ]
+          },
+          {
+            "name": "slice-1.db_mycat_long_3 check",
+            "slice": "slice-1",
+            "db": "db_mycat_long_3",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id IN ('1024', '1','255','256','511','512','767')",
+            "execType": "Query",
+            "expect": []
+          }
+        ],
+        "tearDown": [
+          {
+              "slice": "slice-0",
+              "sql": "DROP DATABASE IF EXISTS db_mycat_long_0"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_long_1"
+        },
+          {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_long_2"
+        },
+        {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_long_3"
+        }
+        ]
+      }
+    ]
+  }

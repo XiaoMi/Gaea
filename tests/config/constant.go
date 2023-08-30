@@ -1,204 +1,104 @@
 package config
 
 import (
-	"fmt"
-
 	"github.com/XiaoMi/Gaea/models"
 )
 
-func GetDefaultKingshardHashRules(db string, table string) *models.Shard {
-	return &models.Shard{
-		DB:    db,
-		Table: table,
-		Type:  "hash",
-		Key:   "id",
-		Locations: []int{
-			2,
-			2,
-		},
-		Slices: []string{
-			"slice-0",
-			"slice-1",
-		},
+type ShardOption func(*models.Shard)
+
+func NewShard(opts ...ShardOption) *models.Shard {
+	shard := &models.Shard{}
+	for _, opt := range opts {
+		opt(shard)
+	}
+	return shard
+}
+
+func WithDB(db string) ShardOption {
+	return func(s *models.Shard) {
+		s.DB = db
 	}
 }
 
-func GetDefaultKingshardModRules(db string, table string) *models.Shard {
-	return &models.Shard{
-		DB:    db,
-		Table: table,
-		Type:  "mod",
-		Key:   "id",
-		Locations: []int{
-			2,
-			2,
-		},
-		Slices: []string{
-			"slice-0",
-			"slice-1",
-		},
+func WithTable(table string) ShardOption {
+	return func(s *models.Shard) {
+		s.Table = table
 	}
 }
 
-func GetDefaultKingshardRangeRules(db string, table string) *models.Shard {
-	return &models.Shard{
-		DB:    db,
-		Table: table,
-		Type:  "range",
-		Key:   "id",
-		Locations: []int{
-			2,
-			2,
-		},
-		Slices: []string{
-			"slice-0",
-			"slice-1",
-		},
-		TableRowLimit: 3,
+func WithParentTable(table string) ShardOption {
+	return func(s *models.Shard) {
+		s.ParentTable = table
 	}
 }
 
-func GetDefaultKingshardDateYearRules(db string, table string, key string, dateRange []string) *models.Shard {
-	return &models.Shard{
-
-		DB:    db,
-		Table: table,
-		Type:  "date_year",
-		Key:   key,
-		Locations: []int{
-			2,
-			2,
-		},
-		Slices: []string{
-			"slice-0",
-			"slice-1",
-		},
-		DateRange: dateRange,
+func WithType(t string) ShardOption {
+	return func(s *models.Shard) {
+		s.Type = t
 	}
 }
 
-func GetDefaultKingshardDateMonthRules(db string, table string, key string, dataRange []string) *models.Shard {
-	return &models.Shard{
-		DB:    db,
-		Table: table,
-		Type:  "date_month",
-		Key:   key,
-		Locations: []int{
-			2,
-			2,
-		},
-		Slices: []string{
-			"slice-0",
-			"slice-1",
-		},
-		DateRange: dataRange,
+func WithKey(key string) ShardOption {
+	return func(s *models.Shard) {
+		s.Key = key
 	}
 }
 
-func GetDefaultKingshardDateDayRules(db string, table string, key string, dataRange []string) *models.Shard {
-	return &models.Shard{
-
-		DB:    db,
-		Table: table,
-		Type:  "date_day",
-		Key:   key,
-		Locations: []int{
-			2,
-			2,
-		},
-		Slices: []string{
-			"slice-0",
-			"slice-1",
-		},
-		DateRange:     dataRange,
-		TableRowLimit: 3,
+func WithLocations(locations []int) ShardOption {
+	return func(s *models.Shard) {
+		s.Locations = locations
 	}
 }
 
-func GetDefaultMycatshardModRules(db string, table string, key string) *models.Shard {
-	return &models.Shard{
-		DB:    db,
-		Table: table,
-		Type:  "mycat_mod",
-		Key:   key,
-		Locations: []int{
-			2,
-			2,
-		},
-		Slices: []string{
-			"slice-0",
-			"slice-1",
-		},
-		Databases: []string{
-			fmt.Sprintf("%s_[0-3]", db),
-		},
+func WithTableRowLimit(tableRowLimit int) ShardOption {
+	return func(s *models.Shard) {
+		s.TableRowLimit = tableRowLimit
 	}
 }
 
-func GetDefaultMycatshardLongRules(db string, table string, key string) *models.Shard {
-	return &models.Shard{
-		DB:    db,
-		Table: table,
-		Type:  "mycat_long",
-		Key:   key,
-		Locations: []int{
-			2,
-			2,
-		},
-		Slices: []string{
-			"slice-0",
-			"slice-1",
-		},
-		Databases: []string{
-			fmt.Sprintf("%s_[0-3]", db),
-		},
-		PartitionCount:  "4",
-		PartitionLength: "256",
+func WithDatabases(datavases []string) ShardOption {
+	return func(s *models.Shard) {
+		s.Databases = datavases
 	}
 }
 
-func GetDefaultMycatshardMurmurRules(db string, table string, key string) *models.Shard {
-	return &models.Shard{
-
-		DB:    db,
-		Table: table,
-		Type:  "mycat_murmur",
-		Key:   key,
-		Locations: []int{
-			2,
-			2,
-		},
-		Slices: []string{
-			"slice-0",
-			"slice-1",
-		},
-		Databases: []string{
-			fmt.Sprintf("%s_[0-3]", db),
-		},
-		Seed:               "0",
-		VirtualBucketTimes: "160",
+func WithPartitionLength(l string) ShardOption {
+	return func(s *models.Shard) {
+		s.PartitionLength = l
 	}
 }
 
-func GetDefaultMycatshardStringRules(db string, table string, key string) *models.Shard {
-	return &models.Shard{
-		DB:    db,
-		Table: table,
-		Type:  "mycat_string",
-		Key:   key,
-		Locations: []int{
-			2,
-			2,
-		},
-		Slices: []string{
-			"slice-0",
-			"slice-1",
-		},
-		Databases: []string{
-			fmt.Sprintf("%s_[0-3]", db),
-		},
-		PartitionCount:  "4",
-		PartitionLength: "256",
-		HashSlice:       ":",
+func WithPartitionCount(c string) ShardOption {
+	return func(s *models.Shard) {
+		s.PartitionCount = c
+	}
+}
+
+func WithHashSlice(slice string) ShardOption {
+	return func(s *models.Shard) {
+		s.HashSlice = slice
+	}
+}
+
+func WithVirtualBucketTimes(v string) ShardOption {
+	return func(s *models.Shard) {
+		s.VirtualBucketTimes = v
+	}
+}
+
+func WithSeed(seed string) ShardOption {
+	return func(s *models.Shard) {
+		s.Seed = seed
+	}
+}
+func WithShardSlice(slice []string) ShardOption {
+	return func(s *models.Shard) {
+		s.Slices = slice
+	}
+}
+
+func WithDateRange(daterange []string) ShardOption {
+	return func(s *models.Shard) {
+		s.DateRange = daterange
 	}
 }
