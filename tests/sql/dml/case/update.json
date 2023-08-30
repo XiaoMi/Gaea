@@ -18,37 +18,71 @@
              ],
             "gaeaActions": [
                 {
-                    "sql": "USE db_test_update"
+                    "sql": "USE db_test_update",
+                    "execType": "Default"
                 },
                 {
-                    "sql": "CREATE TABLE tbl_test_update (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(50), age INT, score FLOAT)"
+                    "sql": "CREATE TABLE tbl_test_update (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(50), age INT, score FLOAT)",
+                    "execType": "Default"
                 },
                 {
-                    "sql": "INSERT INTO tbl_test_update (name, age, score) VALUES ('User1', 30, 80.0), ('User2', 31, 70.0)"
+                    "sql": "INSERT INTO tbl_test_update (name, age, score) VALUES ('User1', 30, 80.0), ('User2', 31, 70.0)",
+                    "execType": "Default"
                 },
                 {
-                    "sql": "UPDATE LOW_PRIORITY IGNORE tbl_test_update SET age = 31 WHERE id = 1"
+                    "sql": "UPDATE LOW_PRIORITY IGNORE tbl_test_update SET age = 31 WHERE id = 1",
+                    "execType": "Default"
                 },
                 {
-                    "sql": "UPDATE tbl_test_update SET name = 'newUser1' WHERE id = 1"
+                    "sql": "UPDATE tbl_test_update SET name = 'newUser1' WHERE id = 1",
+                    "execType": "Default"
                 },
                 {
-                    "sql": "UPDATE tbl_test_update SET score = 80.0 WHERE name = 'User2' ORDER BY score DESC LIMIT 1"
+                    "sql": "UPDATE tbl_test_update SET score = 80.0 WHERE name = 'User2' ORDER BY score DESC LIMIT 1",
+                    "execType": "Default"
                 }
             ],
             "masterCheckSQL": [
                 {
                     "slice": "slice-0",
+                    "db": "db_test_update",
                     "name": "Check result for LOW_PRIORITY IGNORE",
                     "sql": "SELECT age FROM tbl_test_update WHERE name = 'newUser1'",
-                    "expect": "31"
-                },                
+                    "execType": "Query",
+                    "expect": [
+                        ["31"]
+                    ]
+                },     
                 {
                     "slice": "slice-0",
+                    "db": "db_test_update",
+                    "name": "Ensure User2's age remains unchanged",
+                    "sql": "SELECT age FROM tbl_test_update WHERE id = 2",
+                    "execType": "Query",
+                    "expect": [
+                      ["31"]
+                    ]
+                },                            
+                {
+                    "slice": "slice-0",
+                    "db": "db_test_update",
                     "name": "Check result for ORDER BY LIMIT",
                     "sql": "SELECT score FROM tbl_test_update WHERE name = 'User2'",
-                    "expect": "80"
-                }
+                    "execType": "Query",
+                    "expect": [
+                        ["80"]
+                    ]
+                },
+                {
+                    "slice": "slice-0",
+                    "db": "db_test_update",
+                    "name": "Ensure User1's name is correctly updated",
+                    "sql": "SELECT name FROM tbl_test_update WHERE id = 1",
+                    "execType": "Query",
+                    "expect": [
+                      ["newUser1"]
+                    ]
+                  }
             ],
             "tearDown": [
                 { 

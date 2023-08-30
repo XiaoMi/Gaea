@@ -1,0 +1,193 @@
+{
+    "execCases": [
+      {
+        "description": "Test Mycat MURMUR",
+        "setUp": [
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_murmur_0"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_murmur_1"
+         },
+         {
+          "slice": "slice-0",
+          "sql": "CREATE DATABASE db_mycat_murmur_0"
+        },
+        {
+          "slice": "slice-0",
+          "sql": "CREATE DATABASE db_mycat_murmur_1"
+        },
+         {
+            "slice": "slice-0",
+            "sql": "USE db_mycat_murmur_0"
+         },
+         {
+            "slice": "slice-0",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+         },
+         {
+            "slice": "slice-0",
+            "sql": "USE db_mycat_murmur_1"
+         },
+         {
+            "slice": "slice-0",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+         },
+         {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_murmur_2"
+          },
+          {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_murmur_3"
+         },
+         {
+          "slice": "slice-1",
+          "sql": "CREATE DATABASE db_mycat_murmur_2"
+        },
+        {
+          "slice": "slice-1",
+          "sql": "CREATE DATABASE db_mycat_murmur_3"
+        },
+         {
+            "slice": "slice-1",
+            "sql": "USE db_mycat_murmur_2"
+         },
+         {
+            "slice": "slice-1",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+         },
+         {
+            "slice": "slice-1",
+            "sql": "USE db_mycat_murmur_3"
+         },
+         {
+            "slice": "slice-1",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+         }
+       ],
+        "gaeaActions": [
+          {
+            "sql":"USE db_mycat_murmur",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat (id ,col1) VALUES (1,'test1') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat (id ,col1) VALUES (5,'test5') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat  (id ,col1) VALUES (4,'test4') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat  (id ,col1) VALUES (12,'test12') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "UPDATE tbl_mycat SET col1='updated_test1' WHERE id=1",
+            "execType": "Default"
+          }
+         
+        ],
+        "masterCheckSQL": [
+          {
+            "name": "slice-0.db_mycat_murmur_0 check",
+            "slice": "slice-0",
+            "db": "db_mycat_murmur_0",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id=5",
+            "execType": "Query",
+            "expect": [
+              ["test5"]
+            ]
+          },
+          {
+            "name": "slice-10.db_mycat_mod_0 check",
+            "slice": "slice-0",
+            "db": "db_mycat_murmur_0",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id IN ('1', '4','12')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "name": "slice-0.db_mycat_mod_1 check",
+            "slice": "slice-0",
+            "db": "db_mycat_murmur_1",
+            "sql":  "SELECT col1 FROM tbl_mycat WHERE id=1",
+            "execType": "Query",
+            "expect": [
+                ["updated_test1"]
+            ]
+          },
+          {
+            "name": "slice-0.db_mycat_mod_1 check",
+            "slice": "slice-0",
+            "db": "db_mycat_murmur_1",
+            "sql":  "SELECT col1 FROM tbl_mycat WHERE id IN ('5', '4','12')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "name": "slice-1.db_mycat_mod_2 check",
+            "slice": "slice-1",
+            "db": "db_mycat_murmur_2",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id =4 ",
+            "execType": "Query",
+            "expect": [
+              ["test4"]
+            ]
+
+          },
+          {
+            "name": "slice-1.db_mycat_mod_2 check",
+            "slice": "slice-1",
+            "db": "db_mycat_murmur_2",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id IN ('1', '5','12')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "name": "slice-1.db_mycat_mod_3 check",
+            "slice": "slice-1",
+            "db": "db_mycat_murmur_3",
+            "sql":  "SELECT col1 FROM tbl_mycat WHERE id=12",
+            "execType": "Query",
+            "expect": [
+              ["test12"]
+            ]
+          },
+          {
+            "name": "slice-1.db_mycat_mod_3 check",
+            "slice": "slice-1",
+            "db": "db_mycat_murmur_3",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id IN ('1', '5','4')",
+            "execType": "Query",
+            "expect": []
+          }
+        ],
+        "tearDown": [
+          {
+              "slice": "slice-0",
+              "sql": "DROP DATABASE IF EXISTS db_mycat_murmur_0"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_murmur_1"
+        },
+          {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_murmur_2"
+        },
+        {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_murmur_3"
+        }
+        ]
+      }
+    ]
+  }

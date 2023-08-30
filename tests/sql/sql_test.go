@@ -5,6 +5,7 @@ import (
 	"time"
 
 	_ "github.com/XiaoMi/Gaea/tests/sql/dml"
+	_ "github.com/XiaoMi/Gaea/tests/sql/shard"
 	"github.com/XiaoMi/Gaea/tests/util"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"

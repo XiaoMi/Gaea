@@ -14,29 +14,36 @@
           {
             "slice": "slice-0",
             "sql": "USE db_test"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "CREATE TABLE tbl_users (col1 INT AUTO_INCREMENT, col2 VARCHAR(20), PRIMARY KEY (col1))"
           }
        ],
         "gaeaActions": [
           {
-            "sql":"USE db_test"
+            "sql":"USE db_test",
+            "execType": "Default"
           },
           {
-            "sql": "CREATE TABLE tbl_users (col1 INT AUTO_INCREMENT, col2 VARCHAR(20), PRIMARY KEY (col1))"
+            "sql": "INSERT INTO tbl_users (col2) VALUES ('test')",
+            "execType": "Default"
           },
           {
-            "sql": "INSERT INTO tbl_users (col2) VALUES ('test')"
-          },
-          {
-            "sql": "UPDATE tbl_users SET col2='updated' WHERE col1=1"
+            "sql": "UPDATE tbl_users SET col2='updated' WHERE col1=1",
+            "execType": "Default"
           }
-         
         ],
         "masterCheckSQL": [
           {
             "slice": "slice-0",
+            "db": "db_test",
             "name": "Check master after insert and update",
             "sql": "SELECT col2 FROM tbl_users  WHERE col1=1",
-            "expect": "updated"
+            "execType": "Query",
+            "expect": [
+              ["updated"]
+            ]
           }
         ],
         "tearDown": [

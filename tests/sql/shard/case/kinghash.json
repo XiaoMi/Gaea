@@ -1,0 +1,175 @@
+{
+    "execCases": [
+      {
+        "description": "Test King Shard Hash INSERT ",
+        "setUp": [
+          {
+             "slice": "slice-0",
+              "sql": "DROP DATABASE IF EXISTS db_kingshard_hash"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "CREATE DATABASE db_kingshard_hash"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "USE db_kingshard_hash"
+          },
+          {
+            "slice": "slice-1",
+             "sql": "DROP DATABASE IF EXISTS db_kingshard_hash"
+         },
+         {
+           "slice": "slice-1",
+           "sql": "CREATE DATABASE db_kingshard_hash"
+         },
+         {
+           "slice": "slice-1",
+           "sql": "USE db_kingshard_hash"
+         },
+          {
+            "slice": "slice-0",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_shard_0000 ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+          },
+          {
+            "slice": "slice-0",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_shard_0001 ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+          },
+          {
+            "slice": "slice-1",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_shard_0002 ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+          },
+          {
+            "slice": "slice-1",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_shard_0003 ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+          }
+       ],
+        "gaeaActions": [
+          {
+            "sql":"USE db_kingshard_hash",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_shard (id ,col1) VALUES (1,'test1') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_shard (id ,col1) VALUES (2,'test2') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_shard (id ,col1) VALUES (3,'test3') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_shard (id ,col1) VALUES (4,'test4') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_shard (id ,col1) VALUES (5,'test5') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "UPDATE tbl_shard SET col1='updated_test1' WHERE id=1",
+            "execType": "Default"
+          },
+          {
+            "sql": "DELETE FROM tbl_shard  WHERE id=5",
+            "execType": "Default"
+          }
+        ],
+        "masterCheckSQL": [
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_hash",
+            "name": "Check master after insert and update",
+            "sql": "SELECT col1 FROM tbl_shard_0000 WHERE id=4",
+            "execType": "Query",
+            "expect": [
+              ["test4"]
+            ]
+          },
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_hash",
+            "name": "Check master after insert and update",
+            "sql": "SELECT col1 FROM tbl_shard_0000 WHERE id IN ('1', '2', '3','5')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_hash",
+            "name": "Check master after insert",
+            "sql":  "SELECT col1 FROM tbl_shard_0001 WHERE id=1",
+            "execType": "Query",
+            "expect": [
+              ["updated_test1"]
+            ]
+          },
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_hash",
+            "name": "Check master after insert",
+            "sql": "SELECT col1 FROM tbl_shard_0001 WHERE id IN ('2', '3','4','5')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_hash",
+            "name": "Check master after insert",
+            "sql": "SELECT col1 FROM tbl_shard_0001 WHERE id =5 ",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "slice": "slice-1",
+            "db": "db_kingshard_hash",
+            "name": "Check master after insert",
+            "sql":  "SELECT col1 FROM  tbl_shard_0002 WHERE id=2",
+            "execType": "Query",
+            "expect": [
+              ["test2"]
+            ]
+          },
+          {
+            "slice": "slice-1",
+            "db": "db_kingshard_hash",
+            "name": "Check master after insert ",
+            "sql": "SELECT col1 FROM tbl_shard_0002 WHERE id IN ('1', '3','4','5')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "slice": "slice-1",
+            "db": "db_kingshard_hash",
+            "name": "Check master after insert",
+            "sql": "SELECT col1 FROM  tbl_shard_0003 WHERE id=3",
+            "execType": "Query",
+            "expect": [
+              ["test3"]
+            ]
+          },
+          {
+            "slice": "slice-1",
+            "db": "db_kingshard_hash",
+            "name": "Check master after insert",
+            "sql": "SELECT col1 FROM tbl_shard_0003 WHERE id IN ('1', '2','4','5')",
+            "execType": "Query",
+            "expect": []
+          }
+        ],
+        "tearDown": [
+          {
+              "slice": "slice-0",
+              "sql": "DROP DATABASE IF EXISTS db_kingshard_hash"
+          },
+          {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_kingshard_hash"
+        }
+        ]
+      }
+    ]
+  }
