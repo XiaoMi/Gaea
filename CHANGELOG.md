@@ -1,5 +1,38 @@
 # Gaea Changelog
 
+## Gaea 2.2 Release Notes
+
+### 新功能
+
+- 【SQL 支持】分片情况下支持跨分片 batch insert
+- 【SQL 支持】支持 Multi Statement 多语句
+- 【SQL 支持】 支持 char 函数
+- 【SQL 支持】支持分片情况下 group_concat 函数
+- 【SQL 支持】支持分片情况下`!mycat:sql` hint 将 SQL 打到指定分片
+- 【SQL 支持】 分片情况下支持插入时忽略全局自增 ID 列或设置 null 情况下自动生成全局自增 ID
+- 【SQL 支持】非分片情况下 Explain 返回 MySQL 的 Explain 信息
+- 【功能】支持优先访问本地从库
+- 【配置】支持日志配置热加载
+- 【配置】支持分片环境下限制全局自增 ID 上限
+- 【监控】新增 P99/P95 响应时间 Metric 信息
+  
+### 优化提升
+
+- 【SQL 行为】分片情况下全局表随机查询分片
+- 【SQL 行为】优化分片情况下默认返回一致的结果集顺序
+- 【测试】优化 e2e 测试使用独立的 Docker 环境，避免环境导致 CI 失败
+- 【测试】e2e 测试增加分片环境下的基础 SQL 测试
+- JDBC 高版本支持：支持 JDBC 8.0.31 以上版本
+- 优化获取后端 MySQL 连接超时时间，减少从库宕机时业务响应时间 Gaea集群下MySQL从库宕机流量切换测试
+
+### Bug 修复
+
+- 修复探活引起的负载均衡问题
+- 修复分片情况下 sum 函数聚合 decimal 字段结果不准确问题
+- 修复 namespace 关闭时探活未关闭的问题
+- 修复非分片情况下返回 info 信息
+- 修复全局表执行 order by/ group by 返回多一列的问题
+
 ## Gaea 2.1 Release Notes
 
 ### 新功能
