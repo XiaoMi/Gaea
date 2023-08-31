@@ -5,34 +5,34 @@ import (
 	"runtime"
 )
 
-var basepath string
+var basePath string
 
 func init() {
 	_, currentFile, _, _ := runtime.Caller(0)
-	basepath = filepath.Dir(currentFile)
+	basePath = filepath.Dir(currentFile)
 }
 
-var defaulTrelLogDirectoryPath = "../cmd/logs"
-var defaulTrelLogFilePath = "../cmd/logs/gaea_sql.log"
+var defaultLogDirectoryPath = "../cmd/logs"
+var defaultLogFilePath = "../cmd/logs/gaea_sql.log"
 
-var defaulSqlCaseDirectory = "../sql/"
+var defaultE2ECaseDirectory = "../e2e/"
 
 // Path gets the absolute path.
 func Path(rel string) string {
 	if filepath.IsAbs(rel) {
 		return rel
 	}
-	return filepath.Join(basepath, rel)
+	return filepath.Join(basePath, rel)
 }
 
 func GetTestLogDirectoryAbsPath() string {
-	return Path(defaulTrelLogDirectoryPath)
+	return Path(defaultLogDirectoryPath)
 }
 
 func GetTestLogFileAbsPath() string {
-	return Path(defaulTrelLogFilePath)
+	return Path(defaultLogFilePath)
 }
 
 func GetCasesFileAbsPath(filename string) string {
-	return Path(defaulSqlCaseDirectory + filename)
+	return Path(defaultE2ECaseDirectory + filename)
 }

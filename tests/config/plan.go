@@ -438,6 +438,20 @@ func (m *PlanManager) MysqlClusterConnClose() {
 	}
 }
 
+func MysqlClusterConnClose(mysqlClusterConn map[string]*SliceConn) {
+	for _, slice := range mysqlClusterConn {
+		if slice.Master != nil {
+			slice.Master.Close()
+		}
+		// 关闭 Slaves 连接
+		for _, slave := range slice.Slaves {
+			if slave != nil {
+				slave.Close()
+			}
+		}
+	}
+}
+
 func (i *PlanManager) LoadPlan() error {
 	var plan *Plan
 	err := LoadJsonConfig(i.PlanPath, &plan)
