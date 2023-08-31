@@ -14,22 +14,20 @@
 package server
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/golang/mock/gomock"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/XiaoMi/Gaea/backend"
-	"github.com/XiaoMi/Gaea/backend/mocks"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser"
 	"github.com/XiaoMi/Gaea/parser/ast"
 	"github.com/XiaoMi/Gaea/util"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/ini.v1"
 )
@@ -130,12 +128,10 @@ func TestExecute(t *testing.T) {
 		assert.Equal(t, reqCtx.Get(util.FromSlave).(int), ca.expected)
 		reqCtx.Set(util.FromSlave, 0)
 	}
-
-	mockCtrl := gomock.NewController(t)
-	defer mockCtrl.Finish()
-
-	slice0MasterPool := new(mocks.ConnectionPool)
-	slice1MasterPool := new(mocks.ConnectionPool)
+	mockCtl := gomock.NewController(t)
+	defer mockCtl.Finish()
+	slice0MasterPool := backend.NewMockConnectionPool(mockCtl)
+	slice1MasterPool := backend.NewMockConnectionPool(mockCtl)
 
 	slice0Status := sync.Map{}
 	slice0Status.Store(0, backend.UP)
@@ -151,27 +147,24 @@ func TestExecute(t *testing.T) {
 	expectResult1 := &mysql.Result{}
 	expectResult2 := &mysql.Result{}
 	//slice-0
-	ctx := context.Background()
-	slice0MasterConn := new(mocks.PooledConnect)
-	slice0MasterConn.On("GetConnectionID").Return(int64(1))
-	slice0MasterPool.On("Get", ctx).Return(slice0MasterConn, nil).Once()
-	slice0MasterConn.On("UseDB", "db_mycat_0").Return(nil)
-	slice0MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
-	slice0MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
-	slice0MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice0MasterConn.On("Execute", "SELECT * FROM `tbl_mycat` WHERE `k`=0", defaultMaxSqlResultSize).Return(expectResult1, nil)
-	slice0MasterConn.On("Recycle").Return(nil)
+	slice0MasterConn := backend.NewMockPooledConnect(mockCtl)
+	slice0MasterConn.EXPECT().GetConnectionID().Return(int64(1)).AnyTimes()
+	slice0MasterConn.EXPECT().UseDB("db_mycat_0").Return(nil)
+	slice0MasterConn.EXPECT().SetCharset("utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
+	slice0MasterConn.EXPECT().SetSessionVariables(mysql.NewSessionVariables()).Return(false, nil)
+	slice0MasterConn.EXPECT().GetAddr().Return("127.0.0.1:3306")
+	slice0MasterConn.EXPECT().Execute("SELECT * FROM `tbl_mycat` WHERE `k`=0", defaultMaxSqlResultSize).Return(expectResult1, nil)
+	slice0MasterConn.EXPECT().Recycle().Return(nil)
 
 	//slice-1
-	slice1MasterConn := new(mocks.PooledConnect)
-	slice1MasterConn.On("GetConnectionID").Return(int64(2))
-	slice1MasterPool.On("Get", ctx).Return(slice1MasterConn, nil).Once()
-	slice1MasterConn.On("UseDB", "db_mycat_2").Return(nil)
-	slice1MasterConn.On("SetCharset", "utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
-	slice1MasterConn.On("SetSessionVariables", mysql.NewSessionVariables()).Return(false, nil)
-	slice1MasterConn.On("GetAddr").Return("127.0.0.1:3306")
-	slice1MasterConn.On("Execute", "SELECT * FROM `tbl_mycat` WHERE `k`=0", defaultMaxSqlResultSize).Return(expectResult2, nil)
-	slice1MasterConn.On("Recycle").Return(nil)
+	slice0MasterConn = backend.NewMockPooledConnect(mockCtl)
+	slice0MasterConn.EXPECT().GetConnectionID().Return(int64(2)).AnyTimes()
+	slice0MasterConn.EXPECT().UseDB("db_mycat_2").Return(nil)
+	slice0MasterConn.EXPECT().SetCharset("utf8", mysql.CharsetIds["utf8"]).Return(false, nil)
+	slice0MasterConn.EXPECT().SetSessionVariables(mysql.NewSessionVariables()).Return(false, nil)
+	slice0MasterConn.EXPECT().GetAddr().Return("127.0.0.1:3306")
+	slice0MasterConn.EXPECT().Execute("SELECT * FROM `tbl_mycat` WHERE `k`=0", defaultMaxSqlResultSize).Return(expectResult2, nil)
+	slice0MasterConn.EXPECT().Recycle().Return(nil)
 
 	sqls := map[string]map[string][]string{
 		"slice-0": {

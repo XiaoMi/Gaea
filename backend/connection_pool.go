@@ -44,10 +44,11 @@ type connectionPoolImpl struct {
 	connections *util.ResourcePool
 	checkConn   *pooledConnectImpl
 
-	addr     string
-	user     string
-	password string
-	db       string
+	addr       string
+	datacenter string
+	user       string
+	password   string
+	db         string
 
 	charset     string
 	collationID mysql.CollationID
@@ -60,10 +61,21 @@ type connectionPoolImpl struct {
 }
 
 // NewConnectionPool create connection pool
-func NewConnectionPool(addr, user, password, db string, capacity, maxCapacity int, idleTimeout time.Duration, charset string, collationID mysql.CollationID, clientCapability uint32, initConnect string) ConnectionPool {
-	cp := &connectionPoolImpl{addr: addr, user: user, password: password, db: db, capacity: capacity, maxCapacity: maxCapacity, idleTimeout: idleTimeout, charset: charset, collationID: collationID, clientCapability: clientCapability}
-	cp.initConnect = strings.Trim(strings.TrimSpace(initConnect), ";")
-	return cp
+func NewConnectionPool(addr, user, password, db string, capacity, maxCapacity int, idleTimeout time.Duration, charset string, collationID mysql.CollationID, clientCapability uint32, initConnect string, dc string) ConnectionPool {
+	return &connectionPoolImpl{
+		addr:             addr,
+		datacenter:       dc,
+		user:             user,
+		password:         password,
+		db:               db,
+		capacity:         capacity,
+		maxCapacity:      maxCapacity,
+		idleTimeout:      idleTimeout,
+		charset:          charset,
+		collationID:      collationID,
+		clientCapability: clientCapability,
+		initConnect:      strings.Trim(strings.TrimSpace(initConnect), ";"),
+	}
 }
 
 func (cp *connectionPoolImpl) pool() (p *util.ResourcePool) {
@@ -109,6 +121,11 @@ func (cp *connectionPoolImpl) connect() (util.Resource, error) {
 // Addr return addr of connection pool
 func (cp *connectionPoolImpl) Addr() string {
 	return cp.addr
+}
+
+// Datacenter return datacenter of connection pool
+func (cp *connectionPoolImpl) Datacenter() string {
+	return cp.datacenter
 }
 
 // Close close connection pool

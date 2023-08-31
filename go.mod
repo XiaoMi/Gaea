@@ -4,7 +4,6 @@ go 1.12
 
 require (
 	github.com/StackExchange/wmi v1.2.1 // indirect
-	github.com/agiledragon/gomonkey/v2 v2.7.0
 	github.com/coreos/bbolt v1.3.2 // indirect
 	github.com/coreos/etcd v3.3.13+incompatible
 	github.com/coreos/go-semver v0.2.0 // indirect
@@ -43,7 +42,7 @@ require (
 	github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4 // indirect
 	github.com/shopspring/decimal v1.3.1
 	github.com/sirupsen/logrus v1.4.2 // indirect
-	github.com/smartystreets/goconvey v1.6.4
+	github.com/smartystreets/goconvey v1.6.4 // indirect
 	github.com/soheilhy/cmux v0.1.4 // indirect
 	github.com/stretchr/testify v1.8.1
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20170815181823-89b8d40f7ca8 // indirect
@@ -55,7 +54,6 @@ require (
 	golang.org/x/time v0.0.0-20181108054448-85acf8d2951c // indirect
 	google.golang.org/grpc v1.21.0 // indirect
 	gopkg.in/ini.v1 v1.42.0
-	gopkg.in/yaml.v2 v2.4.0
 )
 
 replace github.com/dgrijalva/jwt-go => github.com/golang-jwt/jwt v3.2.2-0.20210713063142-860640e8862d+incompatible

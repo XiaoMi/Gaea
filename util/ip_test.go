@@ -15,6 +15,7 @@ package util
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"net"
 	"testing"
 )
@@ -85,5 +86,127 @@ func TestCreateIPInfoIPNetError2(t *testing.T) {
 	addr := "192.168.122.1/35"
 	if _, err := ParseIPInfo(addr); err == nil {
 		t.FailNow()
+	}
+}
+
+func TestGetInstanceDatacenter(t *testing.T) {
+	testCases := []struct {
+		name     string
+		addr     string
+		hasErr   bool
+		expectDc string
+	}{
+		{
+			"test get datacenter success",
+			"c3-mysql01.bj:3306",
+			false,
+			"c3",
+		},
+		{
+			"test get datacenter format error too much hyphens",
+			"c3-mysql01.bj-3306",
+			true,
+			"",
+		},
+		{
+			"test get datacenter format error too much dots",
+			"c3.mysql01.bj.3306",
+			true,
+			"",
+		},
+		{
+			"test get datacenter format error no enough hyphens",
+			"c3-mysql01.bj-3306",
+			true,
+			"",
+		},
+		{
+			"test get datacenter format error no enough dots",
+			"c3.mysql01-bj:3306",
+			false,
+			"c3.mysql01",
+		},
+		{
+			"test get datacenter format error no colons",
+			"c3.mysql01.bj",
+			true,
+			"",
+		},
+		{
+			"test get datacenter format error 2",
+			"127.0.0.2:3306",
+			true,
+			"",
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			dc, err := GetInstanceDatacenter(tt.addr)
+			if tt.hasErr {
+				assert.NotNil(t, err)
+				return
+			}
+			assert.Nil(t, err)
+			assert.Equal(t, tt.expectDc, dc)
+		})
+	}
+}
+
+func TestGetHostDatacenter(t *testing.T) {
+	testCases := []struct {
+		name     string
+		host     string
+		hasErr   bool
+		expectDc string
+	}{
+		{
+			"test get datacenter success",
+			"c3-mysql01.bj",
+			false,
+			"c3",
+		},
+		{
+			"test get datacenter success local",
+			"MacBook-Pro-2.local",
+			false,
+			"MacBook",
+		},
+		{
+			"test get datacenter format error too much dots",
+			"c3.mysql01.bj",
+			true,
+			"",
+		},
+		{
+			"test get datacenter format error no enough dots",
+			"c3.mysql01-bj",
+			false,
+			"c3.mysql01",
+		},
+		{
+			"test get datacenter format error no colons",
+			"c3.mysql01.bj",
+			true,
+			"",
+		},
+		{
+			"test get datacenter format error 2",
+			"127.0.0.2",
+			true,
+			"",
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			dc, err := GetHostDatacenter(tt.host)
+			if tt.hasErr {
+				assert.NotNil(t, err)
+				return
+			}
+			assert.Nil(t, err)
+			assert.Equal(t, tt.expectDc, dc)
+		})
 	}
 }

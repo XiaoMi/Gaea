@@ -32,6 +32,7 @@ type PooledConnect interface {
 type ConnectionPool interface {
 	Open() error
 	Addr() string
+	Datacenter() string
 	Close()
 	Get(ctx context.Context) (PooledConnect, error)
 	GetCheck(ctx context.Context) (PooledConnect, error)
