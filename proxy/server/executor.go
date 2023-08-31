@@ -406,7 +406,7 @@ func (se *SessionExecutor) getBackendConns(sqls map[string]map[string][]string, 
 func (se *SessionExecutor) getBackendConn(sliceName string, fromSlave bool) (pc backend.PooledConnect, err error) {
 	if !se.isInTransaction() {
 		slice := se.GetNamespace().GetSlice(sliceName)
-		return slice.GetConn(fromSlave, se.GetNamespace().GetUserProperty(se.user))
+		return slice.GetConn(fromSlave, se.GetNamespace().GetUserProperty(se.user), se.GetNamespace().localSlaveReadPriority)
 	}
 	return se.getTransactionConn(sliceName)
 }

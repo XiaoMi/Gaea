@@ -60,27 +60,28 @@ type UserProperty struct {
 
 // Namespace is struct driected used by server
 type Namespace struct {
-	name                 string
-	allowedDBs           map[string]bool
-	defaultPhyDBs        map[string]string // logicDBName-phyDBName
-	sqls                 map[string]string //key: sql fingerprint
-	slowSQLTime          int64             // session slow sql time, millisecond, default 1000
-	allowips             []util.IPInfo
-	router               *router.Router
-	sequences            *sequence.SequenceManager
-	slices               map[string]*backend.Slice // key: slice name
-	userProperties       map[string]*UserProperty  // key: user name ,value: user's properties
-	defaultCharset       string
-	defaultCollationID   mysql.CollationID
-	openGeneralLog       bool
-	maxSqlExecuteTime    int // session max sql execute time,millisecond
-	maxSqlResultSize     int
-	defaultSlice         string
-	downAfterNoAlive     int
-	secondsBehindMaster  uint64
-	supportMultiQuery    bool
-	maxClientConnections int
-	CheckSelectLock      bool
+	name                   string
+	allowedDBs             map[string]bool
+	defaultPhyDBs          map[string]string // logicDBName-phyDBName
+	sqls                   map[string]string //key: sql fingerprint
+	slowSQLTime            int64             // session slow sql time, millisecond, default 1000
+	allowips               []util.IPInfo
+	router                 *router.Router
+	sequences              *sequence.SequenceManager
+	slices                 map[string]*backend.Slice // key: slice name
+	userProperties         map[string]*UserProperty  // key: user name ,value: user's properties
+	defaultCharset         string
+	defaultCollationID     mysql.CollationID
+	openGeneralLog         bool
+	maxSqlExecuteTime      int // session max sql execute time,millisecond
+	maxSqlResultSize       int
+	defaultSlice           string
+	downAfterNoAlive       int
+	secondsBehindMaster    uint64
+	supportMultiQuery      bool
+	maxClientConnections   int
+	CheckSelectLock        bool
+	localSlaveReadPriority int
 
 	slowSQLCache         *cache.LRUCache
 	errorSQLCache        *cache.LRUCache
@@ -96,7 +97,7 @@ func (n *Namespace) DumpToJSON() []byte {
 }
 
 // NewNamespace init namespace
-func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
+func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*Namespace, error) {
 	var err error
 	namespace := &Namespace{
 		name:                 namespaceConfig.Name,
@@ -189,7 +190,7 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 	}
 
 	// init backend slices
-	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID)
+	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID, proxyDatacenter)
 	if err != nil {
 		return nil, fmt.Errorf("init slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
 	}
@@ -235,6 +236,16 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 	}
 
 	namespace.secondsBehindMaster = namespaceConfig.SecondsBehindMaster
+
+	// init localSlaveReadPriority
+	switch namespaceConfig.LocalSlaveReadPriority {
+	case backend.LocalSlaveReadPreferred:
+		namespace.localSlaveReadPriority = backend.LocalSlaveReadPreferred
+	case backend.LocalSlaveReadForce:
+		namespace.localSlaveReadPriority = backend.LocalSlaveReadForce
+	default:
+		namespace.localSlaveReadPriority = backend.LocalSlaveReadClosed
+	}
 
 	return namespace, nil
 }
@@ -519,10 +530,11 @@ func (n *Namespace) Close(delay bool) {
 	_ = log.Warn("close ns:%s", n.name)
 }
 
-func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID) (*backend.Slice, error) {
+func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID, dc string) (*backend.Slice, error) {
 	var err error
 	s := new(backend.Slice)
 	s.Cfg = *cfg
+	s.ProxyDatacenter = dc
 	s.SetCharsetInfo(charset, collationID)
 
 	// parse master
@@ -547,7 +559,7 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	return s, nil
 }
 
-func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.CollationID) (map[string]*backend.Slice, error) {
+func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.CollationID, dc string) (map[string]*backend.Slice, error) {
 	slices := make(map[string]*backend.Slice, len(cfgSlices))
 	for _, v := range cfgSlices {
 		v.Name = strings.TrimSpace(v.Name) // modify origin slice name, trim space
@@ -555,7 +567,7 @@ func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.Co
 			return nil, fmt.Errorf("duplicate slice [%s]", v.Name)
 		}
 
-		s, err := parseSlice(v, charset, collationID)
+		s, err := parseSlice(v, charset, collationID, dc)
 		if err != nil {
 			return nil, err
 		}
@@ -620,7 +632,7 @@ func doCheckSlice(slice *backend.Slice, namespace *Namespace, ctx context.Contex
 					// status is ok && this is slave && seconds_behind_master is not 0, we start to check master and slave lag
 					// Pay attention!!!!, if master is down, slave IO thread is close, so we should skip check slave when master is down
 					if shouldCheckSlaveDataSyncStatus(namespace, status, slice, isMaster) {
-						if lag, _ := slaveIsLagBehand(conn, namespace); lag {
+						if lag, _ := slaveIsLagBehind(conn, namespace); lag {
 							status = backend.DOWN
 						}
 					}
@@ -651,7 +663,7 @@ func doCheckSlice(slice *backend.Slice, namespace *Namespace, ctx context.Contex
 
 }
 
-func slaveIsLagBehand(conn backend.PooledConnect, namespace *Namespace) (bool, error) {
+func slaveIsLagBehind(conn backend.PooledConnect, namespace *Namespace) (bool, error) {
 	var slaveStatus SlaveStatus
 	var err error
 	if slaveStatus, err = GetSlaveStatus(conn); err != nil {

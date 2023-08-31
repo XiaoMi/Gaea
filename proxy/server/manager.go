@@ -47,6 +47,7 @@ const (
 	MasterRole         = "master"
 	SlaveRole          = "slave"
 	SQLExecTimeSize    = 5000
+	DefaultDatacenter  = "default"
 )
 
 // LoadAndCreateManager load namespace config, and create manager
@@ -479,8 +480,14 @@ func NewNamespaceManager() *NamespaceManager {
 // CreateNamespaceManager create NamespaceManager
 func CreateNamespaceManager(namespaceConfigs map[string]*models.Namespace) *NamespaceManager {
 	nsMgr := NewNamespaceManager()
+	proxyDatacenter, err := util.GetLocalDatacenter()
+	if err != nil {
+		log.Fatal("get proxy datacenter err,will use default datacenter,err:%s", err)
+		proxyDatacenter = DefaultDatacenter
+	}
+
 	for _, config := range namespaceConfigs {
-		namespace, err := NewNamespace(config)
+		namespace, err := NewNamespace(config, proxyDatacenter)
 		if err != nil {
 			log.Warn("create namespace %s failed, err: %v", config.Name, err)
 			continue
@@ -501,7 +508,11 @@ func ShallowCopyNamespaceManager(nsMgr *NamespaceManager) *NamespaceManager {
 
 // RebuildNamespace rebuild namespace
 func (n *NamespaceManager) RebuildNamespace(config *models.Namespace) error {
-	namespace, err := NewNamespace(config)
+	proxyDatacenter, err := util.GetLocalDatacenter()
+	if err != nil {
+		log.Fatal("get local proxy datacenter err:%s", err)
+	}
+	namespace, err := NewNamespace(config, proxyDatacenter)
 	if err != nil {
 		log.Warn("create namespace %s failed, err: %v", config.Name, err)
 		return err
