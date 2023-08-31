@@ -72,7 +72,7 @@ e2e_test:
     - go install github.com/onsi/ginkgo/v2/ginkgo@v2.3.1
     - chmod +x ./hack/e2e.sh
     - ./hack/e2e.sh
-    - ginkgo --v --progress --trace --flake-attempts=1 ./tests/sql/
+    - ginkgo --v --progress --trace --flake-attempts=1 ./tests/e2e/
 
 upload_fds:
   stage: pre-release
