@@ -46,7 +46,7 @@ import (
 const (
 	// connBufferSize is how much we buffer for reading and
 	// writing. It is also how much we allocate for ephemeral buffers.
-	connBufferSize = 128
+	connBufferSize = 16 * 1024
 
 	// MaxPacketSize is the maximum payload length of a packet(16MB)
 	// the server supports.
