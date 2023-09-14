@@ -97,8 +97,6 @@ func (r ResultRow) GetFloat(column int) (float64, error) {
 func (r ResultRow) GetDecimal(column int) (decimal.Decimal, error) {
 	d := r[column]
 	switch v := d.(type) {
-	case decimal.Decimal:
-		return v, nil
 	case float64:
 		return decimal.NewFromFloat(v), nil
 	case uint64:
@@ -218,8 +216,6 @@ func (a *AggregateFuncSumMerger) MergeTo(from, to ResultRow) error {
 		return a.sumToUint64(from, to)
 	case float64, string, []byte, nil:
 		return a.sumToDecimal(from, to)
-	case decimal.Decimal:
-		return a.sumToDecimal(from, to)
 	default:
 		fromValue := from.GetValue(idx)
 		toValue := to.GetValue(idx)
@@ -269,6 +265,7 @@ func (a *AggregateFuncSumMerger) sumToFloat64(from, to ResultRow) error {
 	return nil
 }
 
+// sumToDecimal turn float to decimal to aggregate func sum
 func (a *AggregateFuncSumMerger) sumToDecimal(from, to ResultRow) error {
 	idx := a.fieldIndex // does not need to check
 	valueToMerge, err := from.GetDecimal(idx)
@@ -279,7 +276,9 @@ func (a *AggregateFuncSumMerger) sumToDecimal(from, to ResultRow) error {
 	if err != nil {
 		return fmt.Errorf("get to decimal value error: %v", err)
 	}
-	to.SetValue(idx, originValue.Add(valueToMerge))
+	mergeValueDecimal := originValue.Add(valueToMerge)
+	mergeValueFloat, _ := mergeValueDecimal.Float64()
+	to.SetValue(idx, mergeValueFloat)
 	return nil
 }
 
@@ -783,8 +782,6 @@ func formatValue(value interface{}) ([]byte, error) {
 		return strconv.AppendFloat(nil, float64(v), 'f', -1, 64), nil
 	case float64:
 		return strconv.AppendFloat(nil, v, 'f', -1, 64), nil
-	case decimal.Decimal:
-		return []byte(v.String()), nil
 	case []byte:
 		return v, nil
 	case string:

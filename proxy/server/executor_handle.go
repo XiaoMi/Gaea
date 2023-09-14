@@ -18,12 +18,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/XiaoMi/Gaea/core/errors"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/XiaoMi/Gaea/backend"
-	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser"
@@ -52,7 +52,7 @@ func (se *SessionExecutor) handleQuery(sql string) (r *mysql.Result, err error) 
 					sql, err.Error(), string(buf))
 			}
 
-			err = errors.ErrInternalServer
+			err = fmt.Errorf("%s:%s", errors.ErrInternalServer, e)
 			return
 		}
 	}()
@@ -84,7 +84,7 @@ func (se *SessionExecutor) handleQuery(sql string) (r *mysql.Result, err error) 
 	return r, err
 }
 
-//handle multi-stmts,like `select 1;set autcommit=0;insert into...;`
+// handle multi-stmts,like `select 1;set autcommit=0;insert into...;`
 func (se *SessionExecutor) doMultiStmts(reqCtx *util.RequestContext, sql string) (r *mysql.Result, errRet error) {
 	if se.session.c.hasRecycledReadPacket.CompareAndSwap(false, true) {
 		se.session.c.RecycleReadPacket()
