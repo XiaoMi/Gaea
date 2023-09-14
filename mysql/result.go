@@ -36,7 +36,6 @@ import (
 
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/util/hack"
-	"github.com/shopspring/decimal"
 )
 
 // RowData row in []byte format
@@ -78,10 +77,8 @@ func (p RowData) ParseText(f []*Field) ([]interface{}, error) {
 				} else {
 					data[i], err = strconv.ParseInt(string(v), 10, 64)
 				}
-			case TypeFloat, TypeDouble:
+			case TypeFloat, TypeDouble, TypeNewDecimal:
 				data[i], err = strconv.ParseFloat(string(v), 64)
-			case TypeNewDecimal:
-				data[i], err = decimal.NewFromString(string(v))
 			case TypeVarchar, TypeVarString,
 				TypeString, TypeDatetime,
 				TypeDate, TypeDuration, TypeTimestamp:
