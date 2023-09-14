@@ -27,7 +27,7 @@ innodb_temp_data_file_path      = ibtmp1:12M:autoextend:max:100G
 innodb_log_group_home_dir       = /data/mysql/data3329
 
 server-id                       = 38166089
-sql_mode = "ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION,ALLOW_INVALID_DATES"
+sql_mode = "STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION"
 log-slave-updates
 log-bin                         = /data/mysql/data3329/mysql-bin
 relay-log                       = /data/mysql/data3329/mysql-relay-bin

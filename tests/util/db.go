@@ -2,11 +2,17 @@ package util
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/XiaoMi/Gaea/parser"
+	"github.com/XiaoMi/Gaea/parser/ast"
 )
 
 func GetDataFromRows(rows *sql.Rows) ([][]string, error) {
@@ -38,16 +44,13 @@ func GetDataFromRows(rows *sql.Rows) ([][]string, error) {
 		}
 		return
 	}
-
 	c, _ := rows.Columns()
 	n := len(c)
 	field := make([]interface{}, 0, n)
 	for i := 0; i < n; i++ {
 		field = append(field, new(sql.NullString))
 	}
-
 	var converts [][]string
-
 	for rows.Next() {
 		if err := rows.Scan(field...); err != nil {
 			return nil, err
@@ -55,6 +58,9 @@ func GetDataFromRows(rows *sql.Rows) ([][]string, error) {
 		row := make([]string, 0, n)
 		for i := 0; i < n; i++ {
 			col := pr(field[i])
+			if col == "\\N" {
+				col = "NULL" // 或者你期望的其他值
+			}
 			row = append(row, col)
 		}
 		converts = append(converts, row)
@@ -326,4 +332,148 @@ func ExecuteTransactionAndReturnId(db *sql.DB, sql string, args ...interface{}) 
 	}
 
 	return id, nil
+}
+
+func DBExec(db *sql.DB, execSql string, expectType string) (interface{}, error) {
+	switch expectType {
+	case "Query":
+		rows, err := db.Query(execSql)
+		if err == sql.ErrNoRows {
+			return rows, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("SQL: %s, ExpectType: %s, Error: %v", execSql, expectType, err)
+		}
+		return rows, nil
+	case "Exec":
+		result, err := db.Exec(execSql)
+		if err == sql.ErrNoRows {
+			return result, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("SQL: %s, ExpectType: %s, Error: %v", execSql, expectType, err)
+		}
+		return result, nil
+	default:
+		return nil, fmt.Errorf("SQL: %s, ExpectType: %s, Error: unsupported expect type", execSql, expectType)
+	}
+}
+
+// Define an enum-like type for SQL operation methods
+type SQLOperation string
+
+var ErrSkippedSQLOperation = errors.New("skipped SQL operation")
+var ErrUnsupportedSQLOperation = errors.New("unsupported SQL operation type")
+
+const (
+	Query   SQLOperation = "Query"
+	Exec    SQLOperation = "Exec"
+	UnKnown SQLOperation = "UnKnown"
+	Comment SQLOperation = "Comment"
+)
+
+func GetSqlFromFile(path string) ([]string, error) {
+	bys, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read file error")
+	}
+	var res []string
+	sqlString := strings.Split(string(bys), "\n")
+	for _, sql := range sqlString {
+		trimSql := strings.TrimSpace(sql)
+		if strings.HasPrefix(trimSql, "//") || strings.HasPrefix(trimSql, "#") || trimSql == "" || strings.HasPrefix(trimSql, "-- ") {
+			continue
+		}
+		res = append(res, sql)
+	}
+	return res, nil
+}
+
+func GetSqlType(sqlString string) (SQLOperation, error) {
+	p := parser.New()
+	stmt, _, err := p.Parse(sqlString, "", "")
+	if err != nil {
+		return UnKnown, err
+	}
+	switch stmt[0].(type) {
+	case *ast.SelectStmt, *ast.UnionStmt, *ast.ShowStmt, *ast.ExplainStmt:
+		return Query, nil
+	case *ast.InsertStmt:
+		return Exec, nil
+	case *ast.UpdateStmt:
+		return Exec, nil
+	case *ast.DeleteStmt:
+		return Exec, nil
+	case *ast.CreateDatabaseStmt, *ast.CreateTableStmt:
+		return Exec, nil
+	case *ast.AlterTableStmt:
+		return Exec, nil
+	case *ast.DropDatabaseStmt, *ast.DropTableStmt:
+		return Exec, nil
+	case *ast.UseStmt:
+		return Exec, nil
+	default:
+		return UnKnown, nil
+	}
+}
+
+func OutPutResult(sql string, outPutFile string) error {
+	file, err := os.OpenFile(outPutFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	_, err = file.WriteString(sql + "\n")
+	return err
+}
+
+func ExecuteSQL(db *sql.DB, operationType SQLOperation, sqlStatement string) (interface{}, error) {
+	switch operationType {
+	case Query:
+		return DBExec(db, sqlStatement, "Query")
+	case Exec:
+		return DBExec(db, sqlStatement, "Exec")
+	case UnKnown:
+		return nil, ErrSkippedSQLOperation
+	default:
+		return nil, nil
+	}
+}
+
+func CompareDBExecResults(result1 interface{}, result2 interface{}) (bool, error) {
+	switch r1 := result1.(type) {
+	case *sql.Rows:
+		r2, ok := result2.(*sql.Rows)
+		if !ok {
+			return false, errors.New("mismatched types for results")
+		}
+		defer r1.Close()
+		defer r2.Close()
+		t1, err := GetDataFromRows(r1)
+		if err != nil {
+			return false, err
+		}
+		t2, err := GetDataFromRows(r2)
+		if err != nil {
+			return false, err
+		}
+		return reflect.DeepEqual(t1, t2), nil
+	case sql.Result:
+		r2, ok := result2.(sql.Result)
+		if !ok {
+			return false, errors.New("mismatched types for results")
+		}
+		rowsAffected1, err1 := r1.RowsAffected()
+		if err1 != nil {
+			return false, err1
+		}
+		rowsAffected2, err2 := r2.RowsAffected()
+		if err2 != nil {
+			return false, err2
+		}
+		// Compares affected rows
+		return rowsAffected1 == rowsAffected2, nil
+	default:
+		return false, errors.New("unsupported result type")
+	}
 }

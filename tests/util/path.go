@@ -16,6 +16,7 @@ var defaultLogDirectoryPath = "../cmd/logs"
 var defaultLogFilePath = "../cmd/logs/gaea_sql.log"
 
 var defaultE2ECaseDirectory = "../e2e/"
+var defaultResultFilePath = "../e2e/noshard/result"
 
 // Path gets the absolute path.
 func Path(rel string) string {
@@ -31,6 +32,10 @@ func GetTestLogDirectoryAbsPath() string {
 
 func GetTestLogFileAbsPath() string {
 	return Path(defaultLogFilePath)
+}
+
+func GetTestResultFileAbsPath() string {
+	return Path(defaultResultFilePath)
 }
 
 func GetCasesFileAbsPath(filename string) string {
