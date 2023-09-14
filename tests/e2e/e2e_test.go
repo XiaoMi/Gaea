@@ -7,6 +7,7 @@ import (
 	_ "github.com/XiaoMi/Gaea/tests/e2e/dml"
 	_ "github.com/XiaoMi/Gaea/tests/e2e/function"
 	_ "github.com/XiaoMi/Gaea/tests/e2e/shard"
+	_ "github.com/XiaoMi/Gaea/tests/e2e/unshard"
 	"github.com/XiaoMi/Gaea/tests/util"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
@@ -20,6 +21,11 @@ func TestE2E(t *testing.T) {
 var _ = ginkgo.BeforeSuite(func() {
 	ginkgo.By("start remove old logs.")
 	err := util.RemoveLog(util.GetTestLogDirectoryAbsPath())
+	gomega.Expect(err).Should(gomega.BeNil())
+	ginkgo.By("remove old logs success.")
+
+	ginkgo.By("start remove sql test result.")
+	err = util.RemoveLog(util.GetTestResultFileAbsPath())
 	gomega.Expect(err).Should(gomega.BeNil())
 	ginkgo.By("remove old logs success.")
 

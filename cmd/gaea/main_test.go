@@ -17,15 +17,16 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"github.com/XiaoMi/Gaea/parser"
-	"github.com/XiaoMi/Gaea/parser/ast"
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/XiaoMi/Gaea/parser"
+	"github.com/XiaoMi/Gaea/parser/ast"
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/stretchr/testify/assert"
 )
 
 const (
@@ -160,7 +161,6 @@ func TestIntegration(t *testing.T) {
 			} else if !ok {
 				fmt.Printf("SQL not read_only.skip:%s\n", sqlString)
 			}
-
 			if err = retryer(proxyDb, mysqlDb, sqlString, doCheck); err != nil {
 				fmt.Printf("filename: %s, line number: %d, sql = [%s],err:%s\n", fs, line+1, sqlString, err)
 				assert.Fail(t, err.Error())
