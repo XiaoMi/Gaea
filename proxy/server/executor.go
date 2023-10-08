@@ -291,7 +291,6 @@ func (se *SessionExecutor) GetDatabase() string {
 
 // ExecuteCommand execute command
 func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
-	start := time.Now()
 	switch cmd {
 	case mysql.ComQuit:
 		_ = se.manager.statistics.generalLogger.Notice("Quit - conn_id=%d, ns=%s, %s@%s",
@@ -305,26 +304,8 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		// handle phase
 		r, err := se.handleQuery(sql)
 		if err != nil {
-			_ = se.manager.statistics.generalLogger.Notice("ERROR - %.1fms - ns=%s, %s@%s->%s, mysql_connect_id=%d|%v",
-				float64(time.Since(start).Microseconds())/1000.0,
-				se.namespace,
-				se.user,
-				se.clientAddr,
-				se.backendAddr,
-				se.session.c.ConnectionID,
-				sql)
-
 			return CreateErrorResponse(se.status, err)
 		}
-		// Gaea support multi tenant, so the backendAddr may be one of backend addrs which begins with 0
-		_ = se.manager.statistics.generalLogger.Notice("OK - %.1fms - ns=%s, %s@%s->%s, mysql_connect_id=%d|%v",
-			float64(time.Since(start).Microseconds())/1000.0,
-			se.namespace,
-			se.user,
-			se.clientAddr,
-			se.backendAddr,
-			se.session.c.ConnectionID,
-			sql)
 		return CreateResultResponse(se.status, r)
 	case mysql.ComPing:
 		return CreateOKResponse(se.status)

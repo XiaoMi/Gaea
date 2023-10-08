@@ -15,6 +15,7 @@ type LogModel struct {
 	ClientAddr   string
 	BackendAddr  string
 	ConnectionID int
+	AffectedRows int
 	SQL          string
 }
 
@@ -28,7 +29,7 @@ func ReadLog(filepath string, searchString string) ([]LogModel, error) {
 	var result []LogModel
 
 	// 使用正则表达式匹配你需要的部分
-	regex := regexp.MustCompile(`ns=(\w+),\s*(\w+)@(\d+\.\d+\.\d+\.\d+:\d+)->(\d+\.\d+\.\d+\.\d+:\d+), mysql_connect_id=(\d+)\|(.*)`)
+	regex := regexp.MustCompile(`ns=(\w+),\s*(\w+)@(\d+\.\d+\.\d+\.\d+:\d+)->(\d+\.\d+\.\d+\.\d+:\d+), mysql_connect_id=(\d+), r=(\d+)\|(.*)`)
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -36,9 +37,13 @@ func ReadLog(filepath string, searchString string) ([]LogModel, error) {
 		// 检查该行是否包含特定的字符串
 		if strings.Contains(line, searchString) {
 			matches := regex.FindStringSubmatch(line)
-			if len(matches) == 7 {
+			if len(matches) == 8 {
 				// 解析ConnectionID为整数
 				connectionID, err := strconv.Atoi(matches[5])
+				if err != nil {
+					return nil, err
+				}
+				affectedRows, err := strconv.Atoi(matches[6])
 				if err != nil {
 					return nil, err
 				}
@@ -48,6 +53,7 @@ func ReadLog(filepath string, searchString string) ([]LogModel, error) {
 					ClientAddr:   matches[3],
 					BackendAddr:  matches[4],
 					ConnectionID: connectionID,
+					AffectedRows: affectedRows,
 					SQL:          matches[6],
 				}
 				result = append(result, logModel)

@@ -43,11 +43,16 @@ import (
 )
 
 const (
-	DefaultLogKeepDays = 3
-	MasterRole         = "master"
-	SlaveRole          = "slave"
-	SQLExecTimeSize    = 5000
-	DefaultDatacenter  = "default"
+	DefaultLogKeepDays       = 3
+	MasterRole               = "master"
+	SlaveRole                = "slave"
+	SQLExecTimeSize          = 5000
+	DefaultDatacenter        = "default"
+	SQLExecStatusOk          = "OK"
+	SQLExecStatusErr         = "ERROR"
+	SQLExecStatusSlow        = "SLOW"
+	SQLBackendExecStatusSlow = "backend SLOW"
+	SQLBackendExecStatusErr  = "backend ERR"
 )
 
 // LoadAndCreateManager load namespace config, and create manager
@@ -307,7 +312,7 @@ func (m *Manager) ConfigFingerprint() string {
 }
 
 // RecordSessionSQLMetrics record session SQL metrics, like response time, error
-func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *SessionExecutor, sql string, startTime time.Time, err error) {
+func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *SessionExecutor, sql string, startTime time.Time, result *mysql.Result, err error) {
 	trimmedSql := strings.ReplaceAll(sql, "\n", " ")
 	namespace := se.namespace
 	ns := m.GetNamespace(namespace)
@@ -327,28 +332,44 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 	// record sql timing
 	m.statistics.recordSessionSQLTiming(namespace, operation, startTime)
 
-	// record slow sql
-	duration := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
-	if duration > ns.getSessionSlowSQLTime() || ns.getSessionSlowSQLTime() == 0 {
-		log.Warn("session slow SQL, namespace: %s, sql: %s, cost: %d ms", namespace, trimmedSql, duration)
-		fingerprint := mysql.GetFingerprint(sql)
-		md5 := mysql.GetMd5(fingerprint)
-		ns.SetSlowSQLFingerprint(md5, fingerprint)
-		m.statistics.recordSessionSlowSQLFingerprint(namespace, md5)
+	durationFloat := float64(time.Since(startTime).Microseconds()) / 1000.0
+
+	// record full sql log
+	affectedRows := uint64(0)
+	if result != nil {
+		affectedRows = result.AffectedRows
 	}
 
-	// record error sql
-	if err != nil {
-		log.Warn("session error SQL, namespace: %s, sql: %s, cost: %d ms, err: %v", namespace, trimmedSql, duration, err)
+	if err == nil {
+		_ = se.manager.statistics.generalLogger.Notice("%s - %.1fms - ns=%s, %s@%s->%s, mysql_connect_id=%d, r=%d|%v",
+			SQLExecStatusOk, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr,
+			se.session.c.ConnectionID, affectedRows, sql)
+	} else {
+		// record error sql
+		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s, mysql_connect_id=%d, r=%d|%v",
+			SQLExecStatusErr, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr,
+			se.session.c.ConnectionID, affectedRows, sql)
 		fingerprint := mysql.GetFingerprint(sql)
 		md5 := mysql.GetMd5(fingerprint)
 		ns.SetErrorSQLFingerprint(md5, fingerprint)
 		m.statistics.recordSessionErrorSQLFingerprint(namespace, operation, md5)
 	}
 
+	// record slow sql, only durationFloat > slowSQLTime will be recorded
+	if ns.getSessionSlowSQLTime() > 0 && int64(durationFloat) > ns.getSessionSlowSQLTime() {
+		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s, mysql_connect_id=%d, r=%d|%v",
+			SQLExecStatusSlow, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr,
+			se.session.c.ConnectionID, affectedRows, sql)
+		fingerprint := mysql.GetFingerprint(sql)
+		md5 := mysql.GetMd5(fingerprint)
+		ns.SetSlowSQLFingerprint(md5, fingerprint)
+		m.statistics.recordSessionSlowSQLFingerprint(namespace, md5)
+	}
+
+	// record general sql log
 	if ns.openGeneralLog {
-		m.statistics.generalLogger.Notice("client: %s, ns: %s, db: %s, user: %s, cmd: %s, sql: %s, cost: %d ms, succ: %t",
-			se.clientAddr, namespace, se.db, se.user, operation, trimmedSql, duration, err == nil)
+		m.statistics.generalLogger.Notice("client: %s, ns: %s, db: %s, user: %s, cmd: %s, sql: %s, cost: %.1fms, succ: %t",
+			se.clientAddr, namespace, se.db, se.user, operation, trimmedSql, durationFloat, err == nil)
 	}
 }
 
@@ -372,19 +393,21 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace
 	// record sql timing
 	m.statistics.recordBackendSQLTiming(namespace, operation, sliceName, backendAddr, startTime)
 
-	// record slow sql
+	// record backend slow sql
 	duration := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
-	if m.statistics.isBackendSlowSQL(startTime) {
-		log.Warn("backend slow SQL, namespace: %s, addr: %s, sql: %s, cost: %d ms", namespace, backendAddr, trimmedSql, duration)
+	if m.statistics.isBackendSlowSQL(duration) {
+		m.statistics.generalLogger.Warn("%s - %d - ns=%s, addr: %s|%v",
+			SQLBackendExecStatusSlow, duration, namespace, backendAddr, trimmedSql)
 		fingerprint := mysql.GetFingerprint(sql)
 		md5 := mysql.GetMd5(fingerprint)
 		ns.SetBackendSlowSQLFingerprint(md5, fingerprint)
 		m.statistics.recordBackendSlowSQLFingerprint(namespace, md5)
 	}
 
-	// record error sql
+	// record backend error sql
 	if err != nil {
-		log.Warn("backend error SQL, namespace: %s, addr: %s, sql: %s, cost %d ms, err: %v", namespace, backendAddr, trimmedSql, duration, err)
+		m.statistics.generalLogger.Warn("%s - %d - ns=%s,addr: %s|%v, err:%s",
+			SQLBackendExecStatusErr, duration, namespace, backendAddr, trimmedSql, err)
 		fingerprint := mysql.GetFingerprint(sql)
 		md5 := mysql.GetMd5(fingerprint)
 		ns.SetBackendErrorSQLFingerprint(md5, fingerprint)
@@ -928,10 +951,9 @@ func (s *StatisticManager) recordSessionSQLTiming(namespace string, operation st
 	s.sqlTimings.Record(operationStatsKey, startTime)
 }
 
-// millisecond duration
-func (s *StatisticManager) isBackendSlowSQL(startTime time.Time) bool {
-	duration := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
-	return duration > s.slowSQLTime || s.slowSQLTime == 0
+// isBackendSlowSQL return true only gaea.ini slow_sql_time > 0 and duration > slow_sql_time
+func (s *StatisticManager) isBackendSlowSQL(duration int64) bool {
+	return s.slowSQLTime > 0 && duration > s.slowSQLTime
 }
 
 func (s *StatisticManager) recordBackendSlowSQLFingerprint(namespace string, md5 string) {

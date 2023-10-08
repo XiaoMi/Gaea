@@ -80,7 +80,7 @@ func (se *SessionExecutor) handleQuery(sql string) (r *mysql.Result, err error) 
 		r, err = se.doQuery(reqCtx, sql)
 	}
 
-	se.manager.RecordSessionSQLMetrics(reqCtx, se, sql, startTime, err)
+	se.manager.RecordSessionSQLMetrics(reqCtx, se, sql, startTime, r, err)
 	return r, err
 }
 
