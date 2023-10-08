@@ -38,8 +38,7 @@ require (
 	github.com/pkg/errors v0.8.1 // indirect
 	github.com/prometheus/client_golang v0.9.2
 	github.com/remyoudompheng/bigfft v0.0.0-20190321074620-2f0d2b0e0001 // indirect
-	github.com/shirou/gopsutil v2.16.13-0.20170208025555-b62e301a8b99+incompatible
-	github.com/shirou/w32 v0.0.0-20160930032740-bb4de0191aa4 // indirect
+	github.com/shirou/gopsutil v2.20.9+incompatible
 	github.com/shopspring/decimal v1.3.1
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/smartystreets/goconvey v1.6.4 // indirect
