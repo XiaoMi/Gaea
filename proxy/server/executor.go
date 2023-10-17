@@ -40,12 +40,13 @@ import (
 const (
 	// master comments
 	masterComment      = "/*master*/"
-	masterHint         = "master"
+	masterHint         = "*master*"
 	mycatHint          = "/* !mycat:"
 	standardMasterHint = "/*+ master */"
 	// general query log variable
 	gaeaGeneralLogVariable   = "gaea_general_log"
 	readonlyVariable         = "read_only"
+	globalReadonlyVariable   = "global.read_only"
 	TxReadonlyLT5720         = "@@tx_read_only"
 	TxReadonlyGT5720         = "@@transaction_read_only"
 	SessionTxReadonlyLT5720  = "@@session.tx_read_only"
@@ -692,16 +693,16 @@ func getOnOffVariable(v string) (string, error) {
 func extractPrefixCommentsAndRewrite(sql string, version string) (trimmed string, comment parser.MarginComments) {
 	sql = preRewriteSQL(sql, version)
 
+	//TODO: 优化 tokens 逻辑，所有的 comments 都从 tokens 中获取
 	_, comments := parser.SplitMarginComments(sql)
 	trimmed = strings.TrimPrefix(sql, comments.Leading)
-	trimmed = strings.TrimPrefix(trimmed, comments.Trailing)
-	return strings.Replace(trimmed, masterComment, standardMasterHint, -1), comments
+	trimmed = strings.TrimSuffix(trimmed, comments.Trailing)
+	return trimmed, comments
 }
 
 // master-slave routing
-// public for test
-func canExecuteFromSlave(c *SessionExecutor, sql string, stmt ast.StmtNode, comments parser.MarginComments) bool {
-	if parser.Preview(sql) != parser.StmtSelect {
+func canExecuteFromSlave(reqCtx *util.RequestContext, c *SessionExecutor, sql string, comments parser.MarginComments) bool {
+	if reqCtx.Get(util.StmtType).(int) != parser.StmtSelect {
 		return false
 	}
 
@@ -710,18 +711,10 @@ func canExecuteFromSlave(c *SessionExecutor, sql string, stmt ast.StmtNode, comm
 		return true
 	}
 
-	// handle select @@read_only default to master
-	if isSQLSelectReadOnly(sql, stmt) {
-		return false
-	}
+	tokens := reqCtx.Get(util.Tokens).([]string)
 
-	// let sql `select ... for update` or `select ... in share mode` to master
+	// handle sql `select ... for update` or `select ... in share mode` to master
 	if c.GetNamespace().CheckSelectLock {
-		tokens := strings.FieldsFunc(sql, func(r rune) bool {
-			return r == ' ' || r == ',' ||
-				r == '\t' || r == '/' ||
-				r == '\n' || r == '\r'
-		})
 		tokensLen := len(tokens)
 
 		if strings.ToLower(tokens[tokensLen-1]) == "update" && strings.ToLower(tokens[tokensLen-2]) == "for" {
@@ -732,30 +725,27 @@ func canExecuteFromSlave(c *SessionExecutor, sql string, stmt ast.StmtNode, comm
 		}
 	}
 
-	// use regx directly
-	lcomment := strings.ToLower(strings.TrimSpace(comments.Leading))
-	if lcomment == masterComment {
-		return false
-	}
-
-	//use SQL parser
-	selectNode := &ast.SelectStmt{}
-	switch stmt.(type) {
-	case *ast.SelectStmt:
-		selectNode = stmt.(*ast.SelectStmt)
-	case *ast.UnionStmt:
-		selectStmts := stmt.(*ast.UnionStmt).SelectList.Selects
-		if len(selectStmts) > 0 {
-			selectNode = selectStmts[0]
-		}
-	}
-
-	if selectNode != nil && selectNode.TableHints != nil {
-		//for simplicity, we only consider one hint
-		hint := selectNode.TableHints[0].HintName
-		if masterHint == strings.ToLower(strings.TrimSpace(hint.L)) {
+	// 通过 token 判断特定语句
+	for _, token := range tokens {
+		// handle select @@read_only default to master
+		if strings.Contains(strings.ToLower(token), "@@"+readonlyVariable) {
 			return false
 		}
+
+		// handle select @@global.read_only default to master
+		if strings.Contains(strings.ToLower(token), "@@"+globalReadonlyVariable) {
+			return false
+		}
+
+		// handle master hint
+		if strings.ToLower(token) == masterHint {
+			return false
+		}
+	}
+	// we can't delete this cause leading comments has been removed
+	lComment := strings.ToLower(strings.TrimSpace(comments.Leading))
+	if lComment == masterComment {
+		return false
 	}
 
 	return c.GetNamespace().IsRWSplit(c.user)
@@ -768,24 +758,6 @@ func isSQLNotAllowedByUser(c *SessionExecutor, stmtType int) bool {
 	}
 
 	return stmtType == parser.StmtDelete || stmtType == parser.StmtInsert || stmtType == parser.StmtUpdate
-}
-
-// 判断 sql 是否是 `select @@read_only`
-func isSQLSelectReadOnly(sql string, stmt ast.StmtNode) bool {
-	if !strings.Contains(sql, "@@") {
-		return false
-	}
-
-	if stmtSelect, ok := stmt.(*ast.SelectStmt); ok {
-		if stmtSelect.Fields != nil && 1 == len(stmtSelect.Fields.Fields) {
-			if variableExpr, ok := stmtSelect.Fields.Fields[0].Expr.(*ast.VariableExpr); ok {
-				if variableExpr.Name == readonlyVariable && variableExpr.Value == nil {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
 
 // preRewriteSQL pre rewite sql with string

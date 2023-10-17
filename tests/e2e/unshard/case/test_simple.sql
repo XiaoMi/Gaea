@@ -681,3 +681,11 @@ SELECT COALESCE(col1,'ALL') AS coalesced_col1, MAX(col2) AS max_col2 FROM t GROU
 select col1 from t1 group by col1 order by null;
 select col1 from t1 group by col1 order by 1;
 
+# simple function
+## DIV
+SELECT 5 DIV 2, -5 DIV 2, 5 DIV -2, -5 DIV -2;
+
+## other
+SELECT INSERT('Quadratic', 3, 4, 'What');
+SELECT CHAR(65);
+

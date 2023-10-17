@@ -972,6 +972,10 @@ func (s *StatisticManager) recordBackendSQLTiming(namespace string, operation st
 	operationStatsKey := []string{s.clusterName, namespace, operation}
 	s.backendSQLTimings.Record(operationStatsKey, startTime)
 
+	if s.SQLResponsePercentile[namespace] == nil {
+		log.Warn("ns %s not in SQLResponsePercentile", namespace)
+		return
+	}
 	if !s.SQLResponsePercentile[namespace].sqlExecTimeRecordSwitch {
 		return
 	}

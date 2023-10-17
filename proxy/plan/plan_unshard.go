@@ -16,6 +16,8 @@ package plan
 
 import (
 	"fmt"
+	"github.com/XiaoMi/Gaea/parser"
+	"github.com/XiaoMi/Gaea/proxy/router"
 	"strings"
 
 	"github.com/XiaoMi/Gaea/mysql"
@@ -80,6 +82,23 @@ func CreateUnshardPlan(stmt ast.StmtNode, phyDBs map[string]string, db string, t
 	}
 	p.sql = rsql
 	return p, nil
+}
+
+// PreCreateUnshardPlan constructor of UnshardPlan
+// if db not in phyDBs, return false
+// if db is empty, like `select user()` or `select * from t`, will not return true and use session db cause error may return from backend mysql
+func PreCreateUnshardPlan(sql string, phyDBs map[string]string, db string) (*UnshardPlan, error) {
+	if phyDB, ok := phyDBs[db]; ok {
+		if db != phyDB {
+			return nil, fmt.Errorf("db name not match, db: %s, phyDB: %s", db, phyDB)
+		}
+	}
+
+	return &UnshardPlan{
+		db:     db,
+		phyDBs: phyDBs,
+		sql:    sql,
+	}, nil
 }
 
 func rewriteUnshardTableName(phyDBs map[string]string, tableNames []*ast.TableName) {
@@ -153,4 +172,77 @@ func createLastInsertIDResult(lastInsertID uint64) *mysql.Result {
 	}
 
 	return ret
+}
+
+func CheckUnshardBase(tokenId int, tokens []string, rt *router.Router, db string) (string, bool) {
+	ruleDB := db
+	tokensLen := len(tokens)
+	for i := 0; i < tokensLen; i++ {
+		if strings.ToLower(tokens[i]) != mysql.ParseTokenIdStrMap[tokenId] {
+			continue
+		}
+		if i+1 >= tokensLen {
+			continue
+		}
+		// select: select col1 from db.t where...
+		// delete: delete from db.t where...
+		dbName, tableName := parser.GetDBTable(tokens[i+1])
+		//if the token[i+1] like this: db.test_shard_hash
+		if dbName != "" {
+			ruleDB = dbName
+		}
+		// if table in shard rule, is shard plan
+		if rt.GetRule(ruleDB, tableName) != rt.GetDefaultRule() {
+			return ruleDB, false
+		}
+	}
+	return ruleDB, true
+}
+
+func CheckUnshardInsert(tokens []string, rt *router.Router, db string) (string, bool) {
+	ruleDB := db
+	tokensLen := len(tokens)
+	for i := 0; i < tokensLen; i++ {
+		if strings.ToLower(tokens[i]) != mysql.ParseTokenIdStrMap[mysql.TkIdInsert] {
+			continue
+		}
+		if i+1 >= tokensLen {
+			continue
+		}
+		// insert: insert into db.t(col1) values...
+		// replace: replace into db.t(col1) values...
+		dbName, tableName := parser.GetInsertDBTable(tokens[i+1])
+		//if the token[i+1] like this: db.test_shard_hash
+		if dbName != "" {
+			ruleDB = dbName
+		}
+		// if table in shard rule, is shard plan
+		if rt.GetRule(ruleDB, tableName) != rt.GetDefaultRule() {
+			return ruleDB, false
+		}
+	}
+	return ruleDB, true
+}
+
+func CheckUnshardUpdate(tokens []string, rt *router.Router, db string) (string, bool) {
+	ruleDB := db
+	tokensLen := len(tokens)
+	for i := 1; i < tokensLen; i++ {
+		if strings.ToLower(tokens[i]) != mysql.ParseTokenIdStrMap[mysql.TkIdUpdate] {
+			continue
+		}
+		if i+1 >= tokensLen {
+			continue
+		}
+		// update: update t set a=1 where ...
+		dbName, tableName := parser.GetDBTable(tokens[i-1])
+		if dbName != "" {
+			ruleDB = dbName
+		}
+		// if table in shard rule, is shard plan
+		if rt.GetRule(ruleDB, tableName) != rt.GetDefaultRule() {
+			return ruleDB, false
+		}
+	}
+	return ruleDB, true
 }

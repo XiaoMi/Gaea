@@ -58,6 +58,7 @@ func TestOpen(t *testing.T) {
 	lastID.Set(0)
 	count.Set(0)
 	p, _ := NewResourcePool(PoolFactory, 6, 6, time.Second)
+	// TODO: Test dynamic pool
 	p.SetDynamic(false)
 	p.ScaleCapacity(5)
 	var resources [10]Resource
@@ -80,12 +81,12 @@ func TestOpen(t *testing.T) {
 		}
 
 		// Since all connection will be connected at start and `PoolFactory` has been called 6 times
-		if lastID.Get() != 6 {
+		if lastID.Get() != int64(i+1) {
 			t.Errorf("Expecting %d, received %d", 6, lastID.Get())
 		}
 
 		// All connection will be connected at start, so the count is current capacity = 6 -1 = 5
-		if count.Get() != 5 {
+		if count.Get() != int64(i+1) {
 			t.Errorf("Expecting %d, received %d", 5, count.Get())
 		}
 	}
@@ -117,7 +118,7 @@ func TestOpen(t *testing.T) {
 	if p.WaitTime() == 0 {
 		t.Errorf("Expecting non-zero")
 	}
-	if lastID.Get() != 6 {
+	if lastID.Get() != 5 {
 		t.Errorf("Expecting 5, received %d", lastID.Get())
 	}
 
@@ -145,8 +146,8 @@ func TestOpen(t *testing.T) {
 		t.Errorf("Expecting 5, received %d", count.Get())
 	}
 	// the last values is 6 and since close resource at line 129 then call p.Get() 5 times, and one of five need connect
-	if lastID.Get() != 7 {
-		t.Errorf("Expecting 7, received %d", lastID.Get())
+	if lastID.Get() != 6 {
+		t.Errorf("Expecting 6, received %d", lastID.Get())
 	}
 
 	// ScaleCapacity
@@ -154,7 +155,7 @@ func TestOpen(t *testing.T) {
 	if count.Get() != 3 {
 		t.Errorf("Expecting 3, received %d", count.Get())
 	}
-	if lastID.Get() != 7 {
+	if lastID.Get() != 6 {
 		t.Errorf("Expecting 6, received %d", lastID.Get())
 	}
 	if p.Capacity() != 3 {
@@ -183,7 +184,7 @@ func TestOpen(t *testing.T) {
 	if count.Get() != 6 {
 		t.Errorf("Expecting 5, received %d", count.Get())
 	}
-	if lastID.Get() != 10 {
+	if lastID.Get() != 9 {
 		t.Errorf("Expecting 9, received %d", lastID.Get())
 	}
 
@@ -233,20 +234,11 @@ func TestOpenDynamic(t *testing.T) {
 			t.Errorf("expecting 0, received %d", p.WaitTime())
 		}
 
-		if i < 5 {
-			if lastID.Get() != 6 {
-				t.Errorf("Expecting %d, received %d", i+1, lastID.Get())
-			}
-			if count.Get() != 5 {
-				t.Errorf("Expecting %d, received %d", i+1, count.Get())
-			}
-		} else {
-			if lastID.Get() != int64(i+2) {
-				t.Errorf("Expecting %d, received %d", i+2, lastID.Get())
-			}
-			if count.Get() != int64(i+1) {
-				t.Errorf("Expecting %d, received %d", i+1, count.Get())
-			}
+		if lastID.Get() != int64(i+1) {
+			t.Errorf("Expecting %d, received %d", i+1, lastID.Get())
+		}
+		if count.Get() != int64(i+1) {
+			t.Errorf("Expecting %d, received %d", i+1, count.Get())
 		}
 	}
 
@@ -277,7 +269,7 @@ func TestOpenDynamic(t *testing.T) {
 	if p.WaitTime() == 0 {
 		t.Errorf("Expecting non-zero")
 	}
-	if lastID.Get() != 11 {
+	if lastID.Get() != 10 {
 		t.Errorf("Expecting 11, received %d", lastID.Get())
 	}
 
@@ -304,7 +296,7 @@ func TestOpenDynamic(t *testing.T) {
 	if count.Get() != 9 {
 		t.Errorf("Expecting 9, received %d", count.Get())
 	}
-	if lastID.Get() != 11 {
+	if lastID.Get() != 10 {
 		t.Errorf("Expecting 10, received %d", lastID.Get())
 	}
 }
