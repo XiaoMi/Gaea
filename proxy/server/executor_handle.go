@@ -71,6 +71,7 @@ func (se *SessionExecutor) handleQuery(sql string) (r *mysql.Result, err error) 
 	}
 
 	startTime := time.Now()
+	// TODO: 统一使用 token 处理
 	stmtType := parser.Preview(sql)
 	reqCtx.Set(util.StmtType, stmtType)
 
@@ -129,7 +130,7 @@ func (se *SessionExecutor) doMultiStmts(reqCtx *util.RequestContext, sql string)
 }
 
 func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*mysql.Result, error) {
-	stmtType := reqCtx.Get("stmtType").(int)
+	stmtType := reqCtx.Get(util.StmtType).(int)
 
 	if isSQLNotAllowedByUser(se, stmtType) {
 		return nil, fmt.Errorf("write DML is now allowed by read user")
@@ -140,20 +141,25 @@ func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*my
 	}
 
 	db := se.db
-	trimmedSql, comments := extractPrefixCommentsAndRewrite(sql, se.session.proxy.ServerVersion)
-
-	hintPlan, err := checkMyCatHintPlan(se, db, comments)
-	// get MyCat hint plan error,will only log
-	if err != nil {
-		_ = log.Notice("check MyCat hint plan err:%s", err)
+	if se.session == nil {
+		return nil, fmt.Errorf("session is nil")
 	}
 
-	p, stmt, err := se.getPlan(se.GetNamespace(), db, trimmedSql, hintPlan)
+	//TODO: 获取 token 没有处理 `/* !mycat:sql=` hint，所以需要在这里处理下
+	trimmedSql, comments := extractPrefixCommentsAndRewrite(sql, se.session.proxy.ServerVersion)
+
+	hintPlan, err := checkMyCatHintPlan(reqCtx, se, db, comments)
+	// get MyCat hint plan error,will only log
+	if err != nil {
+		log.Notice("check MyCat hint plan err:%s", err)
+	}
+
+	p, err := se.getPlan(reqCtx, se.GetNamespace(), db, trimmedSql, hintPlan)
 	if err != nil {
 		return nil, fmt.Errorf("get plan error, db: %s, origin sql: %s, trimmedSql: %s, err: %v", db, sql, trimmedSql, err)
 	}
 
-	if canExecuteFromSlave(se, trimmedSql, stmt, comments) {
+	if canExecuteFromSlave(reqCtx, se, trimmedSql, comments) {
 		reqCtx.Set(util.FromSlave, 1)
 	}
 
@@ -169,19 +175,20 @@ func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*my
 	return r, nil
 }
 
-func checkMyCatHintPlan(se *SessionExecutor, db string, comments parser.MarginComments) (plan.Plan, error) {
-	if strings.HasPrefix(strings.TrimSpace(comments.Trailing), mycatHint) {
-		hintSQL := getMyCatHintSQL(comments.Trailing)
-		if hintSQL == "" {
-			return nil, fmt.Errorf("get nil hintSQL.comments:%+v", comments)
-		}
-		hintPlan, _, err := se.getPlan(se.GetNamespace(), db, hintSQL, nil)
-		if err != nil {
-			return nil, fmt.Errorf("get MyCat hintPlan error")
-		}
-		return hintPlan, nil
+func checkMyCatHintPlan(reqCtx *util.RequestContext, se *SessionExecutor, db string, comments parser.MarginComments) (plan.Plan, error) {
+	if !strings.HasPrefix(strings.TrimSpace(comments.Trailing), mycatHint) {
+		return nil, nil
 	}
-	return nil, nil
+
+	hintSQL := getMyCatHintSQL(comments.Trailing)
+	if hintSQL == "" {
+		return nil, fmt.Errorf("get nil hintSQL.comments:%+v", comments)
+	}
+	hintPlan, err := se.getPlan(reqCtx, se.GetNamespace(), db, hintSQL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("get MyCat hintPlan error")
+	}
+	return hintPlan, nil
 }
 
 // 处理逻辑较简单的SQL, 不走执行计划部分
@@ -224,21 +231,77 @@ func (se *SessionExecutor) handleUseDB(dbName string) error {
 	return mysql.NewDefaultError(mysql.ErrNoDB)
 }
 
-func (se *SessionExecutor) getPlan(ns *Namespace, db string, sql string, hintPlan plan.Plan) (plan.Plan, ast.StmtNode, error) {
+func (se *SessionExecutor) getPlan(reqCtx *util.RequestContext, ns *Namespace, db string, sql string, hintPlan plan.Plan) (plan.Plan, error) {
+	p, isUnshardPlan := se.preBuildUnshardPlan(reqCtx, db, sql)
+	if isUnshardPlan {
+		return p, nil
+	}
 	n, err := se.Parse(sql)
 	if err != nil {
-		return nil, nil, fmt.Errorf("parse sql error, sql: %s, err: %v", sql, err)
+		return nil, fmt.Errorf("parse sql error, sql: %s, err: %v", sql, err)
 	}
 
-	rt := ns.GetRouter()
-	seq := ns.GetSequences()
-	phyDBs := ns.GetPhysicalDBs()
-	p, err := plan.BuildPlan(n, phyDBs, db, sql, rt, seq, hintPlan)
+	p, err = plan.BuildPlan(n, ns.GetPhysicalDBs(), db, sql, ns.GetRouter(), ns.GetSequences(), hintPlan)
 	if err != nil {
-		return nil, nil, fmt.Errorf("create select plan error: %v", err)
+		return nil, fmt.Errorf("build plan error: %v", err)
 	}
 
-	return p, n, nil
+	return p, nil
+}
+
+// preBuildUnshardPlan pre-build unshard plan by shard rules or tokens
+func (se *SessionExecutor) preBuildUnshardPlan(reqCtx *util.RequestContext, db string, sql string) (plan.Plan, bool) {
+	rt := se.GetNamespace().GetRouter()
+	phyDBs := se.GetNamespace().GetPhysicalDBs()
+
+	tokens := parser.Tokenize(sql)
+	if len(tokens) == 0 {
+		return nil, false
+	}
+
+	// to be used to check master hint
+	reqCtx.Set(util.Tokens, tokens)
+
+	// preCheck unshard sql
+	// 1. no shard rules return unshard plan directly
+	if len(rt.GetAllRules()) == 0 {
+		p, err := plan.PreCreateUnshardPlan(sql, phyDBs, db)
+		if err == nil {
+			return p, true
+		}
+		// if err occur, will further check sql
+		log.Notice("pre create unshard plan with no sharding rules,will further check sql, ns:%s, sql: %s, err: %v", se.GetNamespace().GetName(), sql, err)
+	}
+
+	// 2. check sql, if all tables in sql are unshard, return unshard plan
+	ruleDB := db
+	isUnshardPlan := true
+	tokenId, ok := mysql.ParseTokenMap[strings.ToLower(tokens[0])]
+	if !ok {
+		return nil, false
+	}
+
+	// TODO: deal with more sql type and optimize
+	switch tokenId {
+	case mysql.TkIdSelect, mysql.TkIdDelete:
+		ruleDB, isUnshardPlan = plan.CheckUnshardBase(tokenId, tokens, rt, db)
+	case mysql.TkIdReplace, mysql.TkIdInsert:
+		ruleDB, isUnshardPlan = plan.CheckUnshardInsert(tokens, rt, db)
+	case mysql.TkIdUpdate:
+		ruleDB, isUnshardPlan = plan.CheckUnshardUpdate(tokens, rt, db)
+	default:
+		return nil, false
+	}
+
+	if isUnshardPlan {
+		// check databases and tables in sql
+		p, err := plan.PreCreateUnshardPlan(sql, phyDBs, ruleDB)
+		if err == nil {
+			return p, true
+		}
+	}
+
+	return nil, false
 }
 
 func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string, stmt *ast.ShowStmt) (*mysql.Result, error) {

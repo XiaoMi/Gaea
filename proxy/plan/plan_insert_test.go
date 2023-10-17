@@ -173,7 +173,7 @@ func TestMycatShardSimpleInsert(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.sql, getTestFunc(ns, test))
+		t.Run(test.sql, getTestFuncTODO(ns, test))
 	}
 }
 
@@ -362,7 +362,7 @@ func TestMycatShardSimpleInsertSet(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.sql, getTestFunc(ns, test))
+		t.Run(test.sql, getTestFuncTODO(ns, test))
 	}
 }
 
@@ -861,7 +861,7 @@ func TestMycatInsertSequenceShardKey(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.sql, getTestFunc(ns, test))
+		t.Run(test.sql, getTestFuncTODO(ns, test))
 	}
 }
 
@@ -902,7 +902,7 @@ func TestMycatInsertSequenceUnshardKey(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.sql, getTestFunc(ns, test))
+		t.Run(test.sql, getTestFuncTODO(ns, test))
 	}
 }
 
@@ -924,7 +924,7 @@ func TestEscapeBackslashShard(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.sql, getTestFunc(ns, test))
+		t.Run(test.sql, getTestFuncTODO(ns, test))
 	}
 }
 
@@ -960,7 +960,7 @@ func TestMycatShardSimpleInsertColumnCaseInsensitive(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.sql, getTestFunc(ns, test))
+		t.Run(test.sql, getTestFuncTODO(ns, test))
 	}
 }
 

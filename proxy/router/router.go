@@ -126,6 +126,11 @@ func (r *Router) GetRule(db, table string) Rule {
 	}
 }
 
+// GetAllRules return all shard rules
+func (r *Router) GetAllRules() map[string]map[string]Rule {
+	return r.rules
+}
+
 func (r *Router) GetDefaultRule() Rule {
 	return r.defaultRule
 }

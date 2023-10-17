@@ -35,6 +35,9 @@ func f() {
 }
 
 func TestWait(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skip TestWait in short mode")
+	}
 	atomic.StoreInt32(&numcalls, 0)
 	timer := NewTimer(quarter)
 	timer.Start(f)
@@ -54,6 +57,9 @@ func TestWait(t *testing.T) {
 }
 
 func TestReset(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skip TestWait in short mode")
+	}
 	atomic.StoreInt32(&numcalls, 0)
 	timer := NewTimer(half)
 	timer.Start(f)
@@ -70,6 +76,9 @@ func TestReset(t *testing.T) {
 }
 
 func TestIndefinite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skip TestIndefinite in short mode")
+	}
 	atomic.StoreInt32(&numcalls, 0)
 	timer := NewTimer(0)
 	timer.Start(f)

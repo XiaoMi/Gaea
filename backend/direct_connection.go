@@ -421,7 +421,7 @@ func (dc *DirectConnection) UseDB(dbName string) error {
 	if r, err := dc.readPacket(); err != nil {
 		return err
 	} else if !mysql.IsOKPacket(r) {
-		return errors.New("dc connection use db failed")
+		return fmt.Errorf("dc connection use db(%s) failed", dbName)
 	}
 
 	dc.db = dbName

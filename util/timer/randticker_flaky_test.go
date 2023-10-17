@@ -27,6 +27,9 @@ const (
 )
 
 func TestTick(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skip TestTick in short mode")
+	}
 	tkr := NewRandTicker(testDuration, testVariance)
 	for i := 0; i < 5; i++ {
 		start := time.Now()
@@ -45,6 +48,9 @@ func TestTick(t *testing.T) {
 }
 
 func TestTickSkip(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skip TestTickSkip in short mode")
+	}
 	tkr := NewRandTicker(10*time.Millisecond, 1*time.Millisecond)
 	time.Sleep(35 * time.Millisecond)
 	end := <-tkr.C

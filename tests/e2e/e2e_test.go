@@ -14,6 +14,9 @@ import (
 )
 
 func TestE2E(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode.")
+	}
 	gomega.RegisterFailHandler(ginkgo.Fail)
 	ginkgo.RunSpecs(t, "gaea E2E Testing")
 }

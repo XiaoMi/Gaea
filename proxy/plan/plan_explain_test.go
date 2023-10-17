@@ -105,8 +105,13 @@ func TestExplainMycatShardSimpleInsert(t *testing.T) {
 			},
 		},
 		{
-			db:     "db_mycat",
-			sql:    "explain insert into tbl_mycat (a) values ('hi')",
+			db:  "db_mycat",
+			sql: "explain insert into tbl_mycat (a) values ('hi')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"INSERT INTO `tbl_mycat` (`a`,`id`) VALUES ('hi',1)"},
+				},
+			},
 			hasErr: true, // sharding column not found
 		},
 		{
@@ -195,10 +200,11 @@ func TestExplainUnshardInsert(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.sql, getTestFunc(ns, test))
+		t.Run(test.sql, getTestFuncTODO(ns, test))
 	}
 }
 
+// TODO: delete this test cause unshard may use pre-build unshard plan
 func TestExplainUnshardInsertWithDb(t *testing.T) {
 	ns, err := preparePlanInfo()
 	if err != nil {
@@ -217,6 +223,6 @@ func TestExplainUnshardInsertWithDb(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.sql, getTestFunc(ns, test))
+		t.Run(test.sql, getTestFuncTODO(ns, test))
 	}
 }

@@ -120,6 +120,9 @@ func checkResult(proxyResult, mysqlresult *sql.Rows) error {
 
 // Test the proxy
 func TestIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skip integration test")
+	}
 	// the following code can be refator to a function
 	// maybe we should encode the username and password
 	proxyUrl := "IT_USER:IT_PASSWORD@tcp(127.0.0.1:13306)/sbtest1"

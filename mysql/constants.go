@@ -209,6 +209,70 @@ const (
 	MaxBlobWidth            = 16777216
 )
 
+const (
+	TkStrFrom = "from"
+	TkStrInto = "into"
+	TkStrSet  = "set"
+)
+
+var (
+	TkIdInsert   = 1
+	TkIdUpdate   = 2
+	TkIdDelete   = 3
+	TkIdReplace  = 4
+	TkIdSet      = 5
+	TkIdBegin    = 6
+	TkIdCommit   = 7
+	TkIdRollback = 8
+	TkIdAdmin    = 9
+	TkIdUse      = 10
+
+	TkIdSelect      = 11
+	TkIdStart       = 12
+	TkIdTransaction = 13
+	TkIdShow        = 14
+	TkIdPrepare     = 15
+	TkIdKill        = 16
+	TkIdCreate      = 17
+	TkIdTemporary   = 18
+	TkIdTruncate    = 19
+	TkIdLock        = 20
+	TkIdFlush       = 21
+	TkIdLoad        = 22
+
+	ParseTokenMap = map[string]int{
+		"insert":      TkIdInsert,
+		"update":      TkIdUpdate,
+		"delete":      TkIdDelete,
+		"replace":     TkIdReplace,
+		"set":         TkIdSet,
+		"begin":       TkIdBegin,
+		"commit":      TkIdCommit,
+		"rollback":    TkIdRollback,
+		"admin":       TkIdAdmin,
+		"select":      TkIdSelect,
+		"use":         TkIdUse,
+		"start":       TkIdStart,
+		"transaction": TkIdTransaction,
+		"show":        TkIdShow,
+		"prepare":     TkIdPrepare,
+		"kill":        TkIdKill,
+		"create":      TkIdCreate,
+		"temporary":   TkIdTemporary,
+		"truncate":    TkIdTruncate,
+		"lock":        TkIdLock,
+		"flush":       TkIdFlush,
+		"load":        TkIdLoad,
+	}
+	ParseTokenIdStrMap = map[int]string{
+		TkIdSelect:  TkStrFrom,
+		TkIdDelete:  TkStrFrom,
+		TkIdInsert:  TkStrInto,
+		TkIdReplace: TkStrInto,
+		TkIdUpdate:  TkStrSet,
+	}
+)
+
 // SQLMode is the type for MySQL sql_mode.
 // See https://dev.mysql.com/doc/refman/5.7/en/sql-mode.html
 type SQLMode int

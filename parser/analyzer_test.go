@@ -1,6 +1,9 @@
 package parser
 
-import "testing"
+import (
+	"github.com/stretchr/testify/assert"
+	"testing"
+)
 
 func TestSplitStatementToPieces(t *testing.T) {
 	type testCase struct {
@@ -44,6 +47,124 @@ func TestSplitStatementToPieces(t *testing.T) {
 
 }
 
+func TestTokenize(t *testing.T) {
+	tests := []struct {
+		name string
+		sql  string
+		want []string
+	}{
+		{
+			name: "test simple",
+			sql:  "select 1",
+			want: []string{"select", "1"},
+		},
+		{
+			name: "test simple with space",
+			sql:  " select *         from t ",
+			want: []string{"select", "*", "from", "t"},
+		},
+		{
+			name: "test simple with semicolon",
+			sql:  "select * from t;",
+			want: []string{"select", "*", "from", "t;"},
+		},
+		{
+			name: "test simple with semicolon and db name",
+			sql:  "select a,b from A.t",
+			want: []string{"select", "a", "b", "from", "A.t"},
+		},
+		{
+			name: "test select subquery",
+			sql:  "select * from (select * from t1);",
+			want: []string{"select", "*", "from", "(select", "*", "from", "t1);"},
+		},
+		{
+			name: "test select subquery 2",
+			sql:  "select a.* from (select * from t1 where id>1000) as a where a.id<2000;",
+			want: []string{"select", "a.*", "from", "(select", "*", "from", "t1", "where", "id>1000)", "as", "a", "where", "a.id<2000;"},
+		},
+		{
+			name: "test simple with tab",
+			sql: "select a	b from A.t",
+			want: []string{"select", "a", "b", "from", "A.t"},
+		},
+		{
+			name: "test simple with comment in sql",
+			sql:  "select /*master*/ a,b from A.t",
+			want: []string{"select", "*master*", "a", "b", "from", "A.t"},
+		},
+		{
+			name: "test select master hint leading",
+			sql:  "/*master*/ select a,b from A.t",
+			want: []string{"select", "a", "b", "from", "A.t"},
+		},
+		{
+			name: "test select master hint training",
+			sql:  "select a,b from t /*master*/",
+			want: []string{"select", "a", "b", "from", "t", "*master*"},
+		},
+		{
+			name: "test mycat comment in sql",
+			sql:  "select a,b from A.t /* !mycat:sql=select 1 */ ",
+			want: []string{"select", "a", "b", "from", "A.t", "*", "!mycat:sql=select", "1", "*"},
+		},
+		{
+			name: "test with comment in sql 2",
+			sql:  "select 1 -- test",
+			want: []string{"select", "1", "--", "test"},
+		},
+		{
+			name: "test with comment in multi line sql",
+			sql: `-- aaa
+			-- bbb
+			ccc
+			-- ddd
+			eee`,
+			want: []string{"ccc", "eee"},
+		},
+		{
+			name: "test insert",
+			sql:  "insert into tbl_unshard(col1) (select col1 from tbl_unshard_1);",
+			want: []string{"insert", "into", "tbl_unshard(col1)", "(select", "col1", "from", "tbl_unshard_1);"},
+		},
+		{
+			name: "test only comment",
+			sql:  `/*slave*/`,
+			want: []string{},
+		},
+		{
+			name: "test special characters new line",
+			sql:  "select * \nfrom t",
+			want: []string{"select", "*", "from", "t"},
+		},
+		{
+			name: "test special characters page Break",
+			sql:  "select * \f from t",
+			want: []string{"select", "*", "\f", "from", "t"},
+		},
+		{
+			name: "test special characters vertical tabs",
+			sql:  "select * \vfrom t",
+			want: []string{"select", "*", "\vfrom", "t"},
+		},
+		{
+			name: "test only comment",
+			sql:  "select * \u00A0from t",
+			want: []string{"select", "*", "\u00a0from", "t"},
+		},
+		{
+			name: "test only comment",
+			sql:  "select * from t\v",
+			want: []string{"select", "*", "from", "t"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equalf(t, tt.want, Tokenize(tt.sql), "Tokenize(%v)", tt.sql)
+		})
+	}
+}
+
 func isEqSlice(a, b []string) bool {
 	if (a == nil) != (b == nil) {
 		return false
@@ -60,4 +181,51 @@ func isEqSlice(a, b []string) bool {
 	}
 
 	return true
+}
+
+func TestGetInsertDBTable(t *testing.T) {
+	tests := []struct {
+		name      string
+		token     string
+		wantDB    string
+		wantTable string
+	}{
+		{
+			name:      "test simple",
+			token:     "t",
+			wantDB:    "",
+			wantTable: "t",
+		},
+		{
+			name:      "test simple with db",
+			token:     "db.t",
+			wantDB:    "db",
+			wantTable: "t",
+		},
+		{
+			name:      "test simple with db and quote",
+			token:     "`db`.`t`",
+			wantDB:    "db",
+			wantTable: "t",
+		},
+		{
+			name:      "test simple with db and bracket",
+			token:     "`db`.`t`(col1,col2)",
+			wantDB:    "db",
+			wantTable: "t",
+		},
+		{
+			name:      "test simple without db and quote",
+			token:     "t(col1,col2)",
+			wantDB:    "",
+			wantTable: "t",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotDB, gotTable := GetInsertDBTable(tt.token)
+			assert.Equalf(t, tt.wantDB, gotDB, "GetInsertDBTable(%v)", tt.token)
+			assert.Equalf(t, tt.wantTable, gotTable, "GetInsertDBTable(%v)", tt.token)
+		})
+	}
 }

@@ -198,3 +198,74 @@ func SplitStatementToPieces(blob string) (pieces []string, err error) {
 	}
 	return
 }
+
+// Tokenize splits a SQL string into tokens.
+func Tokenize(s string) []string {
+	s = strings.TrimSpace(s)
+	//trim -- comments
+	if strings.HasPrefix(s, "--") {
+		lines := strings.Split(s, "\n")
+		linesNoComment := []string{}
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if !strings.HasPrefix(line, "--") {
+				linesNoComment = append(linesNoComment, line)
+			}
+		}
+		s = strings.Join(linesNoComment, "\n")
+	}
+	tokens := strings.FieldsFunc(s, IsSqlSep)
+	// remove first version comment mark
+	// TODO: 处理 mycat hint: /* !mycat:sql=select 1 from order where order_id = 1 */
+	// TODO: 处理开头的 hint如：/*master*/ select * from t
+	if strings.HasPrefix(s, "/*!") {
+		if len(tokens) > 1 {
+			return tokens[1:]
+		} else {
+			return tokens
+		}
+	} else if strings.HasPrefix(s, "/*") {
+		idx := strings.Index(s, "*/")
+		if idx > 0 {
+			tokens = strings.FieldsFunc(string(s[idx+2:]), IsSqlSep)
+		}
+	}
+	return tokens
+}
+
+func IsSqlSep(r rune) bool {
+	// '/' for separate comment '/*master*/'
+	return r == ' ' || r == ',' ||
+		r == '\t' || r == '/' ||
+		r == '\n' || r == '\r'
+}
+
+// GetDBTable get the database name from token
+func GetDBTable(token string) (string, string) {
+	if len(token) == 0 {
+		return "", ""
+	}
+
+	vec := strings.SplitN(token, ".", 2)
+	if len(vec) == 2 {
+		return strings.Trim(vec[0], "`"), strings.Trim(vec[1], "`")
+	} else {
+		return "", strings.Trim(vec[0], "`")
+	}
+}
+
+// GetInsertDBTable get the database name from token
+func GetInsertDBTable(token string) (string, string) {
+	if len(token) == 0 {
+		return "", ""
+	}
+
+	vec := strings.SplitN(token, ".", 2)
+	if len(vec) == 2 {
+		table := strings.Split(vec[1], "(")
+		return strings.Trim(vec[0], "`"), strings.Trim(table[0], "`")
+	} else {
+		table := strings.Split(vec[0], "(")
+		return "", strings.Trim(table[0], "`")
+	}
+}
