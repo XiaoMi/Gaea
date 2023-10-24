@@ -1,8 +1,8 @@
 package function
 
 import (
-	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/XiaoMi/Gaea/tests/config"
 	"github.com/XiaoMi/Gaea/tests/util"
@@ -11,72 +11,71 @@ import (
 )
 
 var _ = ginkgo.Describe("Force Read from Master", func() {
-	var err error
-	var mysqlCluster map[string]*config.SliceConn
-	var gaeaDB *sql.DB
-	var masterDB *sql.DB
+	var e2eConfig *config.E2eConfig
+	var masterSlaveCluster *config.MysqlClusterConfig
+	var db string
 	var table string
+	var startTime string
 	ginkgo.BeforeEach(func() {
-		// 注册命令空间
-		ginkgo.By("add namespace")
-		err = config.GetNamespaceRegisterManager().AddNamespace(defaultNamespace)
+		currentTime := time.Now()
+		startTime = currentTime.Format("2006-01-02 15:04:05.999")
+
+		e2eConfig = config.GetDefaultE2eConfig()
+		masterSlaveCluster = e2eConfig.MasterSlaveCluster
+		db = "db_e2e_test"
+		// 这里的数据表名最好和其他的表名不同，为了防止日志中拉取出的两条日志相同
+		table = "tbl_master_test"
+		// 解析模版
+		ns, err := masterSlaveCluster.TemplateParse(e2eConfig.FilepathJoin("e2e/function/ns/default.template"))
+		gomega.Expect(err).Should(gomega.BeNil())
+		// 注册namespace
+		err = e2eConfig.RegisterNamespaces(ns)
 		gomega.Expect(err).Should(gomega.BeNil())
 
-		ginkgo.By("register namespace")
-		err = config.GetNamespaceRegisterManager().RegisterNamespaces()
+		// 初始化数据库实例
+		mysqlConn, err := config.InitConn(masterSlaveCluster.Slices[0].UserName, masterSlaveCluster.Slices[0].Password, masterSlaveCluster.Slices[0].Master, "")
 		gomega.Expect(err).Should(gomega.BeNil())
+		defer mysqlConn.Close()
 
-		ginkgo.By("get Cluster conn ")
-		mysqlCluster, err = config.InitMysqlClusterConn(slice)
-		gomega.Expect(err).Should(gomega.BeNil())
-
-		ginkgo.By("get Gaea conn ")
-		gaeaDB, err = config.InitGaeaConn(users[0], "127.0.0.1:13306")
-		gomega.Expect(err).Should(gomega.BeNil())
-
-		if slice, ok := mysqlCluster["slice-0"]; ok {
-			gomega.Expect(len(slice.Slaves)).Should(gomega.BeNumerically(">=", 2), "Expected at least 2 slaves in slice")
-			masterDB = slice.Master
-		} else {
-			gomega.Expect(ok).Should(gomega.BeTrue(), "Expected slice-0 to be present in mysqlCluster")
+		commands := []string{
+			fmt.Sprintf("DROP DATABASE IF EXISTS %s", db),
+			fmt.Sprintf("CREATE DATABASE %s", db),
+			fmt.Sprintf("USE %s", db),
+			fmt.Sprintf("CREATE TABLE %s (id INT AUTO_INCREMENT, name VARCHAR(20), PRIMARY KEY (id))", table),
 		}
 
-		_, err = masterDB.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db))
-		gomega.Expect(err).Should(gomega.BeNil())
-
-		_, err = masterDB.Exec(fmt.Sprintf("CREATE DATABASE  %s", db))
-		gomega.Expect(err).Should(gomega.BeNil())
-
-		_, err = masterDB.Exec(fmt.Sprintf("USE  %s", db))
-		gomega.Expect(err).Should(gomega.BeNil())
-
-		table = "tbl_master_test"
-		// 创建表
-		_, err = masterDB.Exec(fmt.Sprintf("CREATE TABLE %s (id INT AUTO_INCREMENT, name VARCHAR(20), PRIMARY KEY (id))", table))
-		gomega.Expect(err).Should(gomega.BeNil())
+		for _, cmd := range commands {
+			_, err = mysqlConn.Exec(cmd)
+			gomega.Expect(err).Should(gomega.BeNil())
+		}
 		// 插入10条数据
 		for i := 0; i < 10; i++ {
-			_, err = masterDB.Exec(fmt.Sprintf("INSERT INTO %s (name) VALUES (?)", table), "nameValue")
+			_, err = mysqlConn.Exec(fmt.Sprintf("INSERT INTO %s (name) VALUES (?)", table), "nameValue")
 			gomega.Expect(err).Should(gomega.BeNil())
 		}
 
 	})
 	ginkgo.Context("When all read operations are forced to master", func() {
 		ginkgo.It("should direct read operations to master", func() {
-			sql := fmt.Sprintf("/*master*/ SELECT * FROM `%s`.`%s` WHERE `id`= 9", db, table)
-			_, err = gaeaDB.Exec(sql)
+			// 初始化gaea连接
+			gaeaConn, err := config.InitConn(e2eConfig.GaeaUser.UserName, e2eConfig.GaeaUser.Password, e2eConfig.GaeaHost, "")
 			gomega.Expect(err).Should(gomega.BeNil())
-			res, err := util.ReadLog(util.GetTestLogFileAbsPath(), sql)
+			defer gaeaConn.Close()
+			// 初始化数据库连接
+			mysqlConn, err := config.InitConn(masterSlaveCluster.Slices[0].UserName, masterSlaveCluster.Slices[0].Password, masterSlaveCluster.Slices[0].Master, "")
+			gomega.Expect(err).Should(gomega.BeNil())
+			defer mysqlConn.Close()
+			sql := fmt.Sprintf("/*master*/ SELECT * FROM `%s`.`%s` WHERE `id`= 9", db, table)
+			_, err = gaeaConn.Exec(sql)
+			gomega.Expect(err).Should(gomega.BeNil())
+			res, err := util.ReadLog(e2eConfig.FilepathJoin("cmd/logs/gaea_sql.log"), sql, startTime)
 			gomega.Expect(res).Should(gomega.HaveLen(1))
 			gomega.Expect(err).Should(gomega.BeNil())
-			gomega.Expect(res[0].BackendAddr).Should(gomega.Equal("127.0.0.1:3319"))
+			gomega.Expect(res[0].BackendAddr).Should(gomega.Equal(masterSlaveCluster.Slices[0].Master))
+
 		})
 	})
 	ginkgo.AfterEach(func() {
-		ginkgo.By("begin clean database.")
-		masterDB.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", db))
-		config.MysqlClusterConnClose(mysqlCluster)
-		// 删除注册
-		config.GetNamespaceRegisterManager().UnRegisterNamespaces()
+		e2eConfig.NamespaceManager.UnRegisterNamespaces()
 	})
 })

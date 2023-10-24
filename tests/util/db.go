@@ -2,7 +2,6 @@ package util
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -12,9 +11,11 @@ import (
 	"time"
 
 	"github.com/XiaoMi/Gaea/parser"
-	"github.com/XiaoMi/Gaea/parser/ast"
 )
 
+// This function does not call rows.Close()
+// so the release of resources should be managed by external code that calls this function.
+// When using this function, be sure to call rows.Close() externally to avoid leaking database resources.
 func GetDataFromRows(rows *sql.Rows) ([][]string, error) {
 	pr := func(t interface{}) (r string) {
 		r = "\\N"
@@ -59,7 +60,7 @@ func GetDataFromRows(rows *sql.Rows) ([][]string, error) {
 		for i := 0; i < n; i++ {
 			col := pr(field[i])
 			if col == "\\N" {
-				col = "NULL" // 或者你期望的其他值
+				col = "NULL" // 或者期望的其他值
 			}
 			row = append(row, col)
 		}
@@ -123,58 +124,50 @@ func GetDataFromRow(row *sql.Row, numCols int) ([]string, error) {
 	return result, nil
 }
 
+func GetDataFromResult(result sql.Result) (int64, error) {
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return rowsAffected, nil
+}
+
+func MysqlQuery(db *sql.DB, execSql string) ([][]string, error) {
+	rows, err := db.Query(execSql)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// No rows found, but it's not an actual error, so we return nil
+			return nil, nil
+		}
+		// An error occurred while querying
+		return nil, err
+	}
+	defer rows.Close()
+	res, err := GetDataFromRows(rows)
+	if err != nil {
+		return nil, fmt.Errorf("get data from rows Error: %v", err)
+	}
+	return res, nil
+}
+
+func MysqlExec(db *sql.DB, execSql string) (int64, error) {
+	result, err := db.Exec(execSql)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// No rows affected but not an error, so return 0
+			return 0, nil
+		}
+		return -1, fmt.Errorf("sql %s Exec Error: %v", execSql, err)
+	}
+	rowsAffected, err := GetDataFromResult(result)
+	if err != nil {
+		return 0, fmt.Errorf("get data from to result Error: %v", err)
+	}
+	return rowsAffected, nil
+}
+
 func IsSlice(i interface{}) bool {
 	return reflect.TypeOf(i).Kind() == reflect.Slice
-}
-
-func CreateDatabaseAndTables(db *sql.DB, databaseName string, tables []string) error {
-	// 删除数据库 (如果存在)
-	sql := fmt.Sprintf("DROP DATABASE IF EXISTS %s", databaseName)
-	_, err := db.Exec(sql)
-	if err != nil {
-		return fmt.Errorf("DROP DATABASE Error: %w", err)
-	}
-
-	// 创建数据库
-	sql = fmt.Sprintf("CREATE DATABASE %s", databaseName)
-	_, err = db.Exec(sql)
-	if err != nil {
-		return fmt.Errorf("CREATE DATABASE Error: %w", err)
-	}
-
-	// 使用数据库
-	sql = fmt.Sprintf("USE %s", databaseName)
-	_, err = db.Exec(sql)
-	if err != nil {
-		return fmt.Errorf("USE DATABASE Error: %w", err)
-	}
-
-	// 创建表
-	for _, v := range tables {
-		_, err = db.Exec(v)
-		if err != nil {
-			return fmt.Errorf("CREATE Table Error: %w", err)
-		}
-	}
-	return nil
-}
-
-func InsertData(db *sql.DB, databaseName string, tableName string, numRows int) error {
-	// 准备插入数据的 SQL 语句
-	stmt, err := db.Prepare(fmt.Sprintf("INSERT INTO %s.%s (name) VALUES (?)", databaseName, tableName))
-	if err != nil {
-		return fmt.Errorf("PREPARE INSERT Error: %w", err)
-	}
-	defer stmt.Close()
-
-	// 循环插入指定数量的数据
-	for i := 1; i <= numRows; i++ {
-		_, err = stmt.Exec(fmt.Sprintf("John%d", i))
-		if err != nil {
-			return fmt.Errorf("EXEC INSERT Error: %w", err)
-		}
-	}
-	return nil
 }
 
 func DeleteRow(db *sql.DB, databaseName string, tableName string, id int) error {
@@ -334,44 +327,6 @@ func ExecuteTransactionAndReturnId(db *sql.DB, sql string, args ...interface{}) 
 	return id, nil
 }
 
-func DBExec(db *sql.DB, execSql string, expectType string) (interface{}, error) {
-	switch expectType {
-	case "Query":
-		rows, err := db.Query(execSql)
-		if err == sql.ErrNoRows {
-			return rows, nil
-		}
-		if err != nil {
-			return nil, fmt.Errorf("SQL: %s, ExpectType: %s, Error: %v", execSql, expectType, err)
-		}
-		return rows, nil
-	case "Exec":
-		result, err := db.Exec(execSql)
-		if err == sql.ErrNoRows {
-			return result, nil
-		}
-		if err != nil {
-			return nil, fmt.Errorf("SQL: %s, ExpectType: %s, Error: %v", execSql, expectType, err)
-		}
-		return result, nil
-	default:
-		return nil, fmt.Errorf("SQL: %s, ExpectType: %s, Error: unsupported expect type", execSql, expectType)
-	}
-}
-
-// Define an enum-like type for SQL operation methods
-type SQLOperation string
-
-var ErrSkippedSQLOperation = errors.New("skipped SQL operation")
-var ErrUnsupportedSQLOperation = errors.New("unsupported SQL operation type")
-
-const (
-	Query   SQLOperation = "Query"
-	Exec    SQLOperation = "Exec"
-	UnKnown SQLOperation = "UnKnown"
-	Comment SQLOperation = "Comment"
-)
-
 func GetSqlFromFile(path string) ([]string, error) {
 	bys, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -381,7 +336,7 @@ func GetSqlFromFile(path string) ([]string, error) {
 	sqlString := strings.Split(string(bys), "\n")
 	for _, sql := range sqlString {
 		trimSql := strings.TrimSpace(sql)
-		if strings.HasPrefix(trimSql, "//") || strings.HasPrefix(trimSql, "#") || trimSql == "" || strings.HasPrefix(trimSql, "-- ") {
+		if strings.HasPrefix(trimSql, "//") || strings.HasPrefix(trimSql, "#") || trimSql == "" || strings.HasPrefix(trimSql, "-- ") || strings.HasPrefix(trimSql, "--") {
 			continue
 		}
 		res = append(res, sql)
@@ -389,91 +344,36 @@ func GetSqlFromFile(path string) ([]string, error) {
 	return res, nil
 }
 
-func GetSqlType(sqlString string) (SQLOperation, error) {
+func VerifySqlParsable(sqlString string) error {
 	p := parser.New()
-	stmt, _, err := p.Parse(sqlString, "", "")
+	_, _, err := p.Parse(sqlString, "", "")
 	if err != nil {
-		return UnKnown, err
+		return fmt.Errorf("sql parsing error: %v, SQL: %s", err, sqlString)
 	}
-	switch stmt[0].(type) {
-	case *ast.SelectStmt, *ast.UnionStmt, *ast.ShowStmt, *ast.ExplainStmt:
-		return Query, nil
-	case *ast.InsertStmt:
-		return Exec, nil
-	case *ast.UpdateStmt:
-		return Exec, nil
-	case *ast.DeleteStmt:
-		return Exec, nil
-	case *ast.CreateDatabaseStmt, *ast.CreateTableStmt:
-		return Exec, nil
-	case *ast.AlterTableStmt:
-		return Exec, nil
-	case *ast.DropDatabaseStmt, *ast.DropTableStmt:
-		return Exec, nil
-	case *ast.UseStmt:
-		return Exec, nil
-	default:
-		return UnKnown, nil
-	}
+	return nil
 }
 
 func OutPutResult(sql string, outPutFile string) error {
+	// 尝试打开或创建文件
 	file, err := os.OpenFile(outPutFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open or create file %s: %v", outPutFile, err)
 	}
 	defer file.Close()
+
+	// 将SQL语句写入文件
 	_, err = file.WriteString(sql + "\n")
-	return err
-}
-
-func ExecuteSQL(db *sql.DB, operationType SQLOperation, sqlStatement string) (interface{}, error) {
-	switch operationType {
-	case Query:
-		return DBExec(db, sqlStatement, "Query")
-	case Exec:
-		return DBExec(db, sqlStatement, "Exec")
-	case UnKnown:
-		return nil, ErrSkippedSQLOperation
-	default:
-		return nil, nil
+	if err != nil {
+		return fmt.Errorf("failed to write to file: %v", err)
 	}
+
+	return nil
 }
 
-func CompareDBExecResults(result1 interface{}, result2 interface{}) (bool, error) {
-	switch r1 := result1.(type) {
-	case *sql.Rows:
-		r2, ok := result2.(*sql.Rows)
-		if !ok {
-			return false, errors.New("mismatched types for results")
-		}
-		defer r1.Close()
-		defer r2.Close()
-		t1, err := GetDataFromRows(r1)
-		if err != nil {
-			return false, err
-		}
-		t2, err := GetDataFromRows(r2)
-		if err != nil {
-			return false, err
-		}
-		return reflect.DeepEqual(t1, t2), nil
-	case sql.Result:
-		r2, ok := result2.(sql.Result)
-		if !ok {
-			return false, errors.New("mismatched types for results")
-		}
-		rowsAffected1, err1 := r1.RowsAffected()
-		if err1 != nil {
-			return false, err1
-		}
-		rowsAffected2, err2 := r2.RowsAffected()
-		if err2 != nil {
-			return false, err2
-		}
-		// Compares affected rows
-		return rowsAffected1 == rowsAffected2, nil
-	default:
-		return false, errors.New("unsupported result type")
+func Compare(res1 [][]string, res2 [][]string) (bool, error) {
+	if reflect.DeepEqual(res1, res2) {
+		return true, nil
+	} else {
+		return false, fmt.Errorf("sql.Result mismatched types for results. res1: %v, res2: %v", res1, res2)
 	}
 }

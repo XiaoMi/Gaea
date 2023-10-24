@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/XiaoMi/Gaea/tests/config"
 	_ "github.com/XiaoMi/Gaea/tests/e2e/dml"
 	_ "github.com/XiaoMi/Gaea/tests/e2e/function"
 	_ "github.com/XiaoMi/Gaea/tests/e2e/shard"
@@ -22,15 +23,15 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = ginkgo.BeforeSuite(func() {
-	ginkgo.By("start remove old logs.")
-	err := util.RemoveLog(util.GetTestLogDirectoryAbsPath())
-	gomega.Expect(err).Should(gomega.BeNil())
-	ginkgo.By("remove old logs success.")
 
 	ginkgo.By("start remove sql test result.")
-	err = util.RemoveLog(util.GetTestResultFileAbsPath())
+	err := util.RemoveLog(config.GetDefaultE2eConfig().FilepathJoin("e2e/shard/result"))
 	gomega.Expect(err).Should(gomega.BeNil())
-	ginkgo.By("remove old logs success.")
+	ginkgo.By("remove old shard result logs success.")
+
+	err = util.RemoveLog(config.GetDefaultE2eConfig().FilepathJoin("e2e/unshard/result"))
+	gomega.Expect(err).Should(gomega.BeNil())
+	ginkgo.By("remove old unshard result logs success.")
 
 	ginkgo.By("start gaea default.")
 	err = util.StartGaeaDefault()
@@ -56,4 +57,5 @@ var _ = ginkgo.AfterSuite(func() {
 	err = util.StopGaeaDefault()
 	gomega.Expect(err).Should(gomega.BeNil())
 	ginkgo.By("stop gaea default success.")
+
 })

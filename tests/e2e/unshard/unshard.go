@@ -1,10 +1,8 @@
 package noshard
 
 import (
-	"database/sql"
 	"fmt"
 
-	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/tests/config"
 	"github.com/XiaoMi/Gaea/tests/util"
 	"github.com/onsi/ginkgo/v2"
@@ -13,158 +11,102 @@ import (
 
 var _ = ginkgo.Describe("unshard_dml_support_test", func() {
 
-	var allowedDBS map[string]bool
-	var users []*models.User
-	var noShardPlanNamespace *models.Namespace
-	var gaeaDB *sql.DB
-	var gaeaMaster *sql.DB
-	var casesPath []string
-	var err error
+	var e2eConfig *config.E2eConfig
+	var singleMasterCluster *config.MysqlClusterConfig
+
 	ginkgo.BeforeEach(func() {
-		// 创建数据库实例
-		ginkgo.By("create slice")
-		gaeaSlice := []*models.Slice{
-			{
-				Name:            "slice-0",
-				UserName:        "superroot",
-				Password:        "superroot",
-				Master:          "127.0.0.1:3359",
-				Slaves:          []string{},
-				StatisticSlaves: []string{},
-				Capacity:        12,
-				MaxCapacity:     24,
-				IdleTimeout:     60,
-				InitConnect:     "",
-			},
-		}
-		allowedDBS = map[string]bool{
-			"sbtest1":       true,
-			"sbtest1_shard": true,
-		}
-		//  创建数据库用户
-		ginkgo.By("create user")
-		users = []*models.User{
-			{
-				UserName:      "superroot",
-				Password:      "superroot",
-				Namespace:     "test_namespace_1",
-				RWFlag:        2,
-				RWSplit:       1,
-				OtherProperty: 0,
-			},
-		}
-		ginkgo.By("create namespace")
-		noShardPlanNamespace = config.NewNamespace(
-			config.WithIsEncrypt(true),
-			config.WithName("test_namespace_1"),
-			config.WithAllowedDBS(allowedDBS),
-			config.WithSlices(gaeaSlice),
-			config.WithUsers(users),
-			config.WithDefaultSlice("slice-0"),
-		)
-		// 注册命令空间
-		ginkgo.By("add namespace")
-		err = config.GetNamespaceRegisterManager().AddNamespace(noShardPlanNamespace)
+
+		e2eConfig = config.GetDefaultE2eConfig()
+		singleMasterCluster = e2eConfig.SingleMasterCluster
+
+		// 解析模版
+		ns, err := singleMasterCluster.TemplateParse(e2eConfig.FilepathJoin("e2e/unshard/ns/simple.template"))
 		gomega.Expect(err).Should(gomega.BeNil())
 
-		ginkgo.By("register namespace")
-		err = config.GetNamespaceRegisterManager().RegisterNamespaces()
+		// 注册namespace
+		err = e2eConfig.RegisterNamespaces(ns)
 		gomega.Expect(err).Should(gomega.BeNil())
 
-		ginkgo.By("get Cluster conn ")
-		gaeaCluster, err := config.InitMysqlClusterConn(gaeaSlice)
-		gomega.Expect(err).Should(gomega.BeNil())
-		if gaeaSlice, ok := gaeaCluster["slice-0"]; ok {
-			gaeaMaster = gaeaSlice.Master
-		} else {
-			gomega.Expect(fmt.Errorf("slice not exist")).Should(gomega.BeNil())
-		}
-		ginkgo.By("get Gaea conn ")
-		gaeaDB, err = config.InitGaeaConn(users[0], "127.0.0.1:13306")
+		// 初始化数据库实例
+		mysqlConn, err := config.InitConn(singleMasterCluster.Slices[0].UserName, singleMasterCluster.Slices[0].Password, singleMasterCluster.Slices[0].Master, "")
 		gomega.Expect(err).Should(gomega.BeNil())
 
 		ginkgo.By("get setup file")
-		setupFile := util.GetCasesFileAbsPath("unshard/case/0-prepare.sql")
-		sqls, err := util.GetSqlFromFile(setupFile)
+		sqls, err := util.GetSqlFromFile(e2eConfig.FilepathJoin("e2e/unshard/case/0-prepare.sql"))
 		gomega.Expect(err).Should(gomega.BeNil())
 
 		for _, v := range sqls {
-			sqlOperation, err := util.GetSqlType(v)
-			if err != nil {
-				continue
-			}
-			if sqlOperation == util.UnKnown {
-				continue
-			}
-			_, err = util.ExecuteSQL(gaeaMaster, "Exec", v)
+			err := util.VerifySqlParsable(v)
 			gomega.Expect(err).Should(gomega.BeNil())
-		}
-		ginkgo.By("init case path")
-		casesPath = []string{
-			util.GetCasesFileAbsPath("unshard/case/test_join_nosharding.sql"),
-			util.GetCasesFileAbsPath("unshard/case/test_join.sql"),
-			util.GetCasesFileAbsPath("unshard/case/test_select_global_old.sql"),
-			util.GetCasesFileAbsPath("unshard/case/test_simple.sql"),
-			util.GetCasesFileAbsPath("unshard/case/test_subquery_global.sql"),
+			_, err = util.MysqlExec(mysqlConn, v)
+			gomega.Expect(err).Should(gomega.BeNil())
 		}
 	})
 	ginkgo.Context("unshard support test", func() {
 		ginkgo.It("When testing sql support", func() {
-			_, err := gaeaMaster.Exec("use sbtest1")
+
+			ginkgo.By("get Gaea conn ")
+			gaeaConn, err := config.InitConn(e2eConfig.GaeaUser.UserName, e2eConfig.GaeaUser.Password, e2eConfig.GaeaHost, "")
 			gomega.Expect(err).Should(gomega.BeNil())
-			_, err = gaeaDB.Exec("use sbtest1")
+
+			mysqlConn, err := config.InitConn(singleMasterCluster.Slices[0].UserName, singleMasterCluster.Slices[0].Password, singleMasterCluster.Slices[0].Master, "")
 			gomega.Expect(err).Should(gomega.BeNil())
+
+			_, err = gaeaConn.Exec("use sbtest1")
+			gomega.Expect(err).Should(gomega.BeNil())
+			defer gaeaConn.Close()
+
+			_, err = mysqlConn.Exec("use sbtest1")
+			gomega.Expect(err).Should(gomega.BeNil())
+			defer mysqlConn.Close()
+
+			casesPath := []string{
+				e2eConfig.FilepathJoin("e2e/unshard/case/test_join_unsharding.sql"),
+				e2eConfig.FilepathJoin("e2e/unshard/case/test_join.sql"),
+				e2eConfig.FilepathJoin("e2e/unshard/case/test_select_global_old.sql"),
+				e2eConfig.FilepathJoin("e2e/unshard/case/test_simple.sql"),
+				e2eConfig.FilepathJoin("e2e/unshard/case/test_subquery_global.sql"),
+			}
 			for _, file := range casesPath {
 				sqls, err := util.GetSqlFromFile(file)
 				gomega.Expect(err).Should(gomega.BeNil())
 				for _, v := range sqls {
-					operationType, err := util.GetSqlType(v)
+					// parser
+					err := util.VerifySqlParsable(v)
 					gomega.Expect(err).Should(gomega.BeNil())
-					if operationType == util.UnKnown {
-						util.OutPutResult(v, util.GetCasesFileAbsPath("unshard/result/unknown.sql"))
+					// test
+					res1, err := util.MysqlQuery(mysqlConn, v)
+					gomega.Expect(err).Should(gomega.BeNil())
+					// gaea
+					res2, err := util.MysqlQuery(gaeaConn, v)
+					if err != nil {
+						util.OutPutResult(fmt.Sprintf("sql:%s\nmysqlRes:%v\ngaeaError:%v\n", v, res1, err), e2eConfig.FilepathJoin("e2e/unshard/result/gaea_unsupport.sql"))
 						continue
 					}
-					res1, err1 := util.ExecuteSQL(gaeaMaster, operationType, v)
-					if err1 == util.ErrSkippedSQLOperation || err1 == util.ErrUnsupportedSQLOperation {
-						util.OutPutResult(v, util.GetCasesFileAbsPath("unshard/result/gaeaSkip.sql"))
-					}
-					res2, err2 := util.ExecuteSQL(gaeaDB, operationType, v)
-					if err2 == util.ErrSkippedSQLOperation || err2 == util.ErrUnsupportedSQLOperation {
-						util.OutPutResult(v, util.GetCasesFileAbsPath("unshard/result/mysqlSkip.sql"))
-						continue
-					}
-					if err1 != nil {
-						gomega.Expect(fmt.Errorf("mysql Exec%s", err1.Error())).Should(gomega.BeNil())
-					}
-					if err2 != nil {
-						gomega.Expect(fmt.Errorf("gaea Exec%s", err2.Error())).Should(gomega.BeNil())
-					}
-					equal, err := util.CompareDBExecResults(res1, res2)
-					gomega.Expect(err).Should(gomega.BeNil())
-					if equal {
-						util.OutPutResult(v, util.GetCasesFileAbsPath("unshard/result/pass.sql"))
+					// compare
+					_, err = util.Compare(res1, res2)
+					if err != nil {
+						util.OutPutResult(fmt.Sprintf("sql:%s\nmysqlRes:%v\ngaeaRes:%v\n", v, res1, res2), e2eConfig.FilepathJoin("e2e/unshard/result/unequal.sql"))
 					} else {
-						util.OutPutResult(v, util.GetCasesFileAbsPath("unshard/result/unpass.sql"))
+						util.OutPutResult(fmt.Sprintf("sql:%s\nmysqlRes:%v\ngaeaRes:%v\n", v, res1, res2), e2eConfig.FilepathJoin("e2e/unshard/result/equal.sql"))
 					}
 				}
 			}
+			// 清理数据库
+			sqls, err := util.GetSqlFromFile(e2eConfig.FilepathJoin("e2e/unshard/case/1-clean.sql"))
+			gomega.Expect(err).Should(gomega.BeNil())
+			for _, v := range sqls {
+				err := util.VerifySqlParsable(v)
+				gomega.Expect(err).Should(gomega.BeNil())
+				_, err = util.MysqlQuery(mysqlConn, v)
+				gomega.Expect(err).Should(gomega.BeNil())
+			}
+
 		})
 	})
 	ginkgo.AfterEach(func() {
-		setupFile := util.GetCasesFileAbsPath("unshard/case/1-clean.sql")
-		sqls, err := util.GetSqlFromFile(setupFile)
-		gomega.Expect(err).Should(gomega.BeNil())
-		for _, v := range sqls {
-			operationType, err := util.GetSqlType(v)
-			if operationType == util.UnKnown {
-				util.OutPutResult(v, util.GetCasesFileAbsPath("unshard/result/unknown.sql"))
-				continue
-			}
-			gomega.Expect(err).Should(gomega.BeNil())
-			_, err = util.ExecuteSQL(gaeaMaster, "Exec", v)
-			gomega.Expect(err).Should(gomega.BeNil())
-		}
 		// 删除注册
-		config.GetNamespaceRegisterManager().UnRegisterNamespaces()
+		err := e2eConfig.UnRegisterNamespaces()
+		gomega.Expect(err).Should(gomega.BeNil())
 	})
 })
