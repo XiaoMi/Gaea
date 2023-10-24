@@ -2,70 +2,96 @@ package util
 
 import (
 	"bufio"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
+	"time"
 )
 
-type LogModel struct {
-	Namespace    string
-	User         string
-	ClientAddr   string
-	BackendAddr  string
-	ConnectionID int
-	AffectedRows int
-	SQL          string
+type LogEntry struct {
+	Timestamp      string
+	Namespace      string
+	User           string
+	ClientAddr     string
+	BackendAddr    string
+	ConnectionID   int
+	Query          string
+	ResponseTimeMs float64
 }
 
-func ReadLog(filepath string, searchString string) ([]LogModel, error) {
+// CompareTimeStrings 比较两个时间字符串的大小
+// 返回值为-1，0或1。-1表示time1 < time2，0表示time1 = time2，1表示time1 > time2
+func CompareTimeStrings(time1 string, time2 string) (int, error) {
+	// 解析时间字符串
+	t1, err1 := time.Parse("2006-01-02 15:04:05.999", time1)
+	t2, err2 := time.Parse("2006-01-02 15:04:05.999", time2)
+	if err1 != nil || err2 != nil {
+		return 0, fmt.Errorf("解析错误：%v %v", err1, err2)
+	}
+
+	// 比较时间
+	if t1.Before(t2) {
+		return -1, nil
+	}
+	if t1.After(t2) {
+		return 1, nil
+	}
+	return 0, nil
+}
+
+func ReadLog(filepath string, searchString string, startTime string) ([]LogEntry, error) {
+	// 打开文件
 	file, err := os.Open(filepath)
 	if err != nil {
-		return nil, err
+		return []LogEntry{}, fmt.Errorf("open file:%s error %v ", filepath, err)
 	}
 	defer file.Close()
-	// 创建一个slice来存储提取的数据
-	var result []LogModel
 
-	// 使用正则表达式匹配你需要的部分
-	regex := regexp.MustCompile(`ns=(\w+),\s*(\w+)@(\d+\.\d+\.\d+\.\d+:\d+)->(\d+\.\d+\.\d+\.\d+:\d+), mysql_connect_id=(\d+), r=(\d+)\|(.*)`)
-
+	// 创建一个新的Scanner
 	scanner := bufio.NewScanner(file)
+
+	// 正则表达式
+	re := regexp.MustCompile(`\[(.*?)\] \[NOTICE\] \[(\d+)\] OK - (\d+\.\d+)ms - ns=(.*?), (.*?)@(.*?)->(.*?), mysql_connect_id=(\d+), r=\d+\|(.*?)$`)
+	var logEntryRes []LogEntry
 	for scanner.Scan() {
 		line := scanner.Text()
-		// 检查该行是否包含特定的字符串
-		if strings.Contains(line, searchString) {
-			matches := regex.FindStringSubmatch(line)
-			if len(matches) == 8 {
-				// 解析ConnectionID为整数
-				connectionID, err := strconv.Atoi(matches[5])
-				if err != nil {
-					return nil, err
-				}
-				affectedRows, err := strconv.Atoi(matches[6])
-				if err != nil {
-					return nil, err
-				}
-				logModel := LogModel{
-					Namespace:    matches[1],
-					User:         matches[2],
-					ClientAddr:   matches[3],
-					BackendAddr:  matches[4],
-					ConnectionID: connectionID,
-					AffectedRows: affectedRows,
-					SQL:          matches[6],
-				}
-				result = append(result, logModel)
-			}
+		// 使用正则表达式匹配日志行
+		matches := re.FindStringSubmatch(line)
+		if len(matches) != 10 {
+			continue
 		}
+		// 解析并填充结构体
+		logEntry := LogEntry{}
+		logEntry.Timestamp = matches[1]
+		// 检查时间是否在startTime之后
+
+		res, err := CompareTimeStrings(startTime, logEntry.Timestamp)
+		if err != nil {
+			return []LogEntry{}, nil
+		}
+		if res != -1 {
+			continue
+		}
+		fmt.Sscanf(matches[3], "%f", &logEntry.ResponseTimeMs)
+		logEntry.Namespace = matches[4]
+		logEntry.User = matches[5]
+		logEntry.ClientAddr = matches[6]
+		logEntry.BackendAddr = matches[7]
+		fmt.Sscanf(matches[8], "%d", &logEntry.ConnectionID)
+		logEntry.Query = matches[9]
+
+		if strings.Compare(searchString, logEntry.Query) != 0 {
+			continue
+		}
+		logEntryRes = append(logEntryRes, logEntry)
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, err
+		return logEntryRes, fmt.Errorf("error during file scanning:%v", err)
 	}
-
-	return result, nil
+	return logEntryRes, nil
 }
 
 func RemoveLog(directory string) error {

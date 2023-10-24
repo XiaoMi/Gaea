@@ -6,12 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"os"
 	"reflect"
 
-	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/tests/util"
+
 	_ "github.com/go-sql-driver/mysql"
 )
 
@@ -71,50 +72,18 @@ type (
 	}
 )
 
-func InitMysqlClusterConn(slices []*models.Slice) (map[string]*SliceConn, error) {
-	conn := make(map[string]*SliceConn)
-	for _, slice := range slices {
-		master, err := initDB(slice.UserName, slice.Password, slice.Master)
-		if err != nil {
-			return nil, err
-		}
-		sliceConn := &SliceConn{
-			Master: master,
-			Slaves: []*sql.DB{},
-		}
-
-		for _, slave := range slice.Slaves {
-			slaveDB, err := initDB(slice.UserName, slice.Password, slave)
-			if err != nil {
-				return nil, err
-			}
-			sliceConn.Slaves = append(sliceConn.Slaves, slaveDB)
-		}
-		conn[slice.Name] = sliceConn
+func InitConn(username string, password string, host string, database string) (db *sql.DB, err error) {
+	connStr := fmt.Sprintf("%s:%s@tcp(%s)/", username, password, host)
+	if len(database) != 0 {
+		connStr = connStr + database
 	}
-	return conn, nil
-}
-
-func InitGaeaConn(user *models.User, host string) (*sql.DB, error) {
-
-	gaeaDB, err := initDB(user.UserName, user.Password, host)
+	db, err = sql.Open("mysql", connStr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error on initializing mysql connection: %s", err.Error())
 	}
-	return gaeaDB, nil
-}
-
-func initDB(username, password, host string) (*sql.DB, error) {
-	connStr := fmt.Sprintf("%s:%s@tcp(%s)/?charset=utf8mb4&parseTime=True&loc=Local", username, password, host)
-	db, err := sql.Open("mysql", connStr)
-	if err != nil {
-		return nil, fmt.Errorf("error on initializing database connection: %s", err.Error())
-	}
-
-	err = db.Ping()
-	if err != nil {
-		return nil, fmt.Errorf("database connection error:: %s", err.Error())
-	}
+	db.SetConnMaxLifetime(time.Minute * 5)
+	db.SetMaxOpenConns(150)
+	db.SetMaxIdleConns(150)
 	return db, nil
 }
 
@@ -123,7 +92,7 @@ func (e ExecCase) GaeaRun(gaeaDB *sql.DB) error {
 	for _, action := range e.GaeaActions {
 		isSuccess, err := DBExecAndCompare(gaeaDB, action.ExecType, action.SQL, action.Expect)
 		if err != nil || !isSuccess {
-			return fmt.Errorf("[gaeaAction] failed to execute SQL statement %s: %v", action.SQL, err)
+			return fmt.Errorf("[gaeaAction] failed to execute SQL statement:[%s]:[%v]", action.SQL, err)
 		}
 	}
 	return nil
@@ -132,114 +101,131 @@ func (e ExecCase) GaeaRun(gaeaDB *sql.DB) error {
 func DBExecAndCompare(db *sql.DB, expectType string, execSql string, expect interface{}) (bool, error) {
 	switch expectType {
 	case "Query":
-		if !util.IsSlice(expect) {
-			return false, fmt.Errorf("expect is not slice")
-		}
-		if v, ok := expect.([]interface{}); ok {
-			// Convert []interface{} to [][]string
-			var values [][]string
-			for _, row := range v {
-				var rowValues []string
-				if rowItems, ok := row.([]interface{}); ok {
-					for _, item := range rowItems {
-						if strValue, ok := item.(string); ok {
-							rowValues = append(rowValues, strValue)
-						}
-					}
-				}
-				values = append(values, rowValues)
-			}
-			rows, err := db.Query(execSql)
-			if err != nil {
-				if err == sql.ErrNoRows && len(v) == 0 {
-					return true, nil
-				}
-				return false, fmt.Errorf("db Exec Error %v", err)
-			}
-			res, err := util.GetDataFromRows(rows)
-			if err != nil {
-				return false, fmt.Errorf("get data from rows error:%v", err)
-			}
-			// res为空代表没有查到数据
-			if (len(res) == 0 || res == nil) && len(v) == 0 {
-				return true, nil
-			}
-			if !reflect.DeepEqual(values, res) {
-
-				return false, fmt.Errorf("mismatch. Actual: %v, Expect: %v", res, values)
-			}
-		} else {
-			return false, fmt.Errorf("expect data assertion failed")
-		}
-		return true, nil // 所有数据都匹配
+		return Query(db, execSql, expect)
 	case "QueryRow":
-		if !util.IsSlice(expect) {
-			return false, fmt.Errorf("expect is not slice")
-		}
-		if v, ok := expect.([]interface{}); ok {
-			// Convert []interface{} to []string
-			values := []string{}
-			for _, item := range v {
-				if strValue, ok := item.(string); ok {
-					values = append(values, strValue)
-				}
-			}
-			row := db.QueryRow(execSql)
-			res, err := util.GetDataFromRow(row, len(v))
-			if err != nil {
-				if err == sql.ErrNoRows && len(v) == 0 {
-					return true, nil
-				}
-				return false, fmt.Errorf("get data from row error:%v", err)
-			}
-			if !reflect.DeepEqual(values, res) {
-				return false, fmt.Errorf("mismatch. Actual: %v, Expect: %v", res, values)
-			}
-		} else {
-			return false, fmt.Errorf("expect data assertion failed")
-		}
-		return true, nil // 所有数据都匹配
+		return QueryRow(db, execSql, expect)
 	case "Exec":
-		result, err := db.Exec(execSql)
-		if err != nil {
-			return false, err
-		}
-		// Assuming expect is a map with possible keys "lastInsertId" and "rowsAffected"
-		expectedResults, ok := expect.(map[string]int64)
-		if !ok {
-			return false, errors.New("expect format for Exec type is incorrect")
-		}
-
-		// Check if "lastInsertId" is in expect and compare it with the result
-		if lastInsertId, exists := expectedResults["lastInsertId"]; exists {
-			actualLastInsertId, err := result.LastInsertId()
-			if err != nil {
-				return false, err
-			}
-			if lastInsertId != actualLastInsertId {
-				return false, nil
-			}
-		}
-		// Check if "rowsAffected" is in expect and compare it with the result
-		if rowsAffected, exists := expectedResults["rowsAffected"]; exists {
-			actualRowsAffected, err := result.RowsAffected()
-			if err != nil {
-				return false, err
-			}
-			if rowsAffected != actualRowsAffected {
-				return false, nil
-			}
-		}
-		return true, nil
+		return Exec(db, execSql, expect)
 	case "Default":
-		_, err := db.Exec(execSql)
-		if err != nil {
-			return false, err
-		}
-		return true, nil
+		return ExecDefault(db, execSql)
 	default:
 		return false, errors.New("unsupported expect type")
 	}
+}
+
+func ExecDefault(db *sql.DB, sqlStr string) (bool, error) {
+	_, err := db.Exec(sqlStr)
+	if err != nil {
+		return false, fmt.Errorf("default exec error%s", err)
+	}
+	return true, nil
+
+}
+
+func Query(db *sql.DB, sqlStr string, expect interface{}) (bool, error) {
+	if !util.IsSlice(expect) {
+		return false, fmt.Errorf("expect is not slice")
+	}
+	if v, ok := expect.([]interface{}); ok {
+		// Convert []interface{} to [][]string
+		var values [][]string
+		for _, row := range v {
+			var rowValues []string
+			if rowItems, ok := row.([]interface{}); ok {
+				for _, item := range rowItems {
+					if strValue, ok := item.(string); ok {
+						rowValues = append(rowValues, strValue)
+					}
+				}
+			}
+			values = append(values, rowValues)
+		}
+		rows, err := db.Query(sqlStr)
+		if err != nil {
+			if err == sql.ErrNoRows && len(v) == 0 {
+				return true, nil
+			}
+			return false, fmt.Errorf("db Exec Error %v", err)
+		}
+		defer rows.Close()
+		res, err := util.GetDataFromRows(rows)
+		if err != nil {
+			return false, fmt.Errorf("get data from rows error:%v", err)
+		}
+		// res为空代表没有查到数据
+		if (len(res) == 0 || res == nil) && len(v) == 0 {
+			return true, nil
+		}
+		if !reflect.DeepEqual(values, res) {
+			return false, fmt.Errorf("mismatch. Actual: %v, Expect: %v", res, values)
+		}
+	} else {
+		return false, fmt.Errorf("expect data assertion failed")
+	}
+	return true, nil // 所有数据都匹配
+}
+
+func QueryRow(db *sql.DB, sqlStr string, expect interface{}) (bool, error) {
+	if !util.IsSlice(expect) {
+		return false, fmt.Errorf("expect is not slice")
+	}
+	if v, ok := expect.([]interface{}); ok {
+		// Convert []interface{} to []string
+		values := []string{}
+		for _, item := range v {
+			if strValue, ok := item.(string); ok {
+				values = append(values, strValue)
+			}
+		}
+		row := db.QueryRow(sqlStr)
+		res, err := util.GetDataFromRow(row, len(v))
+		if err != nil {
+			if err == sql.ErrNoRows && len(v) == 0 {
+				return true, nil
+			}
+			return false, fmt.Errorf("get data from row error:%v", err)
+		}
+		if !reflect.DeepEqual(values, res) {
+			return false, fmt.Errorf("mismatch. Actual: %v, Expect: %v", res, values)
+		}
+	} else {
+		return false, fmt.Errorf("expect data assertion failed")
+	}
+	return true, nil // 所有数据都匹配
+}
+
+func Exec(db *sql.DB, sqlStr string, expect interface{}) (bool, error) {
+	result, err := db.Exec(sqlStr)
+	if err != nil {
+		return false, err
+	}
+	// Assuming expect is a map with possible keys "lastInsertId" and "rowsAffected"
+	expectedResults, ok := expect.(map[string]int64)
+	if !ok {
+		return false, errors.New("expect format for Exec type is incorrect")
+	}
+
+	// Check if "lastInsertId" is in expect and compare it with the result
+	if lastInsertId, exists := expectedResults["lastInsertId"]; exists {
+		actualLastInsertId, err := result.LastInsertId()
+		if err != nil {
+			return false, err
+		}
+		if lastInsertId != actualLastInsertId {
+			return false, nil
+		}
+	}
+	// Check if "rowsAffected" is in expect and compare it with the result
+	if rowsAffected, exists := expectedResults["rowsAffected"]; exists {
+		actualRowsAffected, err := result.RowsAffected()
+		if err != nil {
+			return false, err
+		}
+		if rowsAffected != actualRowsAffected {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 func (e *ExecCase) GetSetUpSQL() []EnvironmentSQL {
@@ -292,15 +278,6 @@ func (e ExecCase) MasterRunAndCheck(cluster map[string]*SliceConn) error {
 	return nil
 }
 
-func NewPlan(path string) (*Plan, error) {
-	var p Plan
-	err := LoadJsonConfig(path, &p)
-	if err != nil {
-		return nil, err
-	}
-	return &p, nil
-}
-
 func (p *Plan) GetExecCases() []ExecCase {
 	return p.ExecCases
 }
@@ -332,36 +309,10 @@ type PlanManager struct {
 	PlanPath         string
 	Plan             *Plan
 	MysqlClusterConn map[string]*SliceConn
-	GeaaDB           *sql.DB
+	GaeaDB           *sql.DB
 }
 
 type PlanManagerOption func(*PlanManager)
-
-func NewPlanManager(o ...PlanManagerOption) *PlanManager {
-	m := &PlanManager{}
-	for _, v := range o {
-		v(m)
-	}
-	return m
-}
-
-func WithPlanPath(path string) PlanManagerOption {
-	return func(m *PlanManager) {
-		m.PlanPath = path
-	}
-}
-
-func WithGaeaConn(conn *sql.DB) PlanManagerOption {
-	return func(m *PlanManager) {
-		m.GeaaDB = conn
-	}
-}
-
-func WithMysqlClusterConn(conn map[string]*SliceConn) PlanManagerOption {
-	return func(m *PlanManager) {
-		m.MysqlClusterConn = conn
-	}
-}
 
 func (m *PlanManager) Init() error {
 	err := m.LoadPlan()
@@ -404,7 +355,7 @@ func (m *PlanManager) Run() error {
 			}
 		}
 		// Run Gaea actions
-		if err := execCase.GaeaRun(m.GeaaDB); err != nil {
+		if err := execCase.GaeaRun(m.GaeaDB); err != nil {
 			return fmt.Errorf("gaea action failed for test '%s': %v", execCase.Description, err)
 		}
 
@@ -452,12 +403,12 @@ func MysqlClusterConnClose(mysqlClusterConn map[string]*SliceConn) {
 	}
 }
 
-func (i *PlanManager) LoadPlan() error {
+func (m *PlanManager) LoadPlan() error {
 	var plan *Plan
-	err := LoadJsonConfig(i.PlanPath, &plan)
+	err := LoadJsonConfig(m.PlanPath, &plan)
 	if err != nil {
 		return err
 	}
-	i.Plan = plan
+	m.Plan = plan
 	return nil
 }

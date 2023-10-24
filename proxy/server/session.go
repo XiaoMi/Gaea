@@ -16,15 +16,18 @@ package server
 
 import (
 	"fmt"
-	"github.com/XiaoMi/Gaea/log"
-	"github.com/XiaoMi/Gaea/mysql"
-	"github.com/XiaoMi/Gaea/util"
-	uber_atomic "go.uber.org/atomic"
 	"net"
 	"runtime"
 	"strings"
 	"sync"
+
 	"sync/atomic"
+
+	uber_atomic "go.uber.org/atomic"
+
+	"github.com/XiaoMi/Gaea/log"
+	"github.com/XiaoMi/Gaea/mysql"
+	"github.com/XiaoMi/Gaea/util"
 )
 
 // DefaultCapability means default capability

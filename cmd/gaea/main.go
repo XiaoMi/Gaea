@@ -17,15 +17,16 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/XiaoMi/Gaea/core"
-	"github.com/XiaoMi/Gaea/log"
-	"github.com/XiaoMi/Gaea/models"
-	"github.com/XiaoMi/Gaea/proxy/server"
 	"os"
 	"os/signal"
 	"runtime"
 	"sync"
 	"syscall"
+
+	"github.com/XiaoMi/Gaea/core"
+	"github.com/XiaoMi/Gaea/log"
+	"github.com/XiaoMi/Gaea/models"
+	"github.com/XiaoMi/Gaea/proxy/server"
 )
 
 var configFile = flag.String("config", "etc/gaea.ini", "gaea config file")
