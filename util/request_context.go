@@ -56,3 +56,19 @@ func (reqCtx *RequestContext) Set(key string, value interface{}) {
 	reqCtx.ctx[key] = value
 	reqCtx.lock.Unlock()
 }
+
+func (reqCtx *RequestContext) GetStmtType() int {
+	return reqCtx.Get(StmtType).(int)
+}
+
+func (reqCtx *RequestContext) SetStmtType() int {
+	return reqCtx.Get(StmtType).(int)
+}
+
+func (reqCtx *RequestContext) GetTokens() []string {
+	return reqCtx.Get(Tokens).([]string)
+}
+
+func (reqCtx *RequestContext) SetTokens() int {
+	return reqCtx.Get(StmtType).(int)
+}

@@ -159,7 +159,7 @@ func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*my
 		return nil, fmt.Errorf("get plan error, db: %s, origin sql: %s, trimmedSql: %s, err: %v", db, sql, trimmedSql, err)
 	}
 
-	if canExecuteFromSlave(reqCtx, se, trimmedSql, comments) {
+	if checkExecuteFromSlave(reqCtx, se, trimmedSql, comments) {
 		reqCtx.Set(util.FromSlave, 1)
 	}
 
@@ -199,8 +199,6 @@ func (se *SessionExecutor) handleQueryWithoutPlan(reqCtx *util.RequestContext, s
 	}
 
 	switch stmt := n.(type) {
-	case *ast.ShowStmt:
-		return se.handleShow(reqCtx, sql, stmt)
 	case *ast.SetStmt:
 		return se.handleSet(reqCtx, sql, stmt)
 	case *ast.BeginStmt:
@@ -289,6 +287,9 @@ func (se *SessionExecutor) preBuildUnshardPlan(reqCtx *util.RequestContext, db s
 		ruleDB, isUnshardPlan = plan.CheckUnshardInsert(tokens, rt, db)
 	case mysql.TkIdUpdate:
 		ruleDB, isUnshardPlan = plan.CheckUnshardUpdate(tokens, rt, db)
+	case mysql.TkIdShow:
+		// TODO: deal with more show cases
+		break
 	default:
 		return nil, false
 	}
@@ -302,34 +303,6 @@ func (se *SessionExecutor) preBuildUnshardPlan(reqCtx *util.RequestContext, db s
 	}
 
 	return nil, false
-}
-
-func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string, stmt *ast.ShowStmt) (*mysql.Result, error) {
-	switch stmt.Tp {
-	case ast.ShowDatabases:
-		dbs := se.GetNamespace().GetAllowedDBs()
-		return createShowDatabaseResult(dbs), nil
-	case ast.ShowVariables:
-		if strings.Contains(sql, gaeaGeneralLogVariable) {
-			return createShowGeneralLogResult(), nil
-		}
-		fallthrough
-	default:
-		// readonly && readwrite user send to slave
-		if !se.GetNamespace().IsAllowWrite(se.user) || se.GetNamespace().IsRWSplit(se.user) {
-			reqCtx.Set(util.FromSlave, 1)
-		}
-		// handle show variables like '%read_only%' default to master
-		if strings.Contains(sql, readonlyVariable) && se.GetNamespace().IsAllowWrite(se.user) {
-			reqCtx.Set(util.FromSlave, 0)
-		}
-		r, err := se.ExecuteSQL(reqCtx, se.GetNamespace().GetDefaultSlice(), se.db, sql)
-		if err != nil {
-			return nil, fmt.Errorf("execute sql error, sql: %s, err: %v", sql, err)
-		}
-		modifyResultStatus(r, se)
-		return r, nil
-	}
 }
 
 func (se *SessionExecutor) handleSet(reqCtx *util.RequestContext, sql string, stmt *ast.SetStmt) (*mysql.Result, error) {

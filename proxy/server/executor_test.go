@@ -519,7 +519,7 @@ func newDefaultSessionExecutor(mnFunc ModifyNamespaceFunc) (*SessionExecutor, er
 	return c, nil
 }
 
-// test canExecuteFromSlave
+// test checkExecuteFromSlave
 func TestCanExecuteFromSlave(t *testing.T) {
 	var userPriv = map[string]string{
 		"read_write_split": "test_executor",   // rw_flag: 2, rw_split: 1
@@ -534,6 +534,24 @@ func TestCanExecuteFromSlave(t *testing.T) {
 	}
 
 	testCases := []TestCase{
+		{
+			name:             "test show read_only",
+			sql:              `show variables like "read_only";`,
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{false, false, true},
+		},
+		{
+			name:             "test show read_",
+			sql:              `show variables like "read_";`,
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{true, false, true},
+		},
+		{
+			name:             "test show global status",
+			sql:              `show global status like "uptime";`,
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{true, false, true},
+		},
 		{
 			name:             "test select read_only",
 			sql:              "select @@read_only;",
@@ -621,7 +639,7 @@ func TestCanExecuteFromSlave(t *testing.T) {
 				if err != nil {
 					t.Fatal("getPlan error:", tt.name)
 				}
-				assert.Equal(t, canExecuteFromSlave(reqCtx, se, tt.sql, comments), tt.expectFromSlaves[i], tt.name+"-"+tt.userList[i])
+				assert.Equal(t, checkExecuteFromSlave(reqCtx, se, tt.sql, comments), tt.expectFromSlaves[i], tt.name+"-"+tt.userList[i])
 			}
 		})
 	}
@@ -676,6 +694,30 @@ func TestUnshardPlan(t *testing.T) {
 	defaltDb := "db_ks"
 	var (
 		testCases = []TestCase{
+			{
+				name:              "test unshard show variable read_only without shard rules",
+				sql:               `show variables like "read_only"`,
+				expectUnshardPlan: true,
+				mnFunc: func(nsConfig *models.Namespace) {
+					nsConfig.AllowedDBS = map[string]bool{"db_unshard": true}
+					nsConfig.DefaultPhyDBS = map[string]string{"db_unshard": "db_unshard"}
+					nsConfig.ShardRules = nil
+				},
+				expectDB:  defaltDb,
+				expectSql: `show variables like "read_only"`,
+			},
+			{
+				name:              "test unshard show columns without shard rules",
+				sql:               `show columns from db_unshard.tbl_unshard`,
+				expectUnshardPlan: true,
+				mnFunc: func(nsConfig *models.Namespace) {
+					nsConfig.AllowedDBS = map[string]bool{"db_unshard": true}
+					nsConfig.DefaultPhyDBS = map[string]string{"db_unshard": "db_unshard"}
+					nsConfig.ShardRules = nil
+				},
+				expectDB:  defaltDb,
+				expectSql: `show columns from db_unshard.tbl_unshard`,
+			},
 			{
 				name:              "test unshard select with db but without shard rules",
 				sql:               "select * from db_unshard.tbl_unshard",
