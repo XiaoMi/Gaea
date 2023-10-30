@@ -660,8 +660,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 }
 
 func canHandleWithoutPlan(stmtType int) bool {
-	return stmtType == parser.StmtShow ||
-		stmtType == parser.StmtSet ||
+	return stmtType == parser.StmtSet ||
 		stmtType == parser.StmtBegin ||
 		stmtType == parser.StmtCommit ||
 		stmtType == parser.StmtRollback ||
@@ -701,8 +700,12 @@ func extractPrefixCommentsAndRewrite(sql string, version string) (trimmed string
 }
 
 // master-slave routing
-func canExecuteFromSlave(reqCtx *util.RequestContext, c *SessionExecutor, sql string, comments parser.MarginComments) bool {
-	if reqCtx.Get(util.StmtType).(int) != parser.StmtSelect {
+func checkExecuteFromSlave(reqCtx *util.RequestContext, c *SessionExecutor, sql string, comments parser.MarginComments) bool {
+	stmtType := reqCtx.GetStmtType()
+	tokens := reqCtx.GetTokens()
+	tokensLen := len(tokens)
+
+	if stmtType != parser.StmtSelect && stmtType != parser.StmtShow {
 		return false
 	}
 
@@ -711,12 +714,8 @@ func canExecuteFromSlave(reqCtx *util.RequestContext, c *SessionExecutor, sql st
 		return true
 	}
 
-	tokens := reqCtx.Get(util.Tokens).([]string)
-
 	// handle sql `select ... for update` or `select ... in share mode` to master
 	if c.GetNamespace().CheckSelectLock {
-		tokensLen := len(tokens)
-
 		if strings.ToLower(tokens[tokensLen-1]) == "update" && strings.ToLower(tokens[tokensLen-2]) == "for" {
 			return false
 		}
@@ -725,26 +724,30 @@ func canExecuteFromSlave(reqCtx *util.RequestContext, c *SessionExecutor, sql st
 		}
 	}
 
-	// 通过 token 判断特定语句
+	// handle show variables like 'read_only' default to master
+	if stmtType == parser.StmtShow && strings.Contains(strings.ToLower(sql), readonlyVariable) {
+		return false
+	}
+
+	// handle select @@read_only default to master
+	if strings.Contains(strings.ToLower(sql), "@@"+readonlyVariable) {
+		return false
+	}
+
+	// handle select @@global.read_only default to master
+	if strings.Contains(strings.ToLower(sql), "@@"+globalReadonlyVariable) {
+		return false
+	}
+
+	// handle master hint
 	for _, token := range tokens {
-		// handle select @@read_only default to master
-		if strings.Contains(strings.ToLower(token), "@@"+readonlyVariable) {
-			return false
-		}
-
-		// handle select @@global.read_only default to master
-		if strings.Contains(strings.ToLower(token), "@@"+globalReadonlyVariable) {
-			return false
-		}
-
-		// handle master hint
 		if strings.ToLower(token) == masterHint {
 			return false
 		}
 	}
+
 	// we can't delete this cause leading comments has been removed
-	lComment := strings.ToLower(strings.TrimSpace(comments.Leading))
-	if lComment == masterComment {
+	if strings.ToLower(strings.TrimSpace(comments.Leading)) == masterComment {
 		return false
 	}
 

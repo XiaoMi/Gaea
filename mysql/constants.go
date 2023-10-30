@@ -213,6 +213,10 @@ const (
 	TkStrFrom = "from"
 	TkStrInto = "into"
 	TkStrSet  = "set"
+	TkStrShow = "show"
+
+	TkStrFields  = "fields"  // TkStrFields show fields
+	TkStrColumns = "columns" // TkStrColumns show columns
 )
 
 var (
@@ -270,6 +274,8 @@ var (
 		TkIdInsert:  TkStrInto,
 		TkIdReplace: TkStrInto,
 		TkIdUpdate:  TkStrSet,
+		TkIdSet:     TkStrSet,
+		TkIdShow:    TkStrShow,
 	}
 )
 
