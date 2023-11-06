@@ -586,7 +586,7 @@ func TestCanExecuteFromSlave(t *testing.T) {
 			name:             "test select master hint after",
 			sql:              "select * from t /*master*/",
 			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
-			expectFromSlaves: []bool{true, false, true},
+			expectFromSlaves: []bool{false, false, true},
 		},
 		{
 			name:             "test select for update",
@@ -624,6 +624,12 @@ func TestCanExecuteFromSlave(t *testing.T) {
 			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
 			expectFromSlaves: []bool{false, false, false},
 		},
+		{
+			name:             "test only comments",
+			sql:              `/*!40100 SET @@SQL_MODE='' */`,
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{false, false, false},
+		},
 	}
 
 	for _, tt := range testCases {
@@ -632,12 +638,12 @@ func TestCanExecuteFromSlave(t *testing.T) {
 				se, err := newDefaultSessionExecutor(nil)
 				assert.Equal(t, err, nil)
 				se.user = user
-				trimmedSql, comments := extractPrefixCommentsAndRewrite(tt.sql, mysql.ServerVersion)
+				_, comments := extractPrefixCommentsAndRewrite(tt.sql, mysql.ServerVersion)
 				reqCtx := util.NewRequestContext()
 				reqCtx.Set(util.StmtType, parser.Preview(tt.sql))
-				_, err = se.getPlan(reqCtx, se.GetNamespace(), se.db, trimmedSql, nil)
+				_, err = se.getPlan(reqCtx, se.GetNamespace(), se.db, tt.sql, nil)
 				if err != nil {
-					t.Fatal("getPlan error:", tt.name)
+					t.Fatalf("getPlan error.name:%s, sql:%s,err:%s", tt.name, tt.sql, err)
 				}
 				assert.Equal(t, checkExecuteFromSlave(reqCtx, se, tt.sql, comments), tt.expectFromSlaves[i], tt.name+"-"+tt.userList[i])
 			}
@@ -668,14 +674,7 @@ func TestCanExecuteJDBCPrefix(t *testing.T) {
 	}
 
 	for _, tt := range testCases {
-		c, err := newDefaultSessionExecutor(nil)
-		assert.Equal(t, err, nil)
 		trimmedSql, _ := extractPrefixCommentsAndRewrite(tt.sql, mysql.ServerVersion)
-		reqCtx := util.NewRequestContext()
-		_, err = c.getPlan(reqCtx, c.GetNamespace(), c.db, trimmedSql, nil)
-		if err != nil {
-			t.Fatal("getPlan error:", tt.name)
-		}
 		assert.Equal(t, trimmedSql, tt.trimmedSql, tt.name+"-"+tt.sql)
 	}
 }
@@ -968,21 +967,27 @@ func TestUnshardPlan(t *testing.T) {
 				expectDB:          defaltDb,
 				expectSql:         "SELECT 5 DIV 2, -5 DIV 2, 5 DIV -2, -5 DIV -2;",
 			},
+			{
+				name:              "test only comment",
+				sql:               "/*!40100 SET @@SQL_MODE='' */",
+				expectUnshardPlan: true,
+				expectDB:          defaltDb,
+				expectSql:         "SET @@SESSION.`sql_mode`=''",
+			},
 		}
 	)
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			se, err := newDefaultSessionExecutor(tt.mnFunc)
 			assert.Equal(t, err, nil)
-			trimmedSql, _ := extractPrefixCommentsAndRewrite(tt.sql, mysql.ServerVersion)
 			reqCtx := util.NewRequestContext()
-			p, err := se.getPlan(reqCtx, se.GetNamespace(), se.db, trimmedSql, nil)
+			p, err := se.getPlan(reqCtx, se.GetNamespace(), se.db, tt.sql, nil)
 			if err != nil {
 				t.Fatalf("getPlan error.name:%s,err:%s\n", tt.name, err)
 			}
 			up, ok := p.(*plan.UnshardPlan)
 			if ok != tt.expectUnshardPlan {
-				t.Fatalf("getPlan not equal, name:%s,sql:%s, plan type:%T, expect unshard plan:%v\n", tt.name, trimmedSql, p, tt.expectUnshardPlan)
+				t.Fatalf("getPlan not equal, name:%s,sql:%s, plan type:%T, expect unshard plan:%v\n", tt.name, tt.sql, p, tt.expectUnshardPlan)
 				return
 			}
 			if !ok {
@@ -992,10 +997,10 @@ func TestUnshardPlan(t *testing.T) {
 			resDb := v.Elem().Field(1).String()
 			resSql := v.Elem().Field(3).String()
 			if tt.expectDB != resDb {
-				t.Fatalf("getPlan db error, name:%s,sql:%s, get db:%s, expect db:%s\n", tt.name, trimmedSql, resDb, tt.expectDB)
+				t.Fatalf("getPlan db error, name:%s,sql:%s, get db:%s, expect db:%s\n", tt.name, tt.sql, resDb, tt.expectDB)
 			}
 			if tt.expectSql != resSql {
-				t.Fatalf("getPlan sql error, name:%s,sql:%s, get sql:%s, expect sql:%s\n", tt.name, trimmedSql, resSql, tt.expectSql)
+				t.Fatalf("getPlan sql error, name:%s,sql:%s, get sql:%s, expect sql:%s\n", tt.name, tt.sql, resSql, tt.expectSql)
 			}
 		})
 	}

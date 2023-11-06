@@ -154,12 +154,12 @@ func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*my
 		log.Notice("check MyCat hint plan err:%s", err)
 	}
 
-	p, err := se.getPlan(reqCtx, se.GetNamespace(), db, trimmedSql, hintPlan)
+	p, err := se.getPlan(reqCtx, se.GetNamespace(), db, sql, hintPlan)
 	if err != nil {
 		return nil, fmt.Errorf("get plan error, db: %s, origin sql: %s, trimmedSql: %s, err: %v", db, sql, trimmedSql, err)
 	}
 
-	if checkExecuteFromSlave(reqCtx, se, trimmedSql, comments) {
+	if checkExecuteFromSlave(reqCtx, se, sql, comments) {
 		reqCtx.Set(util.FromSlave, 1)
 	}
 
