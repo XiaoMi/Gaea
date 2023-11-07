@@ -346,9 +346,9 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 			se.session.c.ConnectionID, affectedRows, sql)
 	} else {
 		// record error sql
-		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s, mysql_connect_id=%d, r=%d|%v",
+		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s, mysql_connect_id=%d, r=%d|%v. err:%s",
 			SQLExecStatusErr, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr,
-			se.session.c.ConnectionID, affectedRows, sql)
+			se.session.c.ConnectionID, affectedRows, sql, err)
 		fingerprint := mysql.GetFingerprint(sql)
 		md5 := mysql.GetMd5(fingerprint)
 		ns.SetErrorSQLFingerprint(md5, fingerprint)
