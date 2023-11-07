@@ -145,13 +145,8 @@ func (cc *Session) Handshake() (*HandshakeResponseInfo, error) {
 		if innerErr != nil {
 			log.Warn("[server] Session parse host error: %v", innerErr)
 		}
-		// filter lvs detect liveness
-		hostname, _ := util.HostName(clientHost)
-		if len(hostname) > 0 && strings.Contains(hostname, "lvs") {
-			return &info, err
-		}
 
-		log.Warn("[server] Session readHandshakeResponse error, connId: %d, ip: %s, msg: %s, error: %s",
+		log.Debug("[server] Session readHandshakeResponse error, connId: %d, ip: %s, msg: %s, error: %s",
 			cc.c.GetConnectionID(), clientHost, "read Handshake Response error", err.Error())
 		return &info, err
 	}
