@@ -78,7 +78,7 @@ type SessionExecutor struct {
 	charset          string
 	sessionVariables *mysql.SessionVariables
 
-	txConns    map[string]backend.PooledConnect
+	txConns    map[string]map[string]backend.PooledConnect
 	savepoints []string
 	txLock     sync.Mutex
 
@@ -179,7 +179,7 @@ func newSessionExecutor(manager *Manager) *SessionExecutor {
 
 	return &SessionExecutor{
 		sessionVariables: mysql.NewSessionVariables(),
-		txConns:          make(map[string]backend.PooledConnect),
+		txConns:          make(map[string]map[string]backend.PooledConnect),
 		stmts:            make(map[uint32]*Stmt),
 		parser:           parser.New(),
 		status:           initClientConnStatus,
@@ -401,12 +401,12 @@ func (se *SessionExecutor) getBackendConns(sqls map[string]map[string][]string, 
 	return
 }
 
-func (se *SessionExecutor) getBackendConn(sliceName string, fromSlave bool) (pc backend.PooledConnect, err error) {
+func (se *SessionExecutor) getBackendConn(sliceName string, phyDb string, fromSlave bool) (pc backend.PooledConnect, err error) {
 	if !se.isInTransaction() {
 		slice := se.GetNamespace().GetSlice(sliceName)
 		return slice.GetConn(fromSlave, se.GetNamespace().GetUserProperty(se.user), se.GetNamespace().localSlaveReadPriority)
 	}
-	return se.getTransactionConn(sliceName)
+	return se.getTransactionConn(sliceName, phyDb)
 }
 
 func (se *SessionExecutor) getMultiBackendConn(sliceName string, fromSlave bool, dbSql map[string][]string) (pcs map[string]backend.PooledConnect, err error) {
@@ -417,7 +417,7 @@ func (se *SessionExecutor) getMultiBackendConn(sliceName string, fromSlave bool,
 		wg.Add(1)
 		go func(phyDb string) {
 			defer wg.Done()
-			pc, err := se.getBackendConn(sliceName, fromSlave)
+			pc, err := se.getBackendConn(sliceName, phyDb, fromSlave)
 			if err != nil {
 				log.Warn("get backend conn failed, ns=%s, sliceName:%s, error: %s", se.namespace, sliceName, err.Error())
 				return
@@ -434,13 +434,14 @@ func (se *SessionExecutor) getMultiBackendConn(sliceName string, fromSlave bool,
 	return dbConns, err
 }
 
-func (se *SessionExecutor) getTransactionConn(sliceName string) (pc backend.PooledConnect, err error) {
+func (se *SessionExecutor) getTransactionConn(sliceName string, phyDb string) (pc backend.PooledConnect, err error) {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 
-	var ok bool
-	if pc, ok = se.txConns[sliceName]; ok {
-		return
+	if pcs, ok := se.txConns[sliceName]; ok {
+		if pc, ok = pcs[phyDb]; ok {
+			return
+		}
 	}
 
 	slice := se.GetNamespace().GetSlice(sliceName) // returns nil only when the conf is error (fatal) so panic is correct
@@ -464,7 +465,15 @@ func (se *SessionExecutor) getTransactionConn(sliceName string) (pc backend.Pool
 	for _, savepoint := range se.savepoints {
 		pc.Execute("savepoint "+savepoint, 0)
 	}
-	se.txConns[sliceName] = pc
+
+	if _, ok := se.txConns[sliceName]; ok {
+		se.txConns[sliceName][phyDb] = pc
+	} else {
+		se.txConns[sliceName] = map[string]backend.PooledConnect{
+			phyDb: pc,
+		}
+	}
+
 	return
 }
 
@@ -914,9 +923,11 @@ func (se *SessionExecutor) handleBegin() error {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 
-	for _, co := range se.txConns {
-		if err := co.Begin(); err != nil {
-			return err
+	for _, pcs := range se.txConns {
+		for _, pc := range pcs {
+			if err := pc.Begin(); err != nil {
+				return err
+			}
 		}
 	}
 	se.status |= mysql.ServerStatusInTrans
@@ -947,14 +958,16 @@ func (se *SessionExecutor) commit() (err error) {
 
 	se.status &= ^mysql.ServerStatusInTrans
 
-	for _, pc := range se.txConns {
-		if e := pc.Commit(); e != nil {
-			err = e
+	for _, pcs := range se.txConns {
+		for _, pc := range pcs {
+			if e := pc.Commit(); e != nil {
+				err = e
+			}
+			pc.Recycle()
 		}
-		pc.Recycle()
 	}
 
-	se.txConns = make(map[string]backend.PooledConnect)
+	se.txConns = make(map[string]map[string]backend.PooledConnect)
 	se.savepoints = []string{}
 	return
 }
@@ -963,11 +976,13 @@ func (se *SessionExecutor) rollback() (err error) {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 	se.status &= ^mysql.ServerStatusInTrans
-	for _, pc := range se.txConns {
-		err = pc.Rollback()
-		pc.Recycle()
+	for _, pcs := range se.txConns {
+		for _, pc := range pcs {
+			err = pc.Rollback()
+			pc.Recycle()
+		}
 	}
-	se.txConns = make(map[string]backend.PooledConnect)
+	se.txConns = make(map[string]map[string]backend.PooledConnect)
 	se.savepoints = []string{}
 	return
 }
@@ -975,8 +990,10 @@ func (se *SessionExecutor) rollback() (err error) {
 func (se *SessionExecutor) rollbackSavepoint(savepoint string) (err error) {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
-	for _, pc := range se.txConns {
-		_, err = pc.Execute("rollback to "+savepoint, 0)
+	for _, pcs := range se.txConns {
+		for _, pc := range pcs {
+			_, err = pc.Execute("rollback to "+savepoint, 0)
+		}
 	}
 	if err == nil && se.isInTransaction() {
 		if index := util.ArrayFindIndex(se.savepoints, savepoint); index > -1 {
@@ -991,8 +1008,10 @@ func (se *SessionExecutor) handleSavepoint(stmt *ast.SavepointStmt) (err error) 
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 	if stmt.Release {
-		for _, pc := range se.txConns {
-			_, err = pc.Execute("release savepoint "+stmt.Savepoint, 0)
+		for _, pcs := range se.txConns {
+			for _, pc := range pcs {
+				_, err = pc.Execute("release savepoint "+stmt.Savepoint, 0)
+			}
 		}
 		if err == nil && se.isInTransaction() {
 			if index := util.ArrayFindIndex(se.savepoints, stmt.Savepoint); index > -1 {
@@ -1000,8 +1019,10 @@ func (se *SessionExecutor) handleSavepoint(stmt *ast.SavepointStmt) (err error) 
 			}
 		}
 	} else {
-		for _, pc := range se.txConns {
-			_, err = pc.Execute("savepoint "+stmt.Savepoint, 0)
+		for _, pcs := range se.txConns {
+			for _, pc := range pcs {
+				_, err = pc.Execute("savepoint "+stmt.Savepoint, 0)
+			}
 		}
 		if err == nil && se.isInTransaction() {
 			if util.ArrayFindIndex(se.savepoints, stmt.Savepoint) > -1 {
