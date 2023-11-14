@@ -17,6 +17,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
+	"strings"
+	"sync"
+	"testing"
+
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/models"
@@ -28,10 +33,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"gopkg.in/ini.v1"
-	"reflect"
-	"strings"
-	"sync"
-	"testing"
 )
 
 var localManager *Manager
