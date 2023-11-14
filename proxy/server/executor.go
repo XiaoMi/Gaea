@@ -85,10 +85,11 @@ type SessionExecutor struct {
 	stmtID uint32
 	stmts  map[uint32]*Stmt //prepare相关,client端到proxy的stmt
 
-	parser      *parser.Parser
-	session     *Session
-	serverAddr  net.Addr
-	backendAddr string //记录执行 SQL 后端实例的地址
+	parser              *parser.Parser
+	session             *Session
+	serverAddr          net.Addr
+	backendAddr         string //记录执行 SQL 后端实例的地址
+	backendConnectionId int64  //记录执行 SQL 后端实例的连接ID
 }
 
 // Response response info
@@ -391,6 +392,7 @@ func (se *SessionExecutor) getBackendConns(sqls map[string]map[string][]string, 
 	for _, sPc := range pcs {
 		for _, pc := range sPc {
 			se.backendAddr = pc.GetAddr()
+			se.backendConnectionId = pc.GetConnectionID()
 			break
 		}
 		break
