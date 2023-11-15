@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -434,7 +435,9 @@ func (m *Manager) startConnectPoolMetricsTask(interval int) {
 				return
 			case <-t.C:
 				m.statistics.AddUptimeCount(time.Now().Unix() - m.statistics.startTime)
-				m.statistics.CalcCPUBusy()
+
+				// record cpu usage will wait at least 5 seconds
+				m.statistics.CalcCPUBusy(interval - 5)
 
 				current, _, _ := m.switchIndex.Get()
 				for nameSpaceName, _ := range m.namespaces[current].namespaces {
@@ -1086,24 +1089,25 @@ func (s *StatisticManager) AddUptimeCount(count int64) {
 	s.uptimeCounts.Set(statsKey, count)
 }
 
-func (s *StatisticManager) CalcCPUBusy() {
-	cpuTime := int64(0)
+func (s *StatisticManager) CalcCPUBusy(interval int) {
+	cpuBusy := int64(0)
 	p, err := process.NewProcess(int32(os.Getpid()))
 	if err != nil {
 		log.Notice("server", "gopsutil", "NewProcess", 0, err)
 		return
 	}
-	processCpuTime, err := p.Times()
+	cpuPercent, err := p.Percent(time.Duration(interval) * time.Second)
 	if err == nil {
-		cpuUser, cpuSystem := processCpuTime.User, processCpuTime.System
 		if s.CPUNums != 0 {
 			// 为了适应CountersWithMultiLabels的数据类型，这里对cpuTime结果做了取整，grafana显示时需要还原
-			cpuTime = int64((cpuSystem + cpuUser) / float64(s.CPUNums) * 100 * 100)
+			cpuBusy = int64(cpuPercent / float64(s.CPUNums) * 100)
+
+		} else {
+			cpuBusy = int64(cpuPercent / float64(runtime.NumCPU()) * 100)
 		}
 	}
-
 	statsKey := []string{s.clusterName}
-	s.CPUBusy.Set(statsKey, cpuTime)
+	s.CPUBusy.Set(statsKey, cpuBusy)
 }
 
 func (s *StatisticManager) CalcAvgSQLTimes() {
