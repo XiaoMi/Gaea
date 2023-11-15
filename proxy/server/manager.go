@@ -754,24 +754,32 @@ type StatisticManager struct {
 type SQLResponse struct {
 	ns                      string
 	sqlExecTimeRecordSwitch bool
-	sQLExecTimeChan         chan string
-	sQLTimeList             []float64
-	response99Max           map[string]float64 // map[backendAddr]P99MaxValue
-	response99Avg           map[string]float64 // map[backendAddr]P99AvgValue
-	response95Max           map[string]float64 // map[backendAddr]P95MaxValue
-	response95Avg           map[string]float64 // map[backendAddr]P95AvgValue
+	sQLExecTimeChan         chan *SQLExecTimeRecord
+	sQLTimeList             []*SQLExecTimeRecord
+	response99Max           map[string]int64 // map[backendAddr]P99MaxValue
+	response99Avg           map[string]int64 // map[backendAddr]P99AvgValue
+	response95Max           map[string]int64 // map[backendAddr]P95MaxValue
+	response95Avg           map[string]int64 // map[backendAddr]P95AvgValue
+}
+
+// SQLExecTimeRecord record backend sql exec time
+type SQLExecTimeRecord struct {
+	sliceName     string
+	backendAddr   string
+	execTimeMicro int64
 }
 
 func NewSQLResponse(name string) *SQLResponse {
+	sQLExecTimeRecord := make([]*SQLExecTimeRecord, 0, SQLExecTimeSize)
 	return &SQLResponse{
 		ns:                      name,
 		sqlExecTimeRecordSwitch: false,
-		sQLExecTimeChan:         make(chan string, SQLExecTimeSize),
-		sQLTimeList:             []float64{},
-		response99Max:           make(map[string]float64),
-		response99Avg:           make(map[string]float64),
-		response95Max:           make(map[string]float64),
-		response95Avg:           make(map[string]float64),
+		sQLExecTimeChan:         make(chan *SQLExecTimeRecord, SQLExecTimeSize),
+		sQLTimeList:             sQLExecTimeRecord,
+		response99Max:           make(map[string]int64),
+		response99Avg:           make(map[string]int64),
+		response95Max:           make(map[string]int64),
+		response95Avg:           make(map[string]int64),
 	}
 
 }
@@ -982,9 +990,14 @@ func (s *StatisticManager) recordBackendSQLTiming(namespace string, operation st
 	if !s.SQLResponsePercentile[namespace].sqlExecTimeRecordSwitch {
 		return
 	}
-	execTime := float64(time.Since(startTime).Milliseconds())
+	execTimeMicro := time.Since(startTime).Microseconds()
+	sQLExecTimeRecord := &SQLExecTimeRecord{
+		sliceName:     sliceName,
+		backendAddr:   backendAddr,
+		execTimeMicro: execTimeMicro,
+	}
 	select {
-	case s.SQLResponsePercentile[namespace].sQLExecTimeChan <- fmt.Sprintf(sliceName + "__" + backendAddr + "__" + fmt.Sprintf("%f", execTime)):
+	case s.SQLResponsePercentile[namespace].sQLExecTimeChan <- sQLExecTimeRecord:
 	case <-time.After(time.Millisecond):
 		s.SQLResponsePercentile[namespace].sqlExecTimeRecordSwitch = false
 	}
@@ -1112,51 +1125,46 @@ func (s *StatisticManager) CalcCPUBusy(interval int) {
 
 func (s *StatisticManager) CalcAvgSQLTimes() {
 	for ns, sQLResponse := range s.SQLResponsePercentile {
-		sqlTimes := make([]float64, 0)
+		sqlTimesMicro := make([]int64, 0)
 		quit := false
 		backendAddr := ""
 		for !quit {
 			select {
 			case tmp := <-sQLResponse.sQLExecTimeChan:
-				if len(sqlTimes) >= SQLExecTimeSize {
+				if len(sqlTimesMicro) >= SQLExecTimeSize {
 					quit = true
 				}
-				sqlTimeSplit := strings.Split(tmp, "__")
-				if len(sqlTimeSplit) < 3 {
-					log.Notice("sql time format error.get:%s", tmp)
-					quit = true
-				}
-				backendAddr = sqlTimeSplit[1]
-				etime, _ := strconv.ParseFloat(sqlTimeSplit[2], 64)
-				sqlTimes = append(sqlTimes, etime)
+				backendAddr = tmp.backendAddr
+				etime := tmp.execTimeMicro
+				sqlTimesMicro = append(sqlTimesMicro, etime)
 			case <-time.After(time.Millisecond):
 				quit = true
 			}
-			sort.Float64s(sqlTimes)
 
-			sum := 0.0
-			p99sum := 0.0
-			p95sum := 0.0
-			if len(sqlTimes) != 0 {
-				s.SQLResponsePercentile[ns].response99Max[backendAddr] = sqlTimes[(len(sqlTimes)-1)*99/100]
-				s.SQLResponsePercentile[ns].response95Max[backendAddr] = sqlTimes[(len(sqlTimes)-1)*95/100]
-			}
-			for k, _ := range sqlTimes {
-				sum += sqlTimes[k]
-				if k < len(sqlTimes)*95/100 {
-					p95sum += sqlTimes[k]
-				}
-				if k < len(sqlTimes)*99/100 {
-					p99sum += sqlTimes[k]
-				}
-			}
-			if len(sqlTimes)*99/100 > 0 {
-				s.SQLResponsePercentile[ns].response99Avg[backendAddr] = p99sum / float64(len(sqlTimes)*99/100)
-			}
-			if len(sqlTimes)*95/100 > 0 {
-				s.SQLResponsePercentile[ns].response95Avg[backendAddr] = p95sum / float64(len(sqlTimes)*95/100)
-			}
+			sort.Slice(sqlTimesMicro, func(i, j int) bool { return sqlTimesMicro[i] < sqlTimesMicro[j] })
 
+			sum := int64(0)
+			p99sum := int64(0)
+			p95sum := int64(0)
+			if len(sqlTimesMicro) != 0 {
+				s.SQLResponsePercentile[ns].response99Max[backendAddr] = sqlTimesMicro[(len(sqlTimesMicro)-1)*99/100]
+				s.SQLResponsePercentile[ns].response95Max[backendAddr] = sqlTimesMicro[(len(sqlTimesMicro)-1)*95/100]
+			}
+			for k := range sqlTimesMicro {
+				sum += sqlTimesMicro[k]
+				if k < len(sqlTimesMicro)*95/100 {
+					p95sum += sqlTimesMicro[k]
+				}
+				if k < len(sqlTimesMicro)*99/100 {
+					p99sum += sqlTimesMicro[k]
+				}
+			}
+			if len(sqlTimesMicro)*99/100 > 0 {
+				s.SQLResponsePercentile[ns].response99Avg[backendAddr] = p99sum / int64(len(sqlTimesMicro)*99/100)
+			}
+			if len(sqlTimesMicro)*95/100 > 0 {
+				s.SQLResponsePercentile[ns].response95Avg[backendAddr] = p95sum / int64(len(sqlTimesMicro)*95/100)
+			}
 			s.SQLResponsePercentile[ns].sqlExecTimeRecordSwitch = true
 		}
 	}
