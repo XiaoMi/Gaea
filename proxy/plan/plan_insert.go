@@ -16,6 +16,7 @@ package plan
 
 import (
 	"fmt"
+
 	"github.com/XiaoMi/Gaea/parser/model"
 
 	"github.com/XiaoMi/Gaea/core/errors"
@@ -248,6 +249,7 @@ func handleInsertValues(p *InsertPlan) error {
 			}
 			p.result.Inter([]int{routeIdx})
 		}
+		p.rewriteStmts = append(p.rewriteStmts, p.stmt)
 		return nil
 	}
 

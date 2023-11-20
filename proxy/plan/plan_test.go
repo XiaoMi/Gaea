@@ -16,6 +16,7 @@ package plan
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync/atomic"
 	"testing"
 
@@ -27,10 +28,11 @@ import (
 )
 
 type SQLTestcase struct {
-	db     string
-	sql    string
-	sqls   map[string]map[string][]string
-	hasErr bool
+	db         string
+	sql        string
+	sqls       map[string]map[string][]string
+	randomSqls []map[string]map[string][]string
+	hasErr     bool
 }
 
 type OrderSequence struct {
@@ -109,11 +111,164 @@ func getTestFunc(info *PlanInfo, test SQLTestcase) func(t *testing.T) {
 		if actualSQLs == nil {
 			t.Fatalf("get sqls error: %v", err)
 		}
-
+		if len(test.randomSqls) > 0 {
+			if !checkRandomSQLs(test.randomSqls, actualSQLs) {
+				fmt.Println("checkRandomSQLs")
+				t.Errorf("not equal, expect: %v, actual: %v", test.randomSqls, actualSQLs)
+				return
+			}
+			return
+		}
 		if !checkSQLs(test.sqls, actualSQLs) {
 			t.Errorf("not equal, expect: %v, actual: %v", test.sqls, actualSQLs)
 		}
 	}
+}
+func TestCheckRandomSQLs(t *testing.T) {
+	randomSqlsFirst := []map[string]map[string][]string{
+		{
+			"slice0": {"db0": {"sql1", "sql2"}, "db1": {"sql1"}},
+			"slice1": {"db2": {"sql1", "sql2"}, "db3": {"sql1"}},
+		},
+	}
+	randomSqlsSecond := []map[string]map[string][]string{
+		{
+			"slice0": {"db0": {"sql1", "sql2"}},
+		},
+		{
+			"slice0": {"db1": {"sql1"}},
+		},
+		{
+			"slice1": {"db2": {"sql1", "sql2"}},
+		},
+		{
+			"slice1": {"db3": {"sql1"}},
+		},
+	}
+	tests := []struct {
+		name     string
+		actual   map[string]map[string][]string
+		expected bool
+	}{
+		{
+			name: "Normal match",
+			actual: map[string]map[string][]string{
+				"slice0": {"db0": {"sql1", "sql2"}},
+			},
+			expected: true,
+		},
+		{
+			name: "Normal match",
+			actual: map[string]map[string][]string{
+				"slice0": {"db0": {"sql2", "sql1"}},
+			},
+			expected: true,
+		},
+		{
+			name: "Normal match",
+			actual: map[string]map[string][]string{
+				"slice0": {"db1": {"sql1"}},
+			},
+			expected: true,
+		},
+		{
+			name: "Normal match",
+			actual: map[string]map[string][]string{
+				"slice1": {"db3": {"sql1"}},
+			},
+			expected: true,
+		},
+		{
+			name: "Normal match",
+			actual: map[string]map[string][]string{
+				"slice1": {"db2": {"sql2", "sql1"}},
+			},
+			expected: true,
+		},
+		{
+			name: "Mismatched SQL list",
+			actual: map[string]map[string][]string{
+				"slice1": {"db2": {"sql2"}},
+			},
+			expected: false,
+		},
+		{
+			name: "Extra key in actual",
+			actual: map[string]map[string][]string{
+				"slice1": {"db1": {"sql1"}},
+			},
+			expected: false,
+		},
+		{
+			name:     "Empty maps",
+			actual:   map[string]map[string][]string{},
+			expected: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result := checkRandomSQLs(randomSqlsFirst, test.actual)
+			if result != test.expected {
+				t.Errorf("Test %s failed: expected %v, got %v", test.name, test.expected, result)
+			}
+			result = checkRandomSQLs(randomSqlsSecond, test.actual)
+			if result != test.expected {
+				t.Errorf("Test %s failed: expected %v, got %v", test.name, test.expected, result)
+			}
+		})
+	}
+}
+
+// 用来判断全局表生成所有的DB和SQL是否和randomSqls对应,actual 没有多db 的情况，例如："slice0": {"db0": {"sql1", "sql2"}, "db1": {"sql1"}}
+func checkRandomSQLs(randomSqls []map[string]map[string][]string, actual map[string]map[string][]string) bool {
+	// sliceMatch 检查两个切片是否包含相同的元素，不考虑顺序
+	sliceMatch := func(a, b []string) bool {
+		if len(a) != len(b) {
+			return false
+		}
+		count := make(map[string]int)
+		for _, v := range a {
+			count[v]++
+		}
+		for _, v := range b {
+			if count[v] == 0 {
+				return false
+			}
+			count[v]--
+		}
+		return true
+	}
+	// 遍历 actual 中的每个 slice 和其对应的 db-SQL 映射
+	for slice, actualDbMap := range actual {
+		foundSliceMatch := false
+		for _, randomSQLMap := range randomSqls {
+			if randomDbMap, ok := randomSQLMap[slice]; ok {
+				// 检查当前 slice 的所有 db 和 SQL 是否匹配
+				allDbSQLMatch := true
+				for db, actualSQLs := range actualDbMap {
+					if expectedSQLs, ok := randomDbMap[db]; ok {
+						if !sliceMatch(expectedSQLs, actualSQLs) {
+							allDbSQLMatch = false
+							break
+						}
+					} else {
+						// 如果 actual 中的 db 在 randomDbMap 中不存在
+						allDbSQLMatch = false
+						break
+					}
+				}
+				if allDbSQLMatch {
+					foundSliceMatch = true
+					break
+				}
+			}
+		}
+		if !foundSliceMatch {
+			return false
+		}
+	}
+	// 如果所有检查都通过，则返回 true
+	return true
 }
 
 func createNamespace(nsStr string) (*models.Namespace, error) {
