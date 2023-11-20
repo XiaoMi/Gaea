@@ -3146,10 +3146,19 @@ func TestSelectGlobalTableKingshard(t *testing.T) {
 		{
 			db:  "db_ks",
 			sql: "select * from tbl_ks_global_one where name='haha'",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_ks": {
-						"SELECT * FROM `tbl_ks_global_one` WHERE `name`='haha'",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_ks": {
+							"SELECT * FROM `tbl_ks_global_one` WHERE `name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_ks": {
+							"SELECT * FROM `tbl_ks_global_one` WHERE `name`='haha'",
+						},
 					},
 				},
 			},
@@ -3158,10 +3167,19 @@ func TestSelectGlobalTableKingshard(t *testing.T) {
 		{
 			db:  "db_ks",
 			sql: "select * from db_ks.tbl_ks_global_one, tbl_ks_global_two where tbl_ks_global_one.name='haha' and tbl_ks_global_two.name='hehe'",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_ks": {
-						"SELECT * FROM (`db_ks`.`tbl_ks_global_one`) JOIN `tbl_ks_global_two` WHERE `tbl_ks_global_one`.`name`='haha' AND `tbl_ks_global_two`.`name`='hehe'",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_ks": {
+							"SELECT * FROM (`db_ks`.`tbl_ks_global_one`) JOIN `tbl_ks_global_two` WHERE `tbl_ks_global_one`.`name`='haha' AND `tbl_ks_global_two`.`name`='hehe'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_ks": {
+							"SELECT * FROM (`db_ks`.`tbl_ks_global_one`) JOIN `tbl_ks_global_two` WHERE `tbl_ks_global_one`.`name`='haha' AND `tbl_ks_global_two`.`name`='hehe'",
+						},
 					},
 				},
 			},
@@ -3169,7 +3187,7 @@ func TestSelectGlobalTableKingshard(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		t.Run(test.sql, getTestFuncTODO(ns, test))
+		t.Run(test.sql, getTestFunc(ns, test))
 	}
 }
 
@@ -3260,68 +3278,212 @@ func TestSelectGlobalTableMycat(t *testing.T) {
 	}
 
 	tests := []SQLTestcase{
+
 		{
 			db:  "db_mycat",
 			sql: "select * from tbl_mycat_global_one where name='haha'",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_mycat_0": {
-						"SELECT * FROM `tbl_mycat_global_one` WHERE `name`='haha'",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_mycat_0": {
+							"SELECT * FROM `tbl_mycat_global_one` WHERE `name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-0": {
+						"db_mycat_1": {
+							"SELECT * FROM `tbl_mycat_global_one` WHERE `name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_2": {
+							"SELECT * FROM `tbl_mycat_global_one` WHERE `name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_3": {
+							"SELECT * FROM `tbl_mycat_global_one` WHERE `name`='haha'",
+						},
 					},
 				},
 			},
 		},
+
 		{
 			db:  "db_mycat",
 			sql: "select * from db_mycat.tbl_mycat_global_one where name='haha'",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_mycat_0": {
-						"SELECT * FROM `db_mycat_0`.`tbl_mycat_global_one` WHERE `name`='haha'",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_mycat_0": {
+							"SELECT * FROM `db_mycat_0`.`tbl_mycat_global_one` WHERE `name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-0": {
+						"db_mycat_1": {
+							"SELECT * FROM `db_mycat_1`.`tbl_mycat_global_one` WHERE `name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_2": {
+							"SELECT * FROM `db_mycat_2`.`tbl_mycat_global_one` WHERE `name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_3": {
+							"SELECT * FROM `db_mycat_3`.`tbl_mycat_global_one` WHERE `name`='haha'",
+						},
 					},
 				},
 			},
 		},
+
 		{
 			db:  "db_mycat",
 			sql: "select * from db_mycat.tbl_mycat_global_one where db_mycat.tbl_mycat_global_one.name='haha'",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_mycat_0": {
-						"SELECT * FROM `db_mycat_0`.`tbl_mycat_global_one` WHERE `db_mycat_0`.`tbl_mycat_global_one`.`name`='haha'",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_mycat_0": {
+							"SELECT * FROM `db_mycat_0`.`tbl_mycat_global_one` WHERE `db_mycat_0`.`tbl_mycat_global_one`.`name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-0": {
+						"db_mycat_1": {
+							"SELECT * FROM `db_mycat_1`.`tbl_mycat_global_one` WHERE `db_mycat_1`.`tbl_mycat_global_one`.`name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_2": {
+							"SELECT * FROM `db_mycat_2`.`tbl_mycat_global_one` WHERE `db_mycat_2`.`tbl_mycat_global_one`.`name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_3": {
+							"SELECT * FROM `db_mycat_3`.`tbl_mycat_global_one` WHERE `db_mycat_3`.`tbl_mycat_global_one`.`name`='haha'",
+						},
 					},
 				},
 			},
 		},
+
 		{
 			db:  "db_mycat",
 			sql: "select * from db_mycat.tbl_mycat_global_one, tbl_mycat_global_two where tbl_mycat_global_one.name='haha' and tbl_mycat_global_two.name='hehe'",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_mycat_0": {
-						"SELECT * FROM (`db_mycat_0`.`tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`name`='hehe'",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_mycat_0": {
+							"SELECT * FROM (`db_mycat_0`.`tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`name`='hehe'",
+						},
+					},
+				},
+				{
+					"slice-0": {
+						"db_mycat_1": {
+							"SELECT * FROM (`db_mycat_1`.`tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`name`='hehe'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_2": {
+							"SELECT * FROM (`db_mycat_2`.`tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`name`='hehe'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_3": {
+							"SELECT * FROM (`db_mycat_3`.`tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`name`='hehe'",
+						},
 					},
 				},
 			},
 		},
+
 		{
 			db:  "db_mycat",
 			sql: "select * from db_mycat.tbl_mycat_global_one, db_mycat.tbl_mycat_global_two where db_mycat.tbl_mycat_global_one.name='haha' and db_mycat.tbl_mycat_global_two.name='hehe'",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_mycat_0": {
-						"SELECT * FROM (`db_mycat_0`.`tbl_mycat_global_one`) JOIN `db_mycat_0`.`tbl_mycat_global_two` WHERE `db_mycat_0`.`tbl_mycat_global_one`.`name`='haha' AND `db_mycat_0`.`tbl_mycat_global_two`.`name`='hehe'",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_mycat_0": {
+							"SELECT * FROM (`db_mycat_0`.`tbl_mycat_global_one`) JOIN `db_mycat_0`.`tbl_mycat_global_two` WHERE `db_mycat_0`.`tbl_mycat_global_one`.`name`='haha' AND `db_mycat_0`.`tbl_mycat_global_two`.`name`='hehe'",
+						},
+					},
+				},
+				{
+					"slice-0": {
+						"db_mycat_1": {
+							"SELECT * FROM (`db_mycat_1`.`tbl_mycat_global_one`) JOIN `db_mycat_1`.`tbl_mycat_global_two` WHERE `db_mycat_1`.`tbl_mycat_global_one`.`name`='haha' AND `db_mycat_1`.`tbl_mycat_global_two`.`name`='hehe'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_2": {
+							"SELECT * FROM (`db_mycat_2`.`tbl_mycat_global_one`) JOIN `db_mycat_2`.`tbl_mycat_global_two` WHERE `db_mycat_2`.`tbl_mycat_global_one`.`name`='haha' AND `db_mycat_2`.`tbl_mycat_global_two`.`name`='hehe'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_3": {
+							"SELECT * FROM (`db_mycat_3`.`tbl_mycat_global_one`) JOIN `db_mycat_3`.`tbl_mycat_global_two` WHERE `db_mycat_3`.`tbl_mycat_global_one`.`name`='haha' AND `db_mycat_3`.`tbl_mycat_global_two`.`name`='hehe'",
+						},
 					},
 				},
 			},
 		},
+
 		{
 			db:  "db_mycat",
 			sql: "select A.name, B.name from db_mycat.tbl_mycat_global_one A, db_mycat.tbl_mycat_global_two B  where A.name='haha' and B.name='hehe' order by B.col2 desc",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_mycat_1": {
-						"SELECT `A`.`name`,`B`.`name`,`B`.`col2` FROM (`db_mycat_1`.`tbl_mycat_global_one` AS `A`) JOIN `db_mycat_1`.`tbl_mycat_global_two` AS `B` WHERE `A`.`name`='haha' AND `B`.`name`='hehe' ORDER BY `B`.`col2` DESC",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_mycat_0": {
+							"SELECT `A`.`name`,`B`.`name`,`B`.`col2` FROM (`db_mycat_0`.`tbl_mycat_global_one` AS `A`) JOIN `db_mycat_0`.`tbl_mycat_global_two` AS `B` WHERE `A`.`name`='haha' AND `B`.`name`='hehe' ORDER BY `B`.`col2` DESC",
+						},
+					},
+				},
+				{
+					"slice-0": {
+						"db_mycat_1": {
+							"SELECT `A`.`name`,`B`.`name`,`B`.`col2` FROM (`db_mycat_1`.`tbl_mycat_global_one` AS `A`) JOIN `db_mycat_1`.`tbl_mycat_global_two` AS `B` WHERE `A`.`name`='haha' AND `B`.`name`='hehe' ORDER BY `B`.`col2` DESC",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_2": {
+							"SELECT `A`.`name`,`B`.`name`,`B`.`col2` FROM (`db_mycat_2`.`tbl_mycat_global_one` AS `A`) JOIN `db_mycat_2`.`tbl_mycat_global_two` AS `B` WHERE `A`.`name`='haha' AND `B`.`name`='hehe' ORDER BY `B`.`col2` DESC",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_3": {
+							"SELECT `A`.`name`,`B`.`name`,`B`.`col2` FROM (`db_mycat_3`.`tbl_mycat_global_one` AS `A`) JOIN `db_mycat_3`.`tbl_mycat_global_two` AS `B` WHERE `A`.`name`='haha' AND `B`.`name`='hehe' ORDER BY `B`.`col2` DESC",
+						},
 					},
 				},
 			},
@@ -3330,14 +3492,7 @@ func TestSelectGlobalTableMycat(t *testing.T) {
 
 	for _, test := range tests {
 		// TODO: random slice to be fixed 100% success
-		t.Run(test.sql, getTestFuncTODO(ns, test))
-	}
-}
-
-//TODO: delete temporary func
-func getTestFuncTODO(info *PlanInfo, test SQLTestcase) func(*testing.T) {
-	return func(t *testing.T) {
-		t.Skip("TODO")
+		t.Run(test.sql, getTestFunc(ns, test))
 	}
 }
 

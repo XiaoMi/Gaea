@@ -105,9 +105,14 @@ func TestMycatShardSimpleInsert(t *testing.T) {
 			},
 		},
 		{
-			db:     "db_mycat",
-			sql:    "insert into tbl_mycat (a) values ('hi')",
-			hasErr: true, // sharding column not found
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat (a) values ('hi')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"INSERT INTO `tbl_mycat` (`a`,`id`) VALUES ('hi',1)"},
+				},
+			},
+			//hasErr: true, // sharding column not found
 		},
 		{
 			db:  "db_mycat",
@@ -173,7 +178,7 @@ func TestMycatShardSimpleInsert(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.sql, getTestFuncTODO(ns, test))
+		t.Run(test.sql, getTestFunc(ns, test))
 	}
 }
 
@@ -362,7 +367,7 @@ func TestMycatShardSimpleInsertSet(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.sql, getTestFuncTODO(ns, test))
+		t.Run(test.sql, getTestFunc(ns, test))
 	}
 }
 
@@ -861,7 +866,7 @@ func TestMycatInsertSequenceShardKey(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.sql, getTestFuncTODO(ns, test))
+		t.Run(test.sql, getTestFunc(ns, test))
 	}
 }
 
@@ -896,13 +901,17 @@ func TestMycatInsertSequenceUnshardKey(t *testing.T) {
 			sql: "insert into tbl_ks (id, user_id) values (3,nextval()),(3,nextval()),(3, nextval())",
 			sqls: map[string]map[string][]string{
 				"slice-1": {
-					"db_ks": {"INSERT INTO `tbl_ks_0003` (`id`,`user_id`) VALUES (3,3),(3,4),(3,5)"},
+					"db_ks": []string{
+						"INSERT INTO `tbl_ks_0003` (`id`,`user_id`) VALUES (3,3)",
+						"INSERT INTO `tbl_ks_0003` (`id`,`user_id`) VALUES (3,4)",
+						"INSERT INTO `tbl_ks_0003` (`id`,`user_id`) VALUES (3,5)",
+					},
 				},
 			},
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.sql, getTestFuncTODO(ns, test))
+		t.Run(test.sql, getTestFunc(ns, test))
 	}
 }
 
@@ -918,13 +927,13 @@ func TestEscapeBackslashShard(t *testing.T) {
 			sql: `insert into tbl_ks (id,name) values (1,'hello\\"world')`,
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_ks": {"INSERT INTO `tbl_ks_0001` (`id`,`name`) VALUES (1,'hello\\\\\"world')"},
+					"db_ks": {"INSERT INTO `tbl_ks_0001` (`id`,`name`,`user_id`) VALUES (1,'hello\\\\\"world',1)"},
 				},
 			},
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.sql, getTestFuncTODO(ns, test))
+		t.Run(test.sql, getTestFunc(ns, test))
 	}
 }
 
@@ -960,7 +969,7 @@ func TestMycatShardSimpleInsertColumnCaseInsensitive(t *testing.T) {
 		},
 	}
 	for _, test := range tests {
-		t.Run(test.sql, getTestFuncTODO(ns, test))
+		t.Run(test.sql, getTestFunc(ns, test))
 	}
 }
 
