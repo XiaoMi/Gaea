@@ -342,14 +342,14 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 	}
 
 	if err == nil {
-		_ = se.manager.statistics.generalLogger.Notice("%s - %.1fms - ns=%s, %s@%s->%s, mysql_connect_id=%d, r=%d|%v",
-			SQLExecStatusOk, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr,
+		se.manager.statistics.generalLogger.Notice("%s - %.1fms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d, r=%d|%v",
+			SQLExecStatusOk, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
 			se.backendConnectionId, affectedRows, sql)
 	} else {
 		// record error sql
-		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s, mysql_connect_id=%d, r=%d|%v. err:%s",
-			SQLExecStatusErr, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr,
-			se.backendConnectionId, affectedRows, sql)
+		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d, r=%d|%v. err:%s",
+			SQLExecStatusErr, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
+			se.backendConnectionId, affectedRows, sql, err)
 		fingerprint := mysql.GetFingerprint(sql)
 		md5 := mysql.GetMd5(fingerprint)
 		ns.SetErrorSQLFingerprint(md5, fingerprint)
@@ -358,8 +358,8 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 
 	// record slow sql, only durationFloat > slowSQLTime will be recorded
 	if ns.getSessionSlowSQLTime() > 0 && int64(durationFloat) > ns.getSessionSlowSQLTime() {
-		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s, mysql_connect_id=%d, r=%d|%v",
-			SQLExecStatusSlow, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr,
+		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d, r=%d|%v",
+			SQLExecStatusSlow, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
 			se.backendConnectionId, affectedRows, sql)
 		fingerprint := mysql.GetFingerprint(sql)
 		md5 := mysql.GetMd5(fingerprint)
