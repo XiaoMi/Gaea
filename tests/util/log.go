@@ -10,12 +10,15 @@ import (
 	"time"
 )
 
+var logMatchRe = `\[(.*?)\] \[NOTICE\] \[(\d+)\] OK - (\d+\.\d+)ms - ns=(.*?), (.*?)@(.*?)->(.*?)/(.*?), mysql_connect_id=(\d+), r=\d+\|(.*?)$`
+
 type LogEntry struct {
 	Timestamp      string
 	Namespace      string
 	User           string
 	ClientAddr     string
 	BackendAddr    string
+	Database       string
 	ConnectionID   int
 	Query          string
 	ResponseTimeMs float64
@@ -53,13 +56,13 @@ func ReadLog(filepath string, searchString string, startTime string) ([]LogEntry
 	scanner := bufio.NewScanner(file)
 
 	// 正则表达式
-	re := regexp.MustCompile(`\[(.*?)\] \[NOTICE\] \[(\d+)\] OK - (\d+\.\d+)ms - ns=(.*?), (.*?)@(.*?)->(.*?), mysql_connect_id=(\d+), r=\d+\|(.*?)$`)
+	re := regexp.MustCompile(logMatchRe)
 	var logEntryRes []LogEntry
 	for scanner.Scan() {
 		line := scanner.Text()
 		// 使用正则表达式匹配日志行
 		matches := re.FindStringSubmatch(line)
-		if len(matches) != 10 {
+		if len(matches) != 11 {
 			continue
 		}
 		// 解析并填充结构体
@@ -79,8 +82,9 @@ func ReadLog(filepath string, searchString string, startTime string) ([]LogEntry
 		logEntry.User = matches[5]
 		logEntry.ClientAddr = matches[6]
 		logEntry.BackendAddr = matches[7]
-		fmt.Sscanf(matches[8], "%d", &logEntry.ConnectionID)
-		logEntry.Query = matches[9]
+		logEntry.Database = matches[8]
+		fmt.Sscanf(matches[9], "%d", &logEntry.ConnectionID)
+		logEntry.Query = matches[10]
 
 		if strings.Compare(searchString, logEntry.Query) != 0 {
 			continue

@@ -295,8 +295,8 @@ func (se *SessionExecutor) GetDatabase() string {
 func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 	switch cmd {
 	case mysql.ComQuit:
-		_ = se.manager.statistics.generalLogger.Notice("Quit - conn_id=%d, ns=%s, %s@%s",
-			se.session.c.ConnectionID, se.namespace, se.user, se.clientAddr)
+		_ = se.manager.statistics.generalLogger.Notice("Quit - conn_id=%d, ns=%s, %s@%s/%s",
+			se.session.c.ConnectionID, se.namespace, se.user, se.clientAddr, se.db)
 		se.handleRollback(nil)
 		// https://dev.mysql.com/doc/internals/en/com-quit.html
 		// either a connection close or a OK_Packet, OK_Packet will cause client RST sometimes, but doesn't affect sql execute

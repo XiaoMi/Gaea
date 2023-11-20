@@ -150,7 +150,7 @@ func (s *Server) onConn(c net.Conn) {
 
 	// added into time wheel
 	s.tw.Add(s.sessionTimeout, cc, cc.Close)
-	_ = s.manager.statistics.generalLogger.Notice("Connected - conn_id=%d, ns=%s, %s@%s (%s), capability: %d",
+	_ = s.manager.statistics.generalLogger.Notice("Connected - conn_id=%d, ns=%s, %s@%s/%s, capability: %d",
 		cc.c.ConnectionID,
 		cc.executor.namespace,
 		cc.executor.user,
