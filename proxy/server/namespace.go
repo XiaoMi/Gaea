@@ -189,37 +189,6 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 		namespace.userProperties[user.UserName] = up
 	}
 
-	// init backend slices
-	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID, proxyDatacenter)
-	if err != nil {
-		return nil, fmt.Errorf("init slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
-	}
-
-	//Check slice master and slave status and mark them as unavailable when detect down
-	if err = checkSlicesStatus(ctx, namespace.slices, namespace); err != nil {
-		return nil, fmt.Errorf("check salve in slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
-	}
-
-	// init router
-	namespace.router, err = router.NewRouter(namespaceConfig)
-	if err != nil {
-		return nil, fmt.Errorf("init router of namespace: %s failed, err: %v", namespace.name, err)
-	}
-
-	// init global sequences config
-	// 目前只支持基于mysql的序列号
-	sequences := sequence.NewSequenceManager()
-	for _, v := range namespaceConfig.GlobalSequences {
-		globalSequenceSlice, ok := namespace.slices[v.SliceName]
-		if !ok {
-			return nil, fmt.Errorf("init global sequence error: slice not found, sequence: %v", v)
-		}
-		seqName := strings.ToUpper(v.DB) + "." + strings.ToUpper(v.Table)
-		seq := sequence.NewMySQLSequence(globalSequenceSlice, seqName, v.PKName, v.MaxLimit)
-		sequences.SetSequence(v.DB, v.Table, seq)
-	}
-	namespace.sequences = sequences
-
 	if namespace.maxClientConnections <= 0 {
 		namespace.maxClientConnections = defaultMaxClientConnections
 	} else {
@@ -246,6 +215,37 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 	default:
 		namespace.localSlaveReadPriority = backend.LocalSlaveReadClosed
 	}
+
+	// init backend slices
+	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID, proxyDatacenter)
+	if err != nil {
+		return nil, fmt.Errorf("init slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
+	}
+
+	//Check slice master and slave status and mark them as unavailable when detect down
+	if namespace.downAfterNoAlive > 0 {
+		namespace.CheckSliceStatus(ctx)
+	}
+
+	// init router
+	namespace.router, err = router.NewRouter(namespaceConfig)
+	if err != nil {
+		return nil, fmt.Errorf("init router of namespace: %s failed, err: %v", namespace.name, err)
+	}
+
+	// init global sequences config
+	// 目前只支持基于mysql的序列号
+	sequences := sequence.NewSequenceManager()
+	for _, v := range namespaceConfig.GlobalSequences {
+		globalSequenceSlice, ok := namespace.slices[v.SliceName]
+		if !ok {
+			return nil, fmt.Errorf("init global sequence error: slice not found, sequence: %v", v)
+		}
+		seqName := strings.ToUpper(v.DB) + "." + strings.ToUpper(v.Table)
+		seq := sequence.NewMySQLSequence(globalSequenceSlice, seqName, v.PKName, v.MaxLimit)
+		sequences.SetSequence(v.DB, v.Table, seq)
+	}
+	namespace.sequences = sequences
 
 	return namespace, nil
 }
@@ -530,6 +530,18 @@ func (n *Namespace) Close(delay bool) {
 	_ = log.Warn("close ns:%s", n.name)
 }
 
+func (n *Namespace) CheckSliceStatus(ctx context.Context) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Notice("checkSlicesStatus recover error: %s", err)
+		}
+	}()
+
+	for _, slice := range n.slices {
+		slice.CheckStatus(ctx, n.name, n.downAfterNoAlive, int(n.secondsBehindMaster))
+	}
+}
+
 func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID, dc string) (*backend.Slice, error) {
 	var err error
 	s := new(backend.Slice)
@@ -576,240 +588,6 @@ func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.Co
 	}
 
 	return slices, nil
-}
-
-func checkSlicesStatus(ctx context.Context, slices map[string]*backend.Slice, namespace *Namespace) error {
-	defer func() {
-		if err := recover(); err != nil {
-			log.Notice("checkSlicesStatus recover error: %s", err)
-		}
-	}()
-
-	for _, v := range slices {
-		doCheckSlice(v, namespace, ctx)
-	}
-
-	return nil
-}
-
-func shouldCheckSlaveDataSyncStatus(namespace *Namespace, crruentStatus backend.StatusCode, slice *backend.Slice, isMaster bool) bool {
-	if isMaster || crruentStatus == backend.UP {
-		return false
-	}
-
-	// AS when master is down, slave io thread will stop, we should not check slave sync crruentStatus, or we
-	// will mark slave as down mistakely
-	if masterStatus, _ := slice.Master.StatusMap.Load(0); masterStatus == backend.DOWN {
-		return false
-	}
-
-	return namespace.secondsBehindMaster != 0
-}
-
-func doCheckSlice(slice *backend.Slice, namespace *Namespace, ctx context.Context) {
-	checkStatus := func(slaveInfo *backend.DBInfo, isMaster bool) {
-		role := "Slave"
-		if isMaster {
-			role = "Master"
-		}
-
-		for {
-			time.Sleep(time.Duration(backend.PingPeriod) * time.Second)
-
-			select {
-			case <-ctx.Done():
-				_ = log.Fatal("checkStatus canceled by parent. ns:%s", namespace.name)
-				return
-			default:
-				for idx, cp := range slaveInfo.ConnPool {
-					_ = log.Debug("ns:%s, slice:%s, start check %s %s by auto check",
-						namespace.name, role, slice.Cfg.Name, cp.Addr())
-
-					now := time.Now()
-
-					status, conn := getInstanceStatus(namespace, cp)
-
-					// status is ok && this is slave && seconds_behind_master is not 0, we start to check master and slave lag
-					// Pay attention!!!!, if master is down, slave IO thread is close, so we should skip check slave when master is down
-					if shouldCheckSlaveDataSyncStatus(namespace, status, slice, isMaster) {
-						if lag, _ := slaveIsLagBehind(conn, namespace); lag {
-							status = backend.DOWN
-						}
-					}
-
-					if v, ok := slaveInfo.StatusMap.Load(idx); ok {
-						if status == backend.UP && v != status {
-							_ = log.Warn("ns:%s, slice:%s, %s find UP by auto check",
-								namespace.name, slice.Cfg.Name, cp.Addr())
-						}
-					}
-
-					slaveInfo.StatusMap.Store(idx, status)
-
-					if status == backend.DOWN {
-						_ = log.Warn("ns:%s, slice:%s, %s find down by auto check, takes %dms",
-							namespace.name, slice.Cfg.Name, cp.Addr(), time.Since(now).Milliseconds())
-					}
-
-				}
-			}
-
-		}
-	}
-
-	go checkStatus(slice.Slave, false)
-	go checkStatus(slice.StatisticSlave, false)
-	go checkStatus(slice.Master, true)
-
-}
-
-func slaveIsLagBehind(conn backend.PooledConnect, namespace *Namespace) (bool, error) {
-	var slaveStatus SlaveStatus
-	var err error
-	if slaveStatus, err = GetSlaveStatus(conn); err != nil {
-		_ = log.Warn("slave %s get SlaveStatus failed for %v", conn.GetAddr(), err)
-		return false, err
-	}
-
-	if slaveStatus.SecondsBehindMaster > namespace.secondsBehindMaster {
-		_ = log.Warn("slave %s SecondsBehindMaster(%d) is greater than %d", conn.GetAddr(), slaveStatus.SecondsBehindMaster,
-			namespace.secondsBehindMaster)
-		return true, nil
-	}
-
-	if slaveStatus.SlaveIORunning != "Yes" {
-		_ = log.Warn("slave %s Slave_IO_Running(%s) is not Yes", conn.GetAddr(), slaveStatus.SlaveIORunning)
-		return true, nil
-	}
-	if slaveStatus.SlaveSQLRunning != "Yes" {
-		_ = log.Warn("slave %s SlaveSQLRunning(%s) is not Yes", conn.GetAddr(), slaveStatus.SlaveSQLRunning)
-		return true, nil
-	}
-
-	return false, nil
-}
-
-func getInstanceStatus(namespace *Namespace, cp backend.ConnectionPool) (backend.StatusCode, backend.PooledConnect) {
-	sleepTime := int(backend.PingPeriod)
-	status := backend.DOWN
-	var err error
-	var conn backend.PooledConnect
-
-	for i := 0; i < namespace.downAfterNoAlive; i += sleepTime {
-		// default 2s timeout
-		start := time.Now()
-		conn, err = cp.GetCheck(context.Background())
-		if err != nil {
-			if conn != nil {
-				conn.Close()
-			}
-			_ = log.Warn("ns:%s, slice:%s, get check conn err:%s", namespace.name, cp.Addr(), err)
-			time.Sleep(time.Duration(sleepTime-int(time.Now().Sub(start).Seconds())) * time.Second)
-			continue
-		}
-
-		if conn == nil {
-			_ = log.Warn("ns:%s, slice:%s, get nil check conn, ins:%s", namespace.name, cp.Addr(), cp.Addr())
-			time.Sleep(time.Duration(sleepTime-int(time.Now().Sub(start).Seconds())) * time.Second)
-			continue
-		}
-
-		if err = conn.PingWithTimeout(backend.GetConnTimeout); err != nil {
-			_ = log.Warn("ns:%s, slice:%s, ping conn error:%s", namespace.name, cp.Addr(), err)
-			conn.Close()
-			time.Sleep(time.Duration(sleepTime-int(time.Now().Sub(start).Seconds())) * time.Second)
-			continue
-		} else {
-			// ping ok, check alive success
-			status = backend.UP
-			break
-		}
-	}
-
-	return status, conn
-}
-
-type SlaveStatus struct {
-	SecondsBehindMaster uint64
-	SlaveIORunning      string
-	SlaveSQLRunning     string
-	MasterLogFile       string
-	ReadMasterLogPos    uint64
-	RelayMasterLogFile  string
-	ExecMasterLogPos    uint64
-}
-
-func GetSlaveStatus(conn backend.PooledConnect) (SlaveStatus, error) {
-	var slaveStatus SlaveStatus
-	res, err := conn.Execute("show slave status;", 0)
-	if err != nil {
-		return slaveStatus, err
-	}
-
-	for _, f := range res.Fields {
-		fieldName := string(f.Name)
-		var col interface{}
-		col, err = res.GetValueByName(0, fieldName)
-		if err != nil {
-			_ = log.Warn("get field name Get '%s' failed in SlaveStatus, err: %v", fieldName, err)
-			break
-		}
-
-		switch strings.ToLower(fieldName) {
-		case "seconds_behind_master":
-			switch col.(type) {
-			case uint64:
-				slaveStatus.SecondsBehindMaster = col.(uint64)
-			default:
-				slaveStatus.SecondsBehindMaster = 0
-			}
-		case "slave_io_running":
-			switch col.(type) {
-			case string:
-				slaveStatus.SlaveIORunning = col.(string)
-			default:
-				slaveStatus.SlaveIORunning = "No"
-			}
-		case "slave_sql_running":
-			switch col.(type) {
-			case string:
-				slaveStatus.SlaveSQLRunning = col.(string)
-			default:
-				slaveStatus.SlaveSQLRunning = "No"
-			}
-		case "master_log_file":
-			switch col.(type) {
-			case string:
-				slaveStatus.MasterLogFile = col.(string)
-			default:
-				slaveStatus.MasterLogFile = ""
-			}
-		case "read_master_log_pos":
-			switch col.(type) {
-			case uint64:
-				slaveStatus.ReadMasterLogPos = col.(uint64)
-			default:
-				slaveStatus.ReadMasterLogPos = 0
-			}
-		case "relay_master_log_file":
-			switch col.(type) {
-			case string:
-				slaveStatus.RelayMasterLogFile = col.(string)
-			default:
-				slaveStatus.RelayMasterLogFile = ""
-			}
-		case "exec_master_log_pos":
-			switch col.(type) {
-			case uint64:
-				slaveStatus.ExecMasterLogPos = col.(uint64)
-			default:
-				slaveStatus.ExecMasterLogPos = 0
-			}
-		default:
-			continue
-		}
-	}
-	return slaveStatus, err
 }
 
 func parseAllowIps(allowedIP []string) ([]util.IPInfo, error) {

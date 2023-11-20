@@ -146,6 +146,20 @@ func (mr *MockConnectionPoolMockRecorder) GetCheck(arg0 interface{}) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCheck", reflect.TypeOf((*MockConnectionPool)(nil).GetCheck), arg0)
 }
 
+// GetLastChecked mocks base method
+func (m *MockConnectionPool) GetLastChecked() int64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetLastChecked")
+	ret0, _ := ret[0].(int64)
+	return ret0
+}
+
+// GetLastChecked indicates an expected call of GetLastChecked
+func (mr *MockConnectionPoolMockRecorder) GetLastChecked() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetLastChecked", reflect.TypeOf((*MockConnectionPool)(nil).GetLastChecked))
+}
+
 // IdleClosed mocks base method
 func (m *MockConnectionPool) IdleClosed() int64 {
 	m.ctrl.T.Helper()
@@ -252,6 +266,18 @@ func (m *MockConnectionPool) SetIdleTimeout(arg0 time.Duration) {
 func (mr *MockConnectionPoolMockRecorder) SetIdleTimeout(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetIdleTimeout", reflect.TypeOf((*MockConnectionPool)(nil).SetIdleTimeout), arg0)
+}
+
+// SetLastChecked mocks base method
+func (m *MockConnectionPool) SetLastChecked() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetLastChecked")
+}
+
+// SetLastChecked indicates an expected call of SetLastChecked
+func (mr *MockConnectionPoolMockRecorder) SetLastChecked() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLastChecked", reflect.TypeOf((*MockConnectionPool)(nil).SetLastChecked))
 }
 
 // StatsJSON mocks base method

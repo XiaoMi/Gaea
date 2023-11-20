@@ -50,4 +50,6 @@ type ConnectionPool interface {
 	WaitTime() time.Duration
 	IdleTimeout() time.Duration
 	IdleClosed() int64
+	SetLastChecked()
+	GetLastChecked() int64
 }

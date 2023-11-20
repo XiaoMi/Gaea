@@ -58,6 +58,7 @@ type connectionPoolImpl struct {
 	idleTimeout      time.Duration
 	clientCapability uint32
 	initConnect      string
+	lastChecked      int64
 }
 
 // NewConnectionPool create connection pool
@@ -75,6 +76,7 @@ func NewConnectionPool(addr, user, password, db string, capacity, maxCapacity in
 		collationID:      collationID,
 		clientCapability: clientCapability,
 		initConnect:      strings.Trim(strings.TrimSpace(initConnect), ";"),
+		lastChecked:      time.Now().Unix(),
 	}
 }
 
@@ -344,4 +346,24 @@ func (cp *connectionPoolImpl) IdleClosed() int64 {
 		return 0
 	}
 	return p.IdleClosed()
+}
+
+// SetLastChecked set last checked time
+func (cp *connectionPoolImpl) SetLastChecked() {
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+	if cp == nil {
+		return
+	}
+	cp.lastChecked = time.Now().Unix()
+}
+
+// GetLastChecked get last checked time
+func (cp *connectionPoolImpl) GetLastChecked() int64 {
+	cp.mu.RLock()
+	defer cp.mu.RUnlock()
+	if cp == nil {
+		return 0
+	}
+	return cp.lastChecked
 }

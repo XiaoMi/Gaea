@@ -982,7 +982,7 @@ func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sq
 	defer se.recycleBackendConns(pcs, false)
 	if err != nil {
 		log.Warn("getBackendConns failed: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("getBackendConns failed: %v", err)
 	}
 
 	rs, err := se.executeInMultiSlices(reqCtx, pcs, sqls)
