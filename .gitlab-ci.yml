@@ -83,6 +83,7 @@ upload_fds:
     - DAY=`date +%Y-%m-%d`
     - fusion-cli fds --endpoint ${CD_FDS_ENDPOINT} copy bin/gaea fds://${CD_FDS_BUCKET}/${DAY}/gaea
     - fusion-cli fds --endpoint ${CD_FDS_ENDPOINT} copy bin/gaea-cc fds://${CD_FDS_BUCKET}/${DAY}/gaea-cc
+    - fusion-cli fds --endpoint ${CD_FDS_ENDPOINT} copy etc/gaea_online.ini fds://${CD_FDS_BUCKET}/${DAY}/gaea.ini
 
 release:
   stage: release
@@ -92,4 +93,5 @@ release:
   script:
     - fusion-cli fds --endpoint ${CD_FDS_ENDPOINT} copy bin/gaea fds://${CD_FDS_BUCKET}/${CI_COMMIT_TAG}/gaea
     - fusion-cli fds --endpoint ${CD_FDS_ENDPOINT} copy bin/gaea-cc fds://${CD_FDS_BUCKET}/${CI_COMMIT_TAG}/gaea-cc
+    - fusion-cli fds --endpoint ${CD_FDS_ENDPOINT} copy etc/gaea_online.ini fds://${CD_FDS_BUCKET}/${CI_COMMIT_TAG}/gaea.ini
 
