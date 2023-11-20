@@ -138,11 +138,11 @@ func TestExecute(t *testing.T) {
 	slice0MasterPool := backend.NewMockConnectionPool(mockCtl)
 	slice1MasterPool := backend.NewMockConnectionPool(mockCtl)
 
-	slice0Status := sync.Map{}
-	slice0Status.Store(0, backend.UP)
+	slice0Status := &sync.Map{}
+	slice0Status.Store(0, backend.StatusUp)
 
-	slice1Status := sync.Map{}
-	slice1Status.Store(0, backend.UP)
+	slice1Status := &sync.Map{}
+	slice1Status.Store(0, backend.StatusUp)
 
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Master = &backend.DBInfo{ConnPool: []backend.ConnectionPool{slice0MasterPool}, StatusMap: slice0Status}
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Slave = &backend.DBInfo{}
