@@ -144,6 +144,8 @@ func (s *Server) onConn(c net.Conn) {
 	if reachLimit, connectionNum := cc.clientConnectionReachLimit(); reachLimit {
 		err := mysql.NewError(mysql.ErrAccessDenied, fmt.Sprintf("Too many connections, current: %d, max: %d",
 			connectionNum, cc.getNamespace().maxClientConnections))
+		log.Warn("ns=%s, %s@%s/%s, too many connections, current:%d, max:%d",
+			cc.executor.namespace, cc.executor.user, cc.executor.clientAddr, cc.executor.db, connectionNum, cc.getNamespace().maxClientConnections)
 		cc.c.writeErrorPacket(err)
 		return
 	}

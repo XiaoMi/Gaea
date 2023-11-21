@@ -189,7 +189,7 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 		namespace.userProperties[user.UserName] = up
 	}
 
-	if namespace.maxClientConnections <= 0 {
+	if namespaceConfig.MaxClientConnections <= 0 {
 		namespace.maxClientConnections = defaultMaxClientConnections
 	} else {
 		namespace.maxClientConnections = namespaceConfig.MaxClientConnections
