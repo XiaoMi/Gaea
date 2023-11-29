@@ -193,12 +193,11 @@ func TestMycatShardBatchInsert(t *testing.T) {
 		{
 			// test mycat_mod shard mode batch insert simple
 			db:  "db_mycat",
-			sql: "insert into tbl_mycat (id, a) values (0, 'hi'), (4, 'hi')",
+			sql: "insert into tbl_mycat (id, a) values (0, 'hi'), (4, 'hi'),(8, 'hi')",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
 					"db_mycat_0": {
-						"INSERT INTO `tbl_mycat` (`id`,`a`) VALUES (0,'hi')",
-						"INSERT INTO `tbl_mycat` (`id`,`a`) VALUES (4,'hi')",
+						"INSERT INTO `tbl_mycat` (`id`,`a`) VALUES (0,'hi'),(4,'hi'),(8,'hi')",
 					},
 				},
 			},
@@ -210,8 +209,7 @@ func TestMycatShardBatchInsert(t *testing.T) {
 			sqls: map[string]map[string][]string{
 				"slice-0": {
 					"db_mycat_1": {
-						"INSERT INTO `tbl_mycat` (`id`,`a`) VALUES (5,'hello')",
-						"INSERT INTO `tbl_mycat` (`id`,`a`) VALUES (9,'hi')",
+						"INSERT INTO `tbl_mycat` (`id`,`a`) VALUES (5,'hello'),(9,'hi')",
 					},
 				},
 				"slice-1": {
@@ -231,15 +229,12 @@ func TestMycatShardBatchInsert(t *testing.T) {
 			sqls: map[string]map[string][]string{
 				"slice-0": {
 					"db_mycat_1": {
-						"INSERT INTO `tbl_mycat_murmur` (`id`,`a`) VALUES (1,'hi')",
-						"INSERT INTO `tbl_mycat_murmur` (`id`,`a`) VALUES (2,'hi')",
-						"INSERT INTO `tbl_mycat_murmur` (`id`,`a`) VALUES (3,'hi')",
+						"INSERT INTO `tbl_mycat_murmur` (`id`,`a`) VALUES (1,'hi'),(2,'hi'),(3,'hi')",
 					},
 				},
 				"slice-1": {
 					"db_mycat_2": {
-						"INSERT INTO `tbl_mycat_murmur` (`id`,`a`) VALUES (0,'hi')",
-						"INSERT INTO `tbl_mycat_murmur` (`id`,`a`) VALUES (4,'hi')",
+						"INSERT INTO `tbl_mycat_murmur` (`id`,`a`) VALUES (0,'hi'),(4,'hi')",
 					},
 				},
 			},
@@ -251,22 +246,18 @@ func TestMycatShardBatchInsert(t *testing.T) {
 			sqls: map[string]map[string][]string{
 				"slice-0": {
 					"db_mycat_0": {
-						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (0,'hi')",
-						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (1,'hi')",
+						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (0,'hi'),(1,'hi')",
 					},
 					"db_mycat_1": {
-						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (256,'hi')",
-						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (257,'hi')",
+						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (256,'hi'),(257,'hi')",
 					},
 				},
 				"slice-1": {
 					"db_mycat_2": {
-						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (512,'hi')",
-						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (513,'hi')",
+						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (512,'hi'),(513,'hi')",
 					},
 					"db_mycat_3": {
-						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (768,'hi')",
-						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (769,'hi')",
+						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (768,'hi'),(769,'hi')",
 					},
 				},
 			},
@@ -902,9 +893,7 @@ func TestMycatInsertSequenceUnshardKey(t *testing.T) {
 			sqls: map[string]map[string][]string{
 				"slice-1": {
 					"db_ks": []string{
-						"INSERT INTO `tbl_ks_0003` (`id`,`user_id`) VALUES (3,3)",
-						"INSERT INTO `tbl_ks_0003` (`id`,`user_id`) VALUES (3,4)",
-						"INSERT INTO `tbl_ks_0003` (`id`,`user_id`) VALUES (3,5)",
+						"INSERT INTO `tbl_ks_0003` (`id`,`user_id`) VALUES (3,3),(3,4),(3,5)",
 					},
 				},
 			},

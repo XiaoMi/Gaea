@@ -255,6 +255,7 @@ func handleInsertValues(p *InsertPlan) error {
 
 	// not assignment mode
 	routeIdxs := make([]int, 0, len(p.result.indexes))
+	newStmtMap := make(map[int]*ast.InsertStmt)
 	for _, valueList := range p.stmt.Lists {
 		valueItem := valueList[p.shardingColumnIndex]
 		switch x := valueItem.(type) {
@@ -267,13 +268,18 @@ func handleInsertValues(p *InsertPlan) error {
 				return fmt.Errorf("sharding value cannot be null")
 			}
 			routeIdx, err := p.tableRules[p.table].FindTableIndex(v)
+			if newStmt, ok := newStmtMap[routeIdx]; ok {
+				newStmt.Lists = append(newStmt.Lists, valueList)
+			} else {
+				newStmt := *p.stmt
+				newStmt.Lists = [][]ast.ExprNode{valueList}
+				routeIdxs = append(routeIdxs, routeIdx)
+				p.rewriteStmts = append(p.rewriteStmts, &newStmt)
+				newStmtMap[routeIdx] = &newStmt
+			}
 			if err != nil {
 				return fmt.Errorf("find table index error: %v", err)
 			}
-			routeIdxs = append(routeIdxs, routeIdx)
-			newStmt := *p.stmt
-			newStmt.Lists = [][]ast.ExprNode{valueList}
-			p.rewriteStmts = append(p.rewriteStmts, &newStmt)
 		}
 	}
 
