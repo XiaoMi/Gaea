@@ -18,6 +18,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/XiaoMi/Gaea/log"
 	"strconv"
 	"strings"
 
@@ -101,6 +102,8 @@ func (n *Namespace) Verify() error {
 	if err := n.verifyShardRules(); err != nil {
 		return err
 	}
+
+	n.verifyCapability()
 
 	return nil
 }
@@ -330,6 +333,17 @@ func (n *Namespace) verifyShardRules() error {
 		}
 	}
 	return nil
+}
+
+// verifyCapability only support capability in SupportCapability
+func (n *Namespace) verifyCapability() {
+	for _, slice := range n.Slices {
+		if (slice.Capability | mysql.SupportCapability) > mysql.SupportCapability {
+			oldCapability := slice.Capability
+			slice.Capability &= mysql.SupportCapability ^ mysql.ClientConnectWithDB
+			log.Warn("Capability %d incompatible, changed to %d", oldCapability, slice.Capability)
+		}
+	}
 }
 
 // Decrypt decrypt user/password in namespace
