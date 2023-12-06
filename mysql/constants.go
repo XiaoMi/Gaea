@@ -36,7 +36,10 @@ const (
 	CachingSHA2Password = "caching_sha2_password"
 	// ProtocolVersion is the current version of the protocol.
 	// Always 10.
-	ProtocolVersion = 10
+	ProtocolVersion   = 10
+	SupportCapability = ClientProtocol41 | ClientSecureConnection | ClientLongPassword | ClientTransactions |
+		ClientLongFlag | ClientConnectWithDB | ClientFoundRows | ClientMultiResults | ClientMultiStatements |
+		ClientPSMultiResults | ClientLocalFiles
 )
 
 const (
