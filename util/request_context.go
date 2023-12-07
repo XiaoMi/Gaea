@@ -57,18 +57,22 @@ func (reqCtx *RequestContext) Set(key string, value interface{}) {
 	reqCtx.lock.Unlock()
 }
 
+// GetStmtType get stmt type from reqCtx
 func (reqCtx *RequestContext) GetStmtType() int {
 	return reqCtx.Get(StmtType).(int)
 }
 
-func (reqCtx *RequestContext) SetStmtType() int {
-	return reqCtx.Get(StmtType).(int)
+// SetStmtType set stmt type to reqCtx
+func (reqCtx *RequestContext) SetStmtType(value int) {
+	reqCtx.Set(StmtType, value)
 }
 
+// GetTokens get sql tokens from reqCtx
 func (reqCtx *RequestContext) GetTokens() []string {
 	return reqCtx.Get(Tokens).([]string)
 }
 
-func (reqCtx *RequestContext) SetTokens() int {
-	return reqCtx.Get(StmtType).(int)
+// SetTokens set sql tokens to reqCtx
+func (reqCtx *RequestContext) SetTokens(value []string) {
+	reqCtx.Set(Tokens, value)
 }

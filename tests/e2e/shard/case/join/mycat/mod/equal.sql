@@ -234,3 +234,18 @@ select id,pad from test1 where pad=(select pad from test1 where id=2);
 select id,t_id,name,pad from test1 where 2 >any(select id from test1 where pad>1);
 select id,t_id,name,pad from test1 where 2>all(select id from test1 where pad<1);
 select * from (select m.id,n.pad from test1 m,sbtest1.test2 n where m.id=n.id AND m.name='test中id为1' and m.pad>7 and m.pad<10)a;
+select a.id,b.id,b.pad,a.t_id from (select id,t_id from test1) a,(select * from sbtest1.test2) b where a.t_id=b.o_id;
+select co1,co2,co3 from (select id as co1,name as co2,pad as co3 from test1)as tb where co1>1;
+
+
+# show
+show columns in t1;
+show columns from t1;
+show full columns from t1;
+show table status like 'aly_o%'/*allow_diff*/;
+show open tables from sbtest1 like 'aly_o%';
+show tables;
+show full tables;
+show tables like 'aly_o%';
+show databases like 'sbtest1';
+show schemas like 'sbtest1';

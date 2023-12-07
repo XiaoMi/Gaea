@@ -15,14 +15,18 @@ pid_file                        = /data/mysql/data3339/mysql3339.pid
 gtid-mode = ON
 enforce-gtid-consistency = ON
 
-datadir                         = /data/mysql/data3339
-memlock
+relay_log_info_repository = TABLE
+relay_log_purge = 1
+relay_log_recovery = 1
 
-innodb_file_per_table
-innodb_buffer_pool_size         = 100M
-innodb_change_buffering         = all
-innodb_data_file_path           = ibdata1:12M:autoextend
-innodb_temp_data_file_path      = ibtmp1:12M:autoextend:max:100G
+datadir                         = /data/mysql/data3339
+#memlock
+
+#innodb_file_per_table
+#innodb_buffer_pool_size         = 100M
+#innodb_change_buffering         = all
+#innodb_data_file_path           = ibdata1:12M:autoextend
+#innodb_temp_data_file_path      = ibtmp1:12M:autoextend:max:100G
 
 innodb_log_group_home_dir       = /data/mysql/data3339
 

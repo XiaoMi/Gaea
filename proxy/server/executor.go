@@ -665,7 +665,9 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 }
 
 func canHandleWithoutPlan(stmtType int) bool {
-	return stmtType == parser.StmtSet ||
+
+	return stmtType == parser.StmtShow ||
+		stmtType == parser.StmtSet ||
 		stmtType == parser.StmtBegin ||
 		stmtType == parser.StmtCommit ||
 		stmtType == parser.StmtRollback ||
@@ -810,7 +812,11 @@ func modifyResultStatus(r *mysql.Result, cc *SessionExecutor) {
 func createShowDatabaseResult(dbs []string) *mysql.Result {
 	r := new(mysql.Resultset)
 
-	field := &mysql.Field{}
+	//
+	field := &mysql.Field{
+		Charset: 33,
+		Type:    0xFD, //FIELD_TYPE_VAR_STRING fix: show databases jdbc err
+	}
 	field.Name = hack.Slice("Database")
 	r.Fields = append(r.Fields, field)
 
@@ -866,6 +872,33 @@ func (se *SessionExecutor) isInTransaction() bool {
 
 func (se *SessionExecutor) isAutoCommit() bool {
 	return se.status&mysql.ServerStatusAutocommit > 0
+}
+
+func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string) (*mysql.Result, error) {
+	tokens := reqCtx.GetTokens()
+	if len(tokens) == 0 {
+		return nil, fmt.Errorf("show command is empty")
+	}
+
+	// handle show databases;
+	if len(tokens) == 2 && strings.ToLower(tokens[1]) == "databases" {
+		dbs := se.GetNamespace().GetAllowedDBs()
+		return createShowDatabaseResult(dbs), nil
+	}
+	// readonly && readwrite user send to slave
+	if !se.GetNamespace().IsAllowWrite(se.user) || se.GetNamespace().IsRWSplit(se.user) {
+		reqCtx.Set(util.FromSlave, 1)
+	}
+	// handle show variables like '%read_only%' default to master
+	if strings.Contains(sql, readonlyVariable) && se.GetNamespace().IsAllowWrite(se.user) {
+		reqCtx.Set(util.FromSlave, 0)
+	}
+	r, err := se.ExecuteSQL(reqCtx, se.GetNamespace().GetDefaultSlice(), se.db, sql)
+	if err != nil {
+		return nil, fmt.Errorf("execute sql error, sql: %s, err: %v", sql, err)
+	}
+	modifyResultStatus(r, se)
+	return r, nil
 }
 
 func (se *SessionExecutor) handleBegin() error {
