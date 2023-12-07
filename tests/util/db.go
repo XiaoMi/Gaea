@@ -208,26 +208,26 @@ func OutPutResult(sql string, outPutFile string) error {
 	return nil
 }
 
-func CompareIgnoreSort(res1 [][]string, res2 [][]string) (bool, error) {
-	if len(res1) != len(res2) {
-		return false, fmt.Errorf("sql.Result mismatched lengths for results. res1: %v, res2: %v", res1, res2)
+func CompareIgnoreSort(gaeaRes [][]string, mysqlRes [][]string) (bool, error) {
+	if len(gaeaRes) != len(mysqlRes) {
+		return false, fmt.Errorf("sql.Result mismatched lengths for results. gaeaRes: %v, mysqlRes: %v", gaeaRes, mysqlRes)
 	}
 
 	elementCount := make(map[string]int)
-	for _, item := range res1 {
+	for _, item := range gaeaRes {
 		elementCount[fmt.Sprint(item)]++
 	}
 
-	for _, item := range res2 {
+	for _, item := range mysqlRes {
 		elementCount[fmt.Sprint(item)]--
 		if elementCount[fmt.Sprint(item)] < 0 {
-			return false, fmt.Errorf("sql.Result mismatched elements for results. res1: %v, res2: %v", res1, res2)
+			return false, fmt.Errorf("sql.Result mismatched elements for results. gaeaRes: %v, mysqlRes: %v", gaeaRes, mysqlRes)
 		}
 	}
 
 	for _, count := range elementCount {
 		if count != 0 {
-			return false, fmt.Errorf("sql.Result mismatched elements for results. res1: %v, res2: %v", res1, res2)
+			return false, fmt.Errorf("sql.Result mismatched elements for results. gaeaRes: %v, mysqlRes: %v", gaeaRes, mysqlRes)
 		}
 	}
 

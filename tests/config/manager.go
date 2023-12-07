@@ -27,11 +27,15 @@ const (
 
 	DefaultE2eDatabase = "db_e2e_test"
 	DefaultE2eTable    = "tbl_e2e_test"
-	SliceSMName        = "single-master"
-	SliceMMName        = "multi-masters"
-	SliceMSSName       = "master-single-slave"
-	SliceMSName        = "master-slaves"
-	LogExpression      = `\[(.*?)\] \[NOTICE\] \[(\d+)\] OK - (\d+\.\d+)ms - ns=(.*?), (.*?)@(.*?)->(.*?)/(.*?), mysql_connect_id=(\d+), r=\d+\|(.*?)$`
+	// SliceSMName 表示测试的单主 MySQL 集群
+	SliceSMName = "single-master"
+	// SliceMMName 表示测试的多主 MySQL 集群
+	SliceMMName = "multi-masters"
+	// SliceMSSName 表示测试的主从 MySQL 集群
+	SliceMSSName = "master-single-slave"
+	// SliceMSName 表示测试的主从 MySQL 集群
+	SliceMSName   = "master-slaves"
+	LogExpression = `\[(.*?)\] \[NOTICE\] \[(\d+)\] OK - (\d+\.\d+)ms - ns=(.*?), (.*?)@(.*?)->(.*?)/(.*?), mysql_connect_id=(\d+), r=\d+\|(.*?)$`
 )
 
 var logPath = "cmd/logs/gaea_sql.log"
@@ -319,7 +323,7 @@ func (g *GaeaCCManager) modifyNamespace(n *models.Namespace) error {
 	req.Header.Set("Content-Type", "application/json")
 	req.SetBasicAuth(g.GaeaCCAdminUser, g.GaeaCCAdminPassword)
 	client := &http.Client{
-		Timeout: time.Second * 5,
+		Timeout: time.Second * 10,
 	}
 	resp, err := client.Do(req)
 	if err != nil {

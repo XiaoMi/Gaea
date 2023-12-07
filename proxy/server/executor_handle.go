@@ -193,6 +193,19 @@ func checkMyCatHintPlan(reqCtx *util.RequestContext, se *SessionExecutor, db str
 
 // 处理逻辑较简单的SQL, 不走执行计划部分
 func (se *SessionExecutor) handleQueryWithoutPlan(reqCtx *util.RequestContext, sql string) (*mysql.Result, error) {
+	tokens := parser.Tokenize(sql)
+	if len(tokens) == 0 {
+		return nil, fmt.Errorf("tokenize sql error, sql: %s", sql)
+	}
+	reqCtx.SetTokens(tokens)
+
+	stmtType := reqCtx.GetStmtType()
+
+	// handle show to prevent parsing error in some cases like sql mode has ANSI_QUOTES
+	if stmtType == parser.StmtShow {
+		return se.handleShow(reqCtx, sql)
+	}
+
 	n, err := se.Parse(sql)
 	if err != nil {
 		return nil, fmt.Errorf("parse sql error, sql: %s, err: %v", sql, err)
@@ -287,9 +300,6 @@ func (se *SessionExecutor) preBuildUnshardPlan(reqCtx *util.RequestContext, db s
 		ruleDB, isUnshardPlan = plan.CheckUnshardInsert(tokens, rt, db)
 	case mysql.TkIdUpdate:
 		ruleDB, isUnshardPlan = plan.CheckUnshardUpdate(tokens, rt, db)
-	case mysql.TkIdShow:
-		// TODO: deal with more show cases
-		break
 	default:
 		return nil, false
 	}

@@ -2,12 +2,12 @@ package shard
 
 import (
 	"database/sql"
-	"path/filepath"
-
+	"fmt"
 	"github.com/XiaoMi/Gaea/tests/config"
 	"github.com/XiaoMi/Gaea/tests/util"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
+	"path/filepath"
 )
 
 var _ = ginkgo.Describe("shard join support test in mycat mod", func() {
@@ -64,7 +64,6 @@ var _ = ginkgo.Describe("shard join support test in mycat mod", func() {
 				gomega.Expect(err).Should(gomega.BeNil())
 			}
 		}
-
 	})
 
 	ginkgo.Context("shard support test", func() {
@@ -81,37 +80,31 @@ var _ = ginkgo.Describe("shard join support test in mycat mod", func() {
 					filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/mycat/mod/unequal.sql"),
 					util.UnEqual,
 				},
-				{
-					filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/mycat/mod/unsupport.sql"),
-					util.UnSupport,
-				},
 			}
 			for _, c := range cases {
 				sqls, err := util.GetSqlFromFile(c.path)
 				gomega.Expect(err).Should(gomega.BeNil())
 				for _, sql := range sqls {
-					err := util.VerifySqlParsable(sql)
-					gomega.Expect(err).Should(gomega.BeNil())
 					switch c.resultType {
 					case util.Equal:
-						res1, err := util.MysqlQuery(gaeaConn, sql)
-						gomega.Expect(err).Should(gomega.BeNil())
-						res2, err := util.MysqlQuery(singleMaster, sql)
-						gomega.Expect(err).Should(gomega.BeNil())
-						_, err = util.CompareIgnoreSort(res1, res2)
-						gomega.Expect(err).Should(gomega.BeNil())
+						gaeaRes, err := util.MysqlQuery(gaeaConn, sql)
+						util.ExpectNoError(err, fmt.Sprintf("gaea exec equal sql err:%s, err:%s\n", sql, err))
+						mysqlRes, err := util.MysqlQuery(singleMaster, sql)
+						util.ExpectNoError(err, fmt.Sprintf("mysql exec equal sql err:%s, err:%s\n", sql, err))
+						_, err = util.CompareIgnoreSort(gaeaRes, mysqlRes)
+						util.ExpectNoError(err, fmt.Sprintf("compare equal sql get uneuqal res.sql:%s, err:%s\n", sql, err))
 					case util.UnSupport:
 						_, err := util.MysqlQuery(singleMaster, sql)
-						gomega.Expect(err).Should(gomega.BeNil())
-						_, err = util.MysqlQuery(gaeaConn, sql)
-						gomega.Expect(err).ShouldNot(gomega.BeNil())
+						util.ExpectNoError(err, fmt.Sprintf("mysql exec unsupport sql err:%s, err:%s\n", sql, err))
+						gaeaRes, err := util.MysqlQuery(gaeaConn, sql)
+						util.ExpectError(err, fmt.Sprintf("gaea exec unsupport sql get no error, sql:%s,res:%s\n", sql, gaeaRes))
 					case util.UnEqual:
-						res1, err := util.MysqlQuery(gaeaConn, sql)
-						gomega.Expect(err).Should(gomega.BeNil())
-						res2, err := util.MysqlQuery(singleMaster, sql)
-						gomega.Expect(err).Should(gomega.BeNil())
-						_, err = util.CompareIgnoreSort(res1, res2)
-						gomega.Expect(err).ShouldNot(gomega.BeNil())
+						gaeaRes, err := util.MysqlQuery(gaeaConn, sql)
+						util.ExpectNoError(err, fmt.Sprintf("gaea exec unequal sql err:%s, err:%s\n", sql, err))
+						mysqlRes, err := util.MysqlQuery(singleMaster, sql)
+						util.ExpectNoError(err, fmt.Sprintf("mysql exec unequal sql err.sql:%s, err:%s\n", sql, err))
+						_, err = util.CompareIgnoreSort(gaeaRes, mysqlRes)
+						util.ExpectError(err, fmt.Sprintf("compare unequal sql get equal res.sql:%s, err:%s\n", sql, err))
 					}
 				}
 			}

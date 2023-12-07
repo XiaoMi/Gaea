@@ -6,9 +6,9 @@
         "sbtest1": true
     },
     "default_phy_dbs": {
-        "sbtest1": "sbtest1"
+        "sbtest1": "sbtest1_0"
     },
-    "slow_sql_time": "1000",
+    "slow_sql_time": "0",
     "black_sql": [
         ""
     ],
@@ -39,7 +39,6 @@
         {{- end}}
     ],
     "shard_rules": [
-       
         {
             "db": "sbtest1",
             "table": "t",
@@ -187,7 +186,7 @@
      {{- range $index, $user := .GaeaUsers }}
         {
             "user_name": "{{.UserName}}",
-            "password": "{{.Password}}", 
+            "password": "{{.Password}}",
             "namespace": "test_mycat",
             "rw_flag": {{.RWFlag}},
             "rw_split": {{.RWSplit}},
@@ -195,7 +194,7 @@
         }{{ if not (lastItem $index (len $.GaeaUsers) ) }}, {{ end }}
         {{- end}}
   ],
-    "default_slice": "slice-1",
+    "default_slice": "slice-0",
     "global_sequences": null,
     "default_charset": "",
     "default_collation": "",
