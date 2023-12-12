@@ -519,6 +519,9 @@ func initBackendConn(pc backend.PooledConnect, phyDB string, charset string, col
 
 	if charsetChanged || variablesChanged {
 		if err = pc.WriteSetStatement(); err != nil {
+			log.Warn("set charset or session variables failed,addr:%s, error: %s", pc.GetAddr(), err.Error())
+			// close pc to avoid session variables or charset not set
+			pc.Close()
 			return err
 		}
 	}
