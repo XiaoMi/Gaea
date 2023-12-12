@@ -1,7 +1,9 @@
 package function
 
 import (
+	"database/sql"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/XiaoMi/Gaea/tests/config"
@@ -11,88 +13,156 @@ import (
 )
 
 var _ = ginkgo.Describe("Read-Write Splitting", func() {
-	var e2eConfig *config.E2eConfig
-	var masterSlaveCluster *config.MysqlClusterConfig
-	var db string
-	var table string
-	var startTime string
-
+	nsTemplateFile := "e2e/function/ns/default.template"
+	e2eMgr := config.NewE2eManager()
+	db := config.DefaultE2eDatabase
+	slice := e2eMgr.NsSlices[config.SliceMSName]
+	table := config.DefaultE2eTable
 	ginkgo.BeforeEach(func() {
-		currentTime := time.Now()
-		startTime = currentTime.Format("2006-01-02 15:04:05.999")
-
-		e2eConfig = config.GetDefaultE2eConfig()
-		masterSlaveCluster = e2eConfig.MasterSlaveCluster
-
-		db = "db_e2e_test"
-		// 这里的数据表名最好和其他的表名不同，为了防止日志中拉取出的两条日志相同
-		table = "tbl_read_write_test"
-		// 解析模版
-		ns, err := masterSlaveCluster.TemplateParse(e2eConfig.FilepathJoin("e2e/function/ns/default.template"))
+		err := e2eMgr.AddNsFromFile(filepath.Join(e2eMgr.BasePath, nsTemplateFile), slice)
 		gomega.Expect(err).Should(gomega.BeNil())
-
-		// 注册namespace
-		err = e2eConfig.RegisterNamespaces(ns)
+		masterConn, err := slice.GetMasterConn(0)
 		gomega.Expect(err).Should(gomega.BeNil())
-
-		// 初始化数据库实例
-		mysqlConn, err := config.InitConn(masterSlaveCluster.Slices[0].UserName, masterSlaveCluster.Slices[0].Password, masterSlaveCluster.Slices[0].Master, "")
+		err = util.SetupDatabaseAndInsertData(masterConn, db, table)
 		gomega.Expect(err).Should(gomega.BeNil())
-		defer mysqlConn.Close()
-
-		statements := []string{
-			fmt.Sprintf("DROP DATABASE IF EXISTS %s", db),
-			fmt.Sprintf("CREATE DATABASE %s", db),
-			fmt.Sprintf("USE %s", db),
-			fmt.Sprintf("CREATE TABLE %s (id INT AUTO_INCREMENT, name VARCHAR(20), PRIMARY KEY (id))", table),
-		}
-
-		for _, stmt := range statements {
-			_, err = mysqlConn.Exec(stmt)
-			gomega.Expect(err).Should(gomega.BeNil())
-		}
-		// 插入10条数据
-		for i := 0; i < 10; i++ {
-			_, err = mysqlConn.Exec(fmt.Sprintf("INSERT INTO %s (name) VALUES (?)", table), "nameValue")
-			gomega.Expect(err).Should(gomega.BeNil())
-		}
 	})
+
 	ginkgo.Context("When handling read and write operations", func() {
 		ginkgo.It("should direct read operations to replicas", func() {
-			// 初始化gaea连接
+			gaeaReadWriteConn, err := e2eMgr.GetReadWriteGaeaUserConn()
+			gomega.Expect(err).Should(gomega.BeNil())
 
-			gaeaConn, err := config.InitConn(e2eConfig.GaeaUser.UserName, e2eConfig.GaeaUser.Password, e2eConfig.GaeaHost, "")
+			gaeaWriteConn, err := e2eMgr.GetWriteGaeaUserConn()
 			gomega.Expect(err).Should(gomega.BeNil())
-			defer gaeaConn.Close()
 
-			// 初始化数据库连接
-			mysqlConn, err := config.InitConn(masterSlaveCluster.Slices[0].UserName, masterSlaveCluster.Slices[0].Password, masterSlaveCluster.Slices[0].Master, "")
+			gaeaReadConn, err := e2eMgr.GetReadGaeaUserConn()
 			gomega.Expect(err).Should(gomega.BeNil())
-			defer mysqlConn.Close()
-			// read
-			sql := fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1", db, table)
-			_, err = gaeaConn.Exec(sql)
-			gomega.Expect(err).Should(gomega.BeNil())
-			res, err := util.ReadLog(e2eConfig.FilepathJoin("cmd/logs/gaea_sql.log"), sql, startTime)
-			gomega.Expect(err).Should(gomega.BeNil())
-			gomega.Expect(res).Should(gomega.HaveLen(1))
-			gomega.Expect(res[0].BackendAddr).Should(gomega.Or(
-				gomega.Equal(masterSlaveCluster.Slices[0].Slaves[0]),
-				gomega.Equal(masterSlaveCluster.Slices[0].Slaves[1]),
-			))
 
-			// write
-			sql = fmt.Sprintf("INSERT INTO `%s`.`%s` (name) VALUES ('%s')", db, table, "Alex")
-			_, err = gaeaConn.Exec(sql)
-			gomega.Expect(err).Should(gomega.BeNil())
-			res, err = util.ReadLog(e2eConfig.FilepathJoin("cmd/logs/gaea_sql.log"), sql, startTime)
-			gomega.Expect(err).Should(gomega.BeNil())
-			gomega.Expect(res).Should(gomega.HaveLen(1))
-			gomega.Expect(res[0].BackendAddr).Should(gomega.Equal(masterSlaveCluster.Slices[0].Master))
+			sqlCases := []struct {
+				GaeaConn          *sql.DB
+				GaeaSQL           string
+				ExpectBackendAddr string
+				IsSuccess         bool
+			}{
+				{
+					GaeaConn:          gaeaReadWriteConn,
+					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1 FOR UPDATE", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					IsSuccess:         true,
+				},
+				{
+					GaeaConn:          gaeaReadWriteConn,
+					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Slaves[0].Addr(),
+					IsSuccess:         true,
+				},
+				{
+					GaeaConn:          gaeaReadWriteConn,
+					GaeaSQL:           fmt.Sprintf("DELETE FROM %s.%s WHERE id=2", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					IsSuccess:         true,
+				},
+				{
+					GaeaConn:          gaeaReadWriteConn,
+					GaeaSQL:           fmt.Sprintf("UPDATE %s.%s SET name= '%s' WHERE id=3", db, table, "newName"),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					IsSuccess:         true,
+				},
+				{
+					GaeaConn:          gaeaReadWriteConn,
+					GaeaSQL:           fmt.Sprintf("INSERT INTO %s.%s (name) VALUES ('tempValue')", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					IsSuccess:         true,
+				},
+				// 写用户
+				{
+					GaeaConn:          gaeaWriteConn,
+					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1 FOR UPDATE", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					IsSuccess:         true,
+				},
+				{
+					GaeaConn:          gaeaWriteConn,
+					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					IsSuccess:         true,
+				},
+				{
+					GaeaConn:          gaeaWriteConn,
+					GaeaSQL:           fmt.Sprintf("DELETE FROM %s.%s WHERE id=2", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					IsSuccess:         true,
+				},
+				{
+					GaeaConn:          gaeaWriteConn,
+					GaeaSQL:           fmt.Sprintf("UPDATE %s.%s SET name= '%s' WHERE id=3", db, table, "newName"),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					IsSuccess:         true,
+				},
+				{
+					GaeaConn:          gaeaWriteConn,
+					GaeaSQL:           fmt.Sprintf("INSERT INTO %s.%s (name) VALUES ('tempValue')", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					IsSuccess:         true,
+				},
+				//读用户
+				{
+					GaeaConn:          gaeaReadConn,
+					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1 FOR UPDATE", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Slaves[1].Addr(),
+					IsSuccess:         true,
+				},
 
+				{
+					GaeaConn:          gaeaReadConn,
+					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Slaves[0].Addr(),
+					IsSuccess:         true,
+				},
+				{
+					GaeaConn:  gaeaReadConn,
+					GaeaSQL:   fmt.Sprintf("DELETE FROM %s.%s  WHERE `id`= 2", db, table),
+					IsSuccess: false,
+				},
+				{
+					GaeaConn:  gaeaReadConn,
+					GaeaSQL:   fmt.Sprintf("UPDATE %s.%s SET name= '%s' WHERE id=3", db, table, "newName"),
+					IsSuccess: false,
+				},
+				{
+					GaeaConn:  gaeaReadConn,
+					GaeaSQL:   fmt.Sprintf("INSERT INTO %s.%s (name) VALUES ('tempValue')", db, table),
+					IsSuccess: false,
+				},
+			}
+			for _, sqlCase := range sqlCases {
+				currentTime := time.Now()
+				_, err := sqlCase.GaeaConn.Exec(sqlCase.GaeaSQL)
+				if !sqlCase.IsSuccess {
+					gomega.Expect(err).ShouldNot(gomega.BeNil())
+					continue
+				} else {
+					gomega.Expect(err).Should(gomega.BeNil())
+				}
+
+				var res []util.LogEntry
+				retryCount := 3 // 设置重试次数
+				for i := 0; i < retryCount; i++ {
+					time.Sleep(1 * time.Millisecond) // 等待一段时间再重试
+					res, err = e2eMgr.SearchLog(sqlCase.GaeaSQL, currentTime)
+					if err == nil && len(res) == 1 {
+						break
+					}
+				}
+				// 检查结果
+				gomega.Expect(err).Should(gomega.BeNil())
+				gomega.Expect(res).Should(gomega.HaveLen(1))
+				gomega.Expect(sqlCase.ExpectBackendAddr).Should(gomega.Equal(res[0].BackendAddr))
+			}
 		})
 	})
 	ginkgo.AfterEach(func() {
-		e2eConfig.NamespaceManager.UnRegisterNamespaces()
+		e2eMgr.Clean()
 	})
+
 })

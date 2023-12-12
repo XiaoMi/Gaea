@@ -24,7 +24,7 @@ EOF
 
 
 # Processing for slaves
-  
+
 cp ./tests/docker/my3329.cnf   /data/etc/my3329.cnf
 mysqld --defaults-file=/data/etc/my3329.cnf --user=work --initialize-insecure
 mysqld --defaults-file=/data/etc/my3329.cnf --user=work &

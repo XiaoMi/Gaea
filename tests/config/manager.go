@@ -2,13 +2,17 @@ package config
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"os"
+	"path/filepath"
+	"regexp"
 	"time"
 
-	"github.com/XiaoMi/Gaea/cc"
+	"github.com/XiaoMi/Gaea/tests/util"
+
 	"github.com/XiaoMi/Gaea/models"
 )
 
@@ -17,7 +21,230 @@ const (
 	gaeaCCBaseRouter    = "http://localhost:23306/api/cc/namespace/"
 	gaeaCCAdminUsername = "admin"
 	gaeaCCAdminPassword = "admin"
+	defaultMysqlUser    = "superroot"
+	defaultMysqlPasswd  = "superroot"
+	defaultHost         = "127.0.0.1"
+
+	DefaultE2eDatabase = "db_e2e_test"
+	DefaultE2eTable    = "tbl_e2e_test"
+	SliceSMName        = "single-master"
+	SliceMMName        = "multi-masters"
+	SliceMSSName       = "master-single-slave"
+	SliceMSName        = "master-slaves"
+	LogExpression      = `\[(.*?)\] \[NOTICE\] \[(\d+)\] OK - (\d+\.\d+)ms - ns=(.*?), (.*?)@(.*?)->(.*?)/(.*?), mysql_connect_id=(\d+), r=\d+\|(.*?)$`
 )
+
+var logPath = "cmd/logs/gaea_sql.log"
+var E2eMgr *E2eManager
+
+type E2eManager struct {
+	// 用于管理所有的测试用例
+	NsManager            *NamespaceRegisterManager
+	MClusterMaster       *MCluster
+	MClusterMasterSlaves *MCluster
+	GCluster             *GCluster
+	NsSlices             map[string]*NsSlice
+	BasePath             string
+	StartTime            string
+}
+
+func NewE2eManager() *E2eManager {
+	mClusterMaster := &MCluster{
+		Name:   SliceSMName,
+		Master: &MInstance{defaultMysqlUser, defaultMysqlPasswd, defaultHost, 3379},
+	}
+	mClusterMasterSlaves := &MCluster{
+		Name:   SliceMSName,
+		Master: &MInstance{defaultMysqlUser, defaultMysqlPasswd, defaultHost, 3319},
+		Slaves: []*MInstance{{defaultMysqlUser, defaultMysqlPasswd, defaultHost, 3329},
+			{defaultMysqlUser, defaultMysqlPasswd, defaultHost, 3339}},
+	}
+	GaeaUsers := []*models.User{
+		{
+			UserName: defaultMysqlUser,
+			Password: defaultMysqlPasswd,
+			RWFlag:   2,
+			RWSplit:  1,
+		},
+		{
+			UserName: defaultMysqlUser + "_r",
+			Password: defaultMysqlPasswd + "_r",
+			RWFlag:   1,
+			RWSplit:  0,
+		},
+		{
+			UserName: defaultMysqlUser + "_w",
+			Password: defaultMysqlPasswd + "_w",
+			RWFlag:   2,
+			RWSplit:  0,
+		},
+	}
+
+	// 3379
+	sliceSingleMaster := &NsSlice{
+		Name: SliceSMName,
+		Slices: []*models.Slice{
+			{
+				Name:            "slice-0",
+				UserName:        mClusterMaster.Master.UserName,
+				Password:        mClusterMaster.Master.Password,
+				Master:          mClusterMaster.Master.Addr(),
+				Slaves:          nil,
+				StatisticSlaves: nil,
+				Capacity:        12,
+				MaxCapacity:     24,
+				IdleTimeout:     60,
+			},
+		},
+		SliceConns: []*LocalSliceConn{
+			{
+				MasterConn: nil,
+				SlaveConns: nil,
+			},
+		},
+		GaeaUsers: GaeaUsers,
+	}
+	// 3319 3329 3339
+	sliceMasterSlaves := &NsSlice{
+		Name: SliceMSName,
+		Slices: []*models.Slice{
+			{
+				Name:            "slice-0",
+				UserName:        mClusterMasterSlaves.Master.UserName,
+				Password:        mClusterMasterSlaves.Master.Password,
+				Master:          mClusterMasterSlaves.Master.Addr(),
+				Slaves:          []string{mClusterMasterSlaves.Slaves[0].Addr(), mClusterMasterSlaves.Slaves[1].Addr()},
+				StatisticSlaves: nil,
+				Capacity:        12,
+				MaxCapacity:     24,
+				IdleTimeout:     60,
+			},
+		},
+		SliceConns: []*LocalSliceConn{
+			{
+				MasterConn: nil,
+				SlaveConns: []*sql.DB{nil, nil},
+			},
+		},
+		GaeaUsers: GaeaUsers,
+	}
+
+	// 3319 3329
+	sliceMasterSingleSlave := &NsSlice{
+		Name: SliceMSSName,
+		Slices: []*models.Slice{
+			{
+				Name:            "slice-0",
+				UserName:        mClusterMasterSlaves.Master.UserName,
+				Password:        mClusterMasterSlaves.Master.Password,
+				Master:          mClusterMasterSlaves.Master.Addr(),
+				Slaves:          []string{mClusterMasterSlaves.Slaves[0].Addr()},
+				StatisticSlaves: nil,
+				Capacity:        12,
+				MaxCapacity:     24,
+				IdleTimeout:     60,
+			},
+		},
+		SliceConns: []*LocalSliceConn{
+			{
+				MasterConn: nil,
+				SlaveConns: []*sql.DB{nil},
+			},
+		},
+		GaeaUsers: GaeaUsers,
+	}
+	// 3329 3339
+	sliceMultiMasters := &NsSlice{
+		Name: SliceMMName,
+		Slices: []*models.Slice{
+			{
+				Name:            "slice-0",
+				UserName:        mClusterMaster.Master.UserName,
+				Password:        mClusterMaster.Master.Password,
+				Master:          mClusterMasterSlaves.Slaves[0].Addr(),
+				Slaves:          nil,
+				StatisticSlaves: nil,
+				Capacity:        12,
+				MaxCapacity:     24,
+				IdleTimeout:     60,
+			},
+			{
+				Name:            "slice-1",
+				UserName:        mClusterMaster.Master.UserName,
+				Password:        mClusterMaster.Master.Password,
+				Master:          mClusterMasterSlaves.Slaves[1].Addr(),
+				Slaves:          nil,
+				StatisticSlaves: nil,
+				Capacity:        12,
+				MaxCapacity:     24,
+				IdleTimeout:     60,
+			},
+		},
+		SliceConns: []*LocalSliceConn{
+			{
+				MasterConn: nil,
+				SlaveConns: nil,
+			},
+			{
+				MasterConn: nil,
+				SlaveConns: nil,
+			},
+		},
+		GaeaUsers: GaeaUsers,
+	}
+	nsSlices := map[string]*NsSlice{
+		//3379
+		sliceSingleMaster.Name: sliceSingleMaster,
+		//3319 3329 3339
+		sliceMasterSlaves.Name: sliceMasterSlaves,
+		//3329 3339
+		sliceMultiMasters.Name: sliceMultiMasters,
+		//3319 3329
+		sliceMasterSingleSlave.Name: sliceMasterSingleSlave,
+	}
+	E2eMgr = &E2eManager{
+		NsManager:            NewNamespaceRegisterManger(),
+		MClusterMaster:       mClusterMaster,
+		MClusterMasterSlaves: mClusterMasterSlaves,
+		GCluster: &GCluster{
+			Host:          defaultHost,
+			Port:          13306,
+			ReadWriteUser: GaeaUsers[0],
+			ReadUser:      GaeaUsers[1],
+			WriteUser:     GaeaUsers[2],
+			LogPath:       filepath.Join(basePath, logPath),
+		},
+		NsSlices:  nsSlices,
+		BasePath:  basePath,
+		StartTime: time.Now().Format("2006-01-02 15:04:05"),
+	}
+	return E2eMgr
+}
+
+func (e *E2eManager) GetReadWriteGaeaUserConn() (*sql.DB, error) {
+	if e.GCluster.readWriteConn != nil {
+		return e.GCluster.readWriteConn, nil
+	}
+	return InitConn(e.GCluster.ReadWriteUser.UserName, e.GCluster.ReadWriteUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), "")
+}
+
+func (e *E2eManager) NewReadWriteGaeaUserConn() (*sql.DB, error) {
+	return InitConn(e.GCluster.ReadWriteUser.UserName, e.GCluster.ReadWriteUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), "")
+}
+
+func (e *E2eManager) GetReadGaeaUserConn() (*sql.DB, error) {
+	if e.GCluster.readConn != nil {
+		return e.GCluster.readConn, nil
+	}
+	return InitConn(e.GCluster.ReadUser.UserName, e.GCluster.ReadUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), "")
+}
+
+func (e *E2eManager) GetWriteGaeaUserConn() (*sql.DB, error) {
+	if e.GCluster.writeConn != nil {
+		return e.GCluster.writeConn, nil
+	}
+	return InitConn(e.GCluster.WriteUser.UserName, e.GCluster.WriteUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), "")
+}
 
 type NamespaceRegisterManager struct {
 	Namespaces    map[string]*models.Namespace
@@ -45,6 +272,10 @@ func (nr *NamespaceRegisterManager) AddNamespace(m *models.Namespace) error {
 		return fmt.Errorf("namespace has exists")
 	}
 	nr.Namespaces[m.Name] = m
+	err = nr.GaeaCCManager.modifyNamespace(m)
+	if err != nil {
+		return fmt.Errorf("modify Namespace error:%v", err)
+	}
 	return nil
 }
 
@@ -58,19 +289,8 @@ func (nr *NamespaceRegisterManager) unRegisterNamespaceByKey(key string) error {
 	return nil
 }
 
-// Register namespaces by gaeacc
-func (nr *NamespaceRegisterManager) RegisterAllNamespaces() error {
-	for _, namespace := range nr.Namespaces {
-		err := nr.GaeaCCManager.modifyNamespace(namespace)
-		if err != nil {
-			return fmt.Errorf("error writing to ETCD: %v", err)
-		}
-	}
-	return nil
-}
-
 // Unregister namespaces by gaeacc
-func (nr *NamespaceRegisterManager) UnRegisterNamespaces() error {
+func (nr *NamespaceRegisterManager) unRegisterNamespaces() error {
 	for _, namespace := range nr.Namespaces {
 		err := nr.unRegisterNamespaceByKey(namespace.Name)
 		if err != nil {
@@ -136,52 +356,14 @@ func (g *GaeaCCManager) deleteNamespace(key string) error {
 	return nil
 }
 
-func (g *GaeaCCManager) getNamespace(key string) ([]*models.Namespace, error) {
-	router := g.GaeaCCBaseRouter + "detail/" + key
-	req, err := http.NewRequest("GET", router, nil)
+func (mgr *E2eManager) SearchLog(searchString string, currentTime time.Time) ([]util.LogEntry, error) {
+	// 打开文件
+	file, err := os.Open(mgr.GCluster.LogPath)
 	if err != nil {
-		return nil, fmt.Errorf("create http request %s error: %w", router, err)
+		return []util.LogEntry{}, fmt.Errorf("open file:%s error %v ", mgr.GCluster.LogPath, err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth(g.GaeaCCAdminUser, g.GaeaCCAdminPassword)
-	client := &http.Client{
-		Timeout: time.Second * 5,
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("send request to %s error: %w", router, err)
-	}
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response failed: %w", err)
-	}
-
-	var res cc.QueryNamespaceResp
-	err = json.Unmarshal(body, &res)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal response failed: %w", err)
-	}
-	return res.Data, nil
-}
-
-func (g *GaeaCCManager) listNamespace() ([]*models.Namespace, error) {
-	res, err := http.Get(g.GaeaCCBaseRouter + "list")
-	if err != nil {
-		return nil, fmt.Errorf("GET request failed:%s", err)
-	}
-	defer res.Body.Close()
-
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response failed:%s", err.Error())
-	}
-
-	var resp cc.QueryNamespaceResp
-	err = json.Unmarshal(body, &resp)
-	if err != nil {
-		return nil, fmt.Errorf("unmarshal response failed:%s", err.Error())
-	}
-	return resp.Data, nil
+	defer file.Close()
+	// 正则表达式
+	re := regexp.MustCompile(LogExpression)
+	return util.ParseLogEntries(file, re, currentTime, searchString)
 }

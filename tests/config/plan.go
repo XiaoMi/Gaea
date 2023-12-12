@@ -65,13 +65,6 @@ type (
 	}
 )
 
-type (
-	SliceConn struct {
-		Master *sql.DB
-		Slaves []*sql.DB
-	}
-)
-
 func InitConn(username string, password string, host string, database string) (db *sql.DB, err error) {
 	connStr := fmt.Sprintf("%s:%s@tcp(%s)/", username, password, host)
 	if len(database) != 0 {
@@ -236,26 +229,12 @@ func (e *ExecCase) GetTearDownSQL() []EnvironmentSQL {
 	return e.TearDown
 }
 
-func (e EnvironmentSQL) MasterRun(cluster map[string]*SliceConn) error {
-	// 执行
-	var masterDB *sql.DB
-	if slice, ok := cluster[e.Slice]; ok {
-		masterDB = slice.Master
-	} else {
-		return fmt.Errorf("failed to get master database connection")
-	}
-	if _, err := masterDB.Exec(e.SQL); err != nil {
-		return fmt.Errorf("[environment set action] failed to execute sql: %s,error :%s", e.SQL, err)
-	}
-	return nil
-}
-
-func (e ExecCase) MasterRunAndCheck(cluster map[string]*SliceConn) error {
+func (e *ExecCase) MasterRunAndCheck(cluster map[string]*LocalSliceConn) error {
 	// 对主库执行的操作进行检查
 	for _, check := range e.MasterCheckSQL {
 		var masterDB *sql.DB
 		if slice, ok := cluster[check.Slice]; ok {
-			masterDB = slice.Master
+			masterDB = slice.MasterConn
 		} else {
 			return fmt.Errorf("failed to get master database connection")
 		}
@@ -274,6 +253,20 @@ func (e ExecCase) MasterRunAndCheck(cluster map[string]*SliceConn) error {
 		if !isSuccess {
 			return fmt.Errorf("[checkAction] SQL execution %s did not meet the expected result: %v", check.SQL, check.Expect)
 		}
+	}
+	return nil
+}
+
+func (e *EnvironmentSQL) MasterRun(cluster map[string]*LocalSliceConn) error {
+	// 执行
+	var masterDB *sql.DB
+	if slice, ok := cluster[e.Slice]; ok {
+		masterDB = slice.MasterConn
+	} else {
+		return fmt.Errorf("failed to get master database connection")
+	}
+	if _, err := masterDB.Exec(e.SQL); err != nil {
+		return fmt.Errorf("[environment set action] failed to execute sql: %s,error :%s", e.SQL, err)
 	}
 	return nil
 }
@@ -308,7 +301,7 @@ func validInputIsPtr(conf interface{}) error {
 type PlanManager struct {
 	PlanPath         string
 	Plan             *Plan
-	MysqlClusterConn map[string]*SliceConn
+	MysqlClusterConn map[string]*LocalSliceConn
 	GaeaDB           *sql.DB
 }
 
@@ -325,7 +318,7 @@ func (m *PlanManager) Init() error {
 func (m *PlanManager) GetMasterConnByName(sliceName string) (*sql.DB, error) {
 	var master *sql.DB
 	if slice, ok := m.MysqlClusterConn[sliceName]; ok {
-		master = slice.Master
+		master = slice.MasterConn
 	} else {
 		return nil, fmt.Errorf("failed to get master database connection")
 	}
@@ -333,13 +326,13 @@ func (m *PlanManager) GetMasterConnByName(sliceName string) (*sql.DB, error) {
 }
 
 func (m *PlanManager) GetSlaveConnByName(sliceName string) ([]*sql.DB, error) {
-	var master []*sql.DB
+	var slaves []*sql.DB
 	if slice, ok := m.MysqlClusterConn[sliceName]; ok {
-		master = slice.Slaves
+		slaves = slice.SlaveConns
 	} else {
 		return []*sql.DB{}, fmt.Errorf("failed to get master database connection")
 	}
-	return master, nil
+	return slaves, nil
 }
 
 func (m *PlanManager) Run() error {
@@ -377,25 +370,11 @@ func (m *PlanManager) Run() error {
 
 func (m *PlanManager) MysqlClusterConnClose() {
 	for _, slice := range m.MysqlClusterConn {
-		if slice.Master != nil {
-			slice.Master.Close()
+		if slice.MasterConn != nil {
+			slice.MasterConn.Close()
 		}
 		// 关闭 Slaves 连接
-		for _, slave := range slice.Slaves {
-			if slave != nil {
-				slave.Close()
-			}
-		}
-	}
-}
-
-func MysqlClusterConnClose(mysqlClusterConn map[string]*SliceConn) {
-	for _, slice := range mysqlClusterConn {
-		if slice.Master != nil {
-			slice.Master.Close()
-		}
-		// 关闭 Slaves 连接
-		for _, slave := range slice.Slaves {
+		for _, slave := range slice.SlaveConns {
 			if slave != nil {
 				slave.Close()
 			}

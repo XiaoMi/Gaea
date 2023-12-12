@@ -99,8 +99,6 @@ func GetDataFromRow(row *sql.Row, numCols int) ([]string, error) {
 		return
 	}
 
-	// Note: The sql.Row does not have a method to get columns directly
-	// You'll need to know the number of columns (numCols) beforehand
 	field := make([]interface{}, 0, numCols)
 	for i := 0; i < numCols; i++ {
 		field = append(field, new(sql.NullString))
@@ -108,7 +106,6 @@ func GetDataFromRow(row *sql.Row, numCols int) ([]string, error) {
 
 	if err := row.Scan(field...); err != nil {
 		if err == sql.ErrNoRows {
-			// Return nil or []string{} as per your requirement
 			return []string{}, err
 		}
 		return nil, err
@@ -119,8 +116,6 @@ func GetDataFromRow(row *sql.Row, numCols int) ([]string, error) {
 		result = append(result, col)
 	}
 
-	// As the sql.Row doesn't have a .Columns() method like sql.Rows, you'll need to know the column names from elsewhere
-	// In this example, I've just returned an empty slice for column names
 	return result, nil
 }
 
@@ -168,163 +163,6 @@ func MysqlExec(db *sql.DB, execSql string) (int64, error) {
 
 func IsSlice(i interface{}) bool {
 	return reflect.TypeOf(i).Kind() == reflect.Slice
-}
-
-func DeleteRow(db *sql.DB, databaseName string, tableName string, id int) error {
-	// Prepare the delete SQL statement
-	stmt, err := db.Prepare(fmt.Sprintf("DELETE FROM %s.%s WHERE id=?", databaseName, tableName))
-	if err != nil {
-		return fmt.Errorf("PREPARE DELETE Error: %w", err)
-	}
-	defer stmt.Close()
-
-	// Execute the delete
-	_, err = stmt.Exec(id)
-	if err != nil {
-		return fmt.Errorf("EXEC DELETE Error: %w", err)
-	}
-
-	return nil
-}
-
-func DeleteVerify(db *sql.DB, databaseName string, tableName string, id int) error {
-	// Prepare the select SQL statement
-	stmt, err := db.Prepare(fmt.Sprintf("SELECT name FROM %s.%s WHERE id=?", databaseName, tableName))
-	if err != nil {
-		return fmt.Errorf("PREPARE SELECT Error: %w", err)
-	}
-
-	// Try to execute the select to fetch the deleted value
-	var deletedValue string
-	err = stmt.QueryRow(id).Scan(&deletedValue)
-
-	// Since the row was deleted, we expect an error indicating no rows in result set
-	if err == nil || !strings.Contains(err.Error(), "no rows in result set") {
-		return fmt.Errorf("QUERY SELECT Error: expected no rows in result set, got %w", err)
-	}
-
-	return nil
-}
-
-func UpdateRow(db *sql.DB, databaseName string, tableName string, id int, newValue string) error {
-	// Prepare the update SQL statement
-	stmt, err := db.Prepare(fmt.Sprintf("UPDATE %s.%s SET name=? WHERE id=?", databaseName, tableName))
-	if err != nil {
-		return fmt.Errorf("PREPARE UPDATE Error: %w", err)
-	}
-	defer stmt.Close()
-
-	// Execute the update
-	_, err = stmt.Exec(newValue, id)
-	if err != nil {
-		return fmt.Errorf("EXEC UPDATE Error: %w", err)
-	}
-
-	return nil
-}
-
-func UpdateVerify(db *sql.DB, databaseName string, tableName string, id int, expectedValue string) error {
-	// Prepare the select SQL statement
-	stmt, err := db.Prepare(fmt.Sprintf("SELECT name FROM %s.%s WHERE id=?", databaseName, tableName))
-	if err != nil {
-		return fmt.Errorf("PREPARE SELECT Error: %w", err)
-	}
-	// Execute the select to fetch the updated value
-	var updatedValue string
-	err = stmt.QueryRow(id).Scan(&updatedValue)
-	if err != nil {
-		return fmt.Errorf("QUERY SELECT Error: %w", err)
-	}
-	// Verify the updated value
-	if updatedValue != expectedValue {
-		return fmt.Errorf("VERIFY UPDATE Error: expected %s, got %s", expectedValue, updatedValue)
-	}
-
-	return nil
-}
-
-func InsertRow(db *sql.DB, databaseName string, tableName string, newValue string) (int64, error) {
-	// Prepare the insert SQL statement
-	stmt, err := db.Prepare(fmt.Sprintf("INSERT INTO %s.%s (name) VALUES (?)", databaseName, tableName))
-	if err != nil {
-		return 0, fmt.Errorf("PREPARE INSERT Error: %w", err)
-	}
-	defer stmt.Close()
-
-	// Execute the insert
-	res, err := stmt.Exec(newValue)
-	if err != nil {
-		return 0, fmt.Errorf("EXEC INSERT Error: %w", err)
-	}
-
-	// Get the ID of the inserted row
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("GET LAST INSERT ID Error: %w", err)
-	}
-
-	return id, nil
-}
-
-func InsertVerify(db *sql.DB, databaseName string, tableName string, id int64, expectedValue string) error {
-	// Prepare the select SQL statement
-	stmt, err := db.Prepare(fmt.Sprintf("SELECT name FROM %s.%s WHERE id=?", databaseName, tableName))
-	if err != nil {
-		return fmt.Errorf("PREPARE SELECT Error: %w", err)
-	}
-
-	// Execute the select to fetch the inserted value
-	var insertedValue string
-	err = stmt.QueryRow(id).Scan(&insertedValue)
-	if err != nil {
-		return fmt.Errorf("QUERY SELECT Error: %w", err)
-	}
-
-	// Verify the inserted value
-	if insertedValue != expectedValue {
-		return fmt.Errorf("VERIFY INSERT Error: expected %s, got %s", expectedValue, insertedValue)
-	}
-
-	return nil
-}
-
-func ExecuteTransactionAndReturnId(db *sql.DB, sql string, args ...interface{}) (int64, error) {
-	// Start a new transaction
-	tx, err := db.Begin()
-	if err != nil {
-		return 0, fmt.Errorf("BEGIN TRANSACTION Error: %w", err)
-	}
-
-	// Prepare the SQL statement
-	stmt, err := tx.Prepare(sql)
-	if err != nil {
-		// If an error occurred while preparing the statement, rollback the transaction
-		_ = tx.Rollback()
-		return 0, fmt.Errorf("PREPARE TRANSACTION Error: %w", err)
-	}
-	defer stmt.Close()
-
-	// Execute the SQL statement with provided arguments
-	res, err := stmt.Exec(args...)
-	if err != nil {
-		// If an error occurred while executing the statement, rollback the transaction
-		_ = tx.Rollback()
-		return 0, fmt.Errorf("EXEC TRANSACTION Error: %w", err)
-	}
-
-	// Get the ID of the last inserted row
-	id, err := res.LastInsertId()
-	if err != nil {
-		return 0, fmt.Errorf("GET LAST INSERT ID Error: %w", err)
-	}
-
-	// If no errors occurred, commit the transaction
-	err = tx.Commit()
-	if err != nil {
-		return 0, fmt.Errorf("COMMIT TRANSACTION Error: %w", err)
-	}
-
-	return id, nil
 }
 
 func GetSqlFromFile(path string) ([]string, error) {
@@ -376,4 +214,197 @@ func Compare(res1 [][]string, res2 [][]string) (bool, error) {
 	} else {
 		return false, fmt.Errorf("sql.Result mismatched types for results. res1: %v, res2: %v", res1, res2)
 	}
+}
+
+// setupDatabaseAndInsertData 创建数据库和表，然后插入数据
+func SetupDatabaseAndInsertData(conn *sql.DB, db, table string) error {
+	commands := []string{
+		fmt.Sprintf("DROP DATABASE IF EXISTS %s", db),
+		fmt.Sprintf("CREATE DATABASE %s", db),
+		fmt.Sprintf("USE %s", db),
+		fmt.Sprintf("CREATE TABLE %s (id INT AUTO_INCREMENT, name VARCHAR(20), PRIMARY KEY (id))", table),
+	}
+
+	// 执行数据库和表的创建命令
+	for _, cmd := range commands {
+		if _, err := conn.Exec(cmd); err != nil {
+			return err
+		}
+	}
+
+	// 插入数据
+	for i := 0; i < 10; i++ {
+		if _, err := conn.Exec(fmt.Sprintf("INSERT INTO %s (name) VALUES (?)", table), "nameValue"); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func CompareQueryRows(db1 *sql.DB, db2 *sql.DB, query string) error {
+	rows1, err := db1.Query(query)
+	if err != nil {
+		return err
+	}
+	defer rows1.Close()
+
+	rows2, err := db2.Query(query)
+	if err != nil {
+		return err
+	}
+	defer rows2.Close()
+	// 检查第一个结果集是否为空
+	hasRow1 := rows1.Next()
+	hasRow2 := rows2.Next()
+
+	// 如果两个结果集都为空，那么它们是相同的
+	if !hasRow1 && !hasRow2 {
+		return nil
+	}
+
+	// 如果一个结果集为空而另一个不为空，则它们不同
+	if hasRow1 != hasRow2 {
+		return fmt.Errorf("one of the result sets is empty while the other is not")
+	}
+
+	for {
+		// 两个结果集都至少有一行数据
+		cols1, err := rows1.Columns()
+		if err != nil {
+			return err
+		}
+		cols2, err := rows2.Columns()
+		if err != nil {
+			return err
+		}
+
+		// 比较列的数量和名称
+		if len(cols1) != len(cols2) || !reflect.DeepEqual(cols1, cols2) {
+			return fmt.Errorf("column mismatch")
+		}
+
+		// 创建接收数据的切片
+		vals1 := make([]interface{}, len(cols1))
+		vals2 := make([]interface{}, len(cols2))
+		for i := range cols1 {
+			vals1[i] = new(sql.RawBytes)
+			vals2[i] = new(sql.RawBytes)
+		}
+
+		// 扫描数据
+		if err := rows1.Scan(vals1...); err != nil {
+			return err
+		}
+		if err := rows2.Scan(vals2...); err != nil {
+			return err
+		}
+
+		// 比较每一列的值
+		if !reflect.DeepEqual(vals1, vals2) {
+			return fmt.Errorf("row values mismatch,sql:%s,vals1:%v ,vals2:%v ", query, vals1, vals2)
+		}
+
+		// 检查是否还有更多的行
+		hasRow1 = rows1.Next()
+		hasRow2 = rows2.Next()
+		if hasRow1 != hasRow2 {
+			return fmt.Errorf("number of rows mismatch")
+		}
+		if !hasRow1 {
+			// 如果没有更多的行，则完成比较
+			break
+		}
+	}
+
+	return nil
+}
+
+func GetSecondsBehindMaster(db *sql.DB) (secondsBehindMaster int, err error) {
+	rows, err := db.Query(`SHOW SLAVE STATUS`)
+	if err != nil {
+		return -1, fmt.Errorf("query slave status error:%v", err)
+	}
+	defer rows.Close()
+	pr := func(t interface{}) (r string) {
+		r = "\\N"
+		switch v := t.(type) {
+		case *sql.NullBool:
+			if v.Valid {
+				r = strconv.FormatBool(v.Bool)
+			}
+		case *sql.NullString:
+			if v.Valid {
+				r = v.String
+			}
+		case *sql.NullInt64:
+			if v.Valid {
+				r = fmt.Sprintf("%v", v.Int64)
+			}
+		case *sql.NullFloat64:
+			if v.Valid {
+				r = fmt.Sprintf("%v", v.Float64)
+			}
+		case *time.Time:
+			if v.Year() > 1900 {
+				r = v.Format("2006-01-02 15:04:05")
+			}
+		default:
+			r = fmt.Sprintf("%#v", t)
+		}
+		return
+	}
+	c, _ := rows.Columns()
+	n := len(c)
+	field := make([]interface{}, 0, n)
+	for i := 0; i < n; i++ {
+		field = append(field, new(sql.NullString))
+	}
+	for rows.Next() {
+		if err := rows.Scan(field...); err != nil {
+			return -1, err
+		}
+		for i := 0; i < n; i++ {
+			col := pr(field[i])
+			if c[i] == "Seconds_Behind_Master" {
+				if col == "\\N" {
+					col = "NULL" // 期望的其他值
+					return -1, fmt.Errorf("Seconds_Behind_Master is null")
+				}
+				delay, err := strconv.Atoi(col)
+				return delay, err
+			}
+			if col == "\\N" {
+				col = "NULL" // 或者期望的其他值
+			}
+		}
+	}
+	return -1, fmt.Errorf("can not find Seconds Behind Master")
+}
+
+// sendReadRequest 发送读请求
+func GetRealSeverID(conn *sql.DB) (serverID int, err error) {
+	query := "SELECT @@server_id"
+	err = conn.QueryRow(query).Scan(&serverID)
+	if err != nil {
+		return serverID, fmt.Errorf("query server ID Error:%v", err)
+	}
+
+	return serverID, nil
+}
+
+func LockWithReadLock(db *sql.DB) error {
+	_, err := db.Exec("FLUSH TABLES WITH READ LOCK")
+	if err != nil {
+		return fmt.Errorf("failed to lock slave for read: %v", err)
+	}
+	return nil
+}
+
+func UnLockReadLock(db *sql.DB) error {
+	_, err := db.Exec("UNLOCK TABLES")
+	if err != nil {
+		return fmt.Errorf("failed to unlock slave: %v", err)
+	}
+	return nil
 }

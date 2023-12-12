@@ -1,7 +1,10 @@
 package function
 
 import (
+	"database/sql"
 	"fmt"
+	"path/filepath"
+	"reflect"
 
 	"github.com/XiaoMi/Gaea/tests/config"
 	"github.com/XiaoMi/Gaea/tests/util"
@@ -10,95 +13,105 @@ import (
 )
 
 var _ = ginkgo.Describe("Simple SQL Queries", func() {
-	var e2eConfig *config.E2eConfig
-	var masterSlaveCluster *config.MysqlClusterConfig
-	var db string
-	var table string
+	nsTemplateFile := "e2e/function/ns/default.template"
+	e2eMgr := config.NewE2eManager()
+	db := config.DefaultE2eDatabase
+	slice := e2eMgr.NsSlices[config.SliceMSName]
+	table := config.DefaultE2eTable
 	ginkgo.BeforeEach(func() {
-		// 注册命令空间
-		e2eConfig = config.GetDefaultE2eConfig()
-		masterSlaveCluster = e2eConfig.MasterSlaveCluster
-		db = "db_e2e_test"
-		// 这里的数据表名最好和其他的表名不同，为了防止日志中拉取出的两条日志相同
-		table = "tbl_sql_test"
-		// 解析模版
-		ns, err := masterSlaveCluster.TemplateParse(e2eConfig.FilepathJoin("e2e/function/ns/default.template"))
+		err := e2eMgr.AddNsFromFile(filepath.Join(e2eMgr.BasePath, nsTemplateFile), slice)
 		gomega.Expect(err).Should(gomega.BeNil())
-
-		// 注册namespace
-		err = e2eConfig.RegisterNamespaces(ns)
+		masterConn, err := slice.GetMasterConn(0)
 		gomega.Expect(err).Should(gomega.BeNil())
-
-		// 初始化数据库实例
-		mysqlConn, err := config.InitConn(masterSlaveCluster.Slices[0].UserName, masterSlaveCluster.Slices[0].Password, masterSlaveCluster.Slices[0].Master, "")
+		err = util.SetupDatabaseAndInsertData(masterConn, db, table)
 		gomega.Expect(err).Should(gomega.BeNil())
-		defer mysqlConn.Close()
-
-		commands := []string{
-			fmt.Sprintf("DROP DATABASE IF EXISTS %s", db),
-			fmt.Sprintf("CREATE DATABASE %s", db),
-			fmt.Sprintf("USE %s", db),
-			fmt.Sprintf("CREATE TABLE %s (id INT AUTO_INCREMENT, name VARCHAR(20), PRIMARY KEY (id))", table),
-		}
-
-		for _, cmd := range commands {
-			_, err = mysqlConn.Exec(cmd)
-			gomega.Expect(err).Should(gomega.BeNil())
-		}
-
-		// 插入10条数据
-		for i := 0; i < 10; i++ {
-			_, err = mysqlConn.Exec(fmt.Sprintf("INSERT INTO %s (name) VALUES (?)", table), "nameValue")
-			gomega.Expect(err).Should(gomega.BeNil())
-		}
-
 	})
+
 	ginkgo.Context("When executing basic SQL operations", func() {
 		ginkgo.It("should handle SELECT operations correctly", func() {
-			// 初始化gaea连接
-			gaeaConn, err := config.InitConn(e2eConfig.GaeaUser.UserName, e2eConfig.GaeaUser.Password, e2eConfig.GaeaHost, "")
+			gaeaConn, err := e2eMgr.GetWriteGaeaUserConn()
 			gomega.Expect(err).Should(gomega.BeNil())
-			defer gaeaConn.Close()
-
-			sql := fmt.Sprintf("/*master*/ SELECT * FROM `%s`.`%s` WHERE `id`= 9", db, table)
-			_, err = gaeaConn.Exec(sql)
-			gomega.Expect(err).Should(gomega.BeNil())
-			// 初始化数据库连接
-			mysqlConn, err := config.InitConn(masterSlaveCluster.Slices[0].UserName, masterSlaveCluster.Slices[0].Password, masterSlaveCluster.Slices[0].Master, "")
-			gomega.Expect(err).Should(gomega.BeNil())
-			defer mysqlConn.Close()
-
-			// gaea  delete  test
-			ginkgo.By("delete one record by gaea")
-			err = util.DeleteRow(gaeaConn, db, table, 1)
+			mysqlConn, err := slice.GetMasterConn(0)
 			gomega.Expect(err).Should(gomega.BeNil())
 
-			err = util.DeleteVerify(mysqlConn, db, table, 1)
-			gomega.Expect(err).Should(gomega.BeNil())
+			// 定义 SQL 测试用例
+			sqlCases := []struct {
+				GaeaConn   *sql.DB
+				GaeaSQL    string
+				MasterConn *sql.DB
+				CheckSQL   string
+				ExpectRes  [][]string
+			}{
+				{
+					GaeaConn:   gaeaConn,
+					GaeaSQL:    fmt.Sprintf("/*master*/ SELECT * FROM `%s`.`%s` WHERE `id`= 9", db, table),
+					MasterConn: mysqlConn,
+					CheckSQL:   fmt.Sprintf("/*master*/ SELECT * FROM `%s`.`%s` WHERE `id`= 9", db, table),
+					ExpectRes: [][]string{
+						{"9", "nameValue"},
+					},
+				},
+				{
+					GaeaConn:   gaeaConn,
+					GaeaSQL:    fmt.Sprintf("DELETE FROM %s.%s WHERE id=1", db, table),
+					MasterConn: mysqlConn,
+					CheckSQL:   fmt.Sprintf("SELECT * FROM %s.%s WHERE id=1", db, table),
+					ExpectRes:  [][]string{},
+				},
+				{
+					GaeaConn:   gaeaConn,
+					GaeaSQL:    fmt.Sprintf("UPDATE %s.%s SET name='Tom' WHERE id=2", db, table),
+					MasterConn: mysqlConn,
+					CheckSQL:   fmt.Sprintf("SELECT * FROM %s.%s WHERE id=2 AND name='Tom'", db, table),
+					ExpectRes: [][]string{{
+						"2", "Tom",
+					}},
+				},
+				{
+					GaeaConn:   gaeaConn,
+					GaeaSQL:    fmt.Sprintf("INSERT INTO %s.%s (name) VALUES ('Alex')", db, table),
+					MasterConn: mysqlConn,
+					CheckSQL:   fmt.Sprintf("SELECT * FROM %s.%s WHERE name='Alex'", db, table),
+					ExpectRes: [][]string{{
+						"11", "Alex",
+					}},
+				},
+			}
 
-			// gaea updata test
-			ginkgo.By("update one record by gaea")
-			err = util.UpdateRow(gaeaConn, db, table, 2, "Tom")
-			gomega.Expect(err).Should(gomega.BeNil())
-			err = util.UpdateVerify(mysqlConn, db, table, 2, "Tom")
-			gomega.Expect(err).Should(gomega.BeNil())
+			// 执行 SQL 测试用例
+			for _, sqlCase := range sqlCases {
+				_, err := sqlCase.GaeaConn.Exec(sqlCase.GaeaSQL)
+				gomega.Expect(err).Should(gomega.BeNil())
+				err = checkFunc(sqlCase.MasterConn, sqlCase.CheckSQL, sqlCase.ExpectRes)
+				gomega.Expect(err).Should(gomega.BeNil())
 
-			// gaea insert test
-			ginkgo.By("insert one record by gaea")
-			id, err := util.InsertRow(gaeaConn, db, table, "Tom")
-			gomega.Expect(err).Should(gomega.BeNil())
-			err = util.InsertVerify(mysqlConn, db, table, id, "Tom")
-			gomega.Expect(err).Should(gomega.BeNil())
-
-			// gaea transaction test
-			ginkgo.By("test gaea transaction")
-			id, err = util.ExecuteTransactionAndReturnId(gaeaConn, fmt.Sprintf("INSERT INTO %s.%s (name) VALUES (?)", db, table), "Alex")
-			gomega.Expect(err).Should(gomega.BeNil())
-			util.InsertVerify(mysqlConn, db, table, id, "Alex")
-
+			}
 		})
 	})
 	ginkgo.AfterEach(func() {
-		e2eConfig.NamespaceManager.UnRegisterNamespaces()
+		e2eMgr.Clean()
 	})
 })
+
+func checkFunc(db *sql.DB, sqlStr string, values [][]string) error {
+	rows, err := db.Query(sqlStr)
+	if err != nil {
+		if err == sql.ErrNoRows && len(values) == 0 {
+			return nil
+		}
+		return fmt.Errorf("db Exec Error %v", err)
+	}
+	defer rows.Close()
+	res, err := util.GetDataFromRows(rows)
+	if err != nil {
+		return fmt.Errorf("get data from rows error:%v", err)
+	}
+	// res为空代表没有查到数据
+	if (len(res) == 0 || res == nil) && len(values) == 0 {
+		return nil
+	}
+	if !reflect.DeepEqual(values, res) {
+		return fmt.Errorf("mismatch. Actual: %v, Expect: %v", res, values)
+	}
+	return nil
+}
