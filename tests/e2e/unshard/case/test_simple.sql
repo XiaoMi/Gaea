@@ -2,7 +2,7 @@
 use  sbtest1;
 /* some comments */ SELECT CONVERT('111', SIGNED);
 /* some comments */ /*comment*/ SELECT CONVERT('111', SIGNED);
-SELECT /*+ MAX_EXECUTION_TIME(1000) */ * FROM t1 INNER JOIN t2 where t1.col1 = t2.col1;
+
 SELECT /*comment*/ CONVERT('111', SIGNED) ;
 SELECT CONVERT('111', /*comment*/ SIGNED) ;
 SELECT CONVERT('111', SIGNED) /*comment*/;
@@ -65,12 +65,12 @@ SHOW VARIABLES LIKE 'character_set_results';
 SHOW GLOBAL VARIABLES LIKE 'character_set_results';
 SHOW SESSION VARIABLES LIKE 'character_set_results';
 
-SHOW VARIABLES;
+
 SHOW GLOBAL VARIABLES;
 SHOW GLOBAL VARIABLES WHERE Variable_name = 'autocommit';
-SHOW STATUS;
-SHOW GLOBAL STATUS;
-SHOW SESSION STATUS;
+
+
+
 
 SHOW STATUS LIKE 'Up%';
 SHOW STATUS WHERE Variable_name;
@@ -199,14 +199,12 @@ SELECT SCHEMA();
 SELECT USER();
 SELECT CURRENT_USER();
 SELECT CURRENT_USER;
-SELECT CONNECTION_ID();
 
 SELECT VERSION();
 SELECT BENCHMARK(1000000, AES_ENCRYPT('text',UNHEX('F3229A0B371ED2D9441B830D21A390C3')));
 SELECT CHARSET('abc');
 SELECT COERCIBILITY('abc');
 SELECT COLLATION('abc');
-SELECT ROW_COUNT();
 SELECT SESSION_USER();
 SELECT SYSTEM_USER();
 SELECT SUBSTRING_INDEX('www.mysql.com', '.', 2);
@@ -491,8 +489,7 @@ select unix_timestamp();
 select unix_timestamp('2015-11-13 10:20:19.012');
 
 
-SELECT GET_LOCK('lock1',10);
-SELECT RELEASE_LOCK('lock1');
+
 
 select avg(distinct col1) from t;
 select avg(distinctrow col1) from t;

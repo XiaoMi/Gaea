@@ -39,14 +39,16 @@
     ],
   "shard_rules": [],
   "users": [
-    {
-      "user_name": "superroot",
-      "password": "superroot",
-      "namespace": "test_namespace_1",
-      "rw_flag": 2,
-      "rw_split": 1,
-      "other_property": 0
-    }
+     {{- range $index, $user := .GaeaUsers }}
+        {
+            "user_name": "{{.UserName}}",
+            "password": "{{.Password}}", 
+            "namespace": "test_namespace_1",
+            "rw_flag": {{.RWFlag}},
+            "rw_split": {{.RWSplit}},
+            "other_property":{{.OtherProperty}}
+        }{{ if not (lastItem $index (len $.GaeaUsers) ) }}, {{ end }}
+        {{- end}}
   ],
   "default_slice": "slice-0",
   "global_sequences": null,

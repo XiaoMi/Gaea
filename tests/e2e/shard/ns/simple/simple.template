@@ -1,7 +1,7 @@
 {
   "open_general_log": false,
   "is_encrypt": true,
-  "name": "test_namespace_noshard_plan",
+  "name": "test_namespace_shard_plan",
   "online": true,
   "read_only": false,
   "allowed_dbs": {
@@ -335,14 +335,16 @@
     }
   ],
   "users": [
-    {
-      "user_name": "superroot",
-      "password": "superroot",
-      "namespace": "test_namespace_noshard_plan",
-      "rw_flag": 2,
-      "rw_split": 1,
-      "other_property": 0
-    }
+        {{- range $index, $user := .GaeaUsers }}
+        {
+            "user_name": "{{.UserName}}",
+            "password": "{{.Password}}", 
+            "namespace": "test_namespace_shard_plan",
+            "rw_flag": {{.RWFlag}},
+            "rw_split": {{.RWSplit}},
+            "other_property":{{.OtherProperty}}
+        }{{ if not (lastItem $index (len $.GaeaUsers) ) }}, {{ end }}
+        {{- end}}
   ],
   "default_slice": "slice-0",
   "global_sequences": null,

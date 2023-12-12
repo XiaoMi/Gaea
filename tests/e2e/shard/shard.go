@@ -2,6 +2,7 @@ package shard
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/XiaoMi/Gaea/tests/config"
 	"github.com/onsi/ginkgo/v2"
@@ -9,40 +10,30 @@ import (
 )
 
 var _ = ginkgo.Describe("shard_dml_support_test", func() {
-	var e2eConfig *config.E2eConfig
-	var multiMasterCluster *config.MysqlClusterConfig
-	var planManagers []*config.PlanManager
-	var err error
+	nsTemplateFile := "e2e/shard/ns/simple/simple.template"
+	e2eMgr := config.NewE2eManager()
+	sliceMulti := e2eMgr.NsSlices[config.SliceMMName]
+	planManagers := []*config.PlanManager{}
+	gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
+	gomega.Expect(err).Should(gomega.BeNil())
 
 	ginkgo.BeforeEach(func() {
-		e2eConfig = config.GetDefaultE2eConfig()
-		multiMasterCluster = e2eConfig.MultiMasterCluster
-		// 解析模版
-		ns, err := multiMasterCluster.TemplateParse(e2eConfig.FilepathJoin("e2e/shard/ns/simple/simple.template"))
-		gomega.Expect(err).Should(gomega.BeNil())
-		// 注册namespace
-		err = e2eConfig.RegisterNamespaces(ns)
-		gomega.Expect(err).Should(gomega.BeNil())
-
-		ginkgo.By("get Gaea conn ")
-		gaeaDB, err := config.InitConn(e2eConfig.GaeaUser.UserName, e2eConfig.GaeaUser.Password, e2eConfig.GaeaHost, "")
+		err := e2eMgr.AddNsFromFile(filepath.Join(e2eMgr.BasePath, nsTemplateFile), sliceMulti)
 		gomega.Expect(err).Should(gomega.BeNil())
 
 		ginkgo.By("init case path")
-		casesPath, err := config.GetJSONFilesFromDir(e2eConfig.FilepathJoin("e2e/shard/case/dml"))
-		gomega.Expect(err).Should(gomega.BeNil())
-
-		ginkgo.By("get Cluster conn ")
-		err = multiMasterCluster.InitMysqlClusterConn()
+		casesPath, err := config.GetJSONFilesFromDir(filepath.Join(e2eMgr.BasePath, "e2e/shard/case/dml"))
 		gomega.Expect(err).Should(gomega.BeNil())
 
 		ginkgo.By("get sql plan")
-		planManagers = []*config.PlanManager{}
+		clusterConn, err := sliceMulti.GetLocalSliceConn()
+		gomega.Expect(err).Should(gomega.BeNil())
+
 		for _, v := range casesPath {
 			p := &config.PlanManager{
 				PlanPath:         v,
-				MysqlClusterConn: multiMasterCluster.SliceConns,
-				GaeaDB:           gaeaDB,
+				MysqlClusterConn: clusterConn,
+				GaeaDB:           gaeaConn,
 			}
 			ginkgo.By(fmt.Sprintf("plan %s init", v))
 			planManagers = append(planManagers, p)
@@ -63,9 +54,6 @@ var _ = ginkgo.Describe("shard_dml_support_test", func() {
 		for _, p := range planManagers {
 			p.MysqlClusterConnClose()
 		}
-		// 删除注册
-		err := e2eConfig.UnRegisterNamespaces()
-		gomega.Expect(err).Should(gomega.BeNil())
-
+		e2eMgr.Clean()
 	})
 })

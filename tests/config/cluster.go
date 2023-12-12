@@ -4,201 +4,98 @@ import (
 	"bytes"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"path/filepath"
 	"runtime"
-	"sync"
 	"text/template"
 
 	"github.com/XiaoMi/Gaea/models"
 )
 
-var (
-	singleMasterClusterSlice = []*models.Slice{
-		{
-
-			Name:            "slice-0",
-			UserName:        "superroot",
-			Password:        "superroot",
-			Master:          "127.0.0.1:3379",
-			Slaves:          nil,
-			StatisticSlaves: nil,
-			Capacity:        12,
-			MaxCapacity:     24,
-			IdleTimeout:     60,
-		},
-	}
-	masterSlaveClusterSlice = []*models.Slice{
-		{
-
-			Name:            "slice-0",
-			UserName:        "superroot",
-			Password:        "superroot",
-			Master:          "127.0.0.1:3319",
-			Slaves:          []string{"127.0.0.1:3329", "127.0.0.1:3339"},
-			StatisticSlaves: nil,
-			Capacity:        12,
-			MaxCapacity:     24,
-			IdleTimeout:     60,
-		},
-	}
-	multiMasterClusterSlice = []*models.Slice{
-		{
-
-			Name:            "slice-0",
-			UserName:        "superroot",
-			Password:        "superroot",
-			Master:          "127.0.0.1:3329",
-			Slaves:          nil,
-			StatisticSlaves: nil,
-			Capacity:        12,
-			MaxCapacity:     24,
-			IdleTimeout:     60,
-		},
-		{
-
-			Name:            "slice-1",
-			UserName:        "superroot",
-			Password:        "superroot",
-			Master:          "127.0.0.1:3339",
-			Slaves:          nil,
-			StatisticSlaves: nil,
-			Capacity:        12,
-			MaxCapacity:     24,
-			IdleTimeout:     60,
-		},
-	}
-	gaeaUser = &models.User{
-		UserName:      "superroot",
-		Password:      "superroot",
-		RWFlag:        2,
-		RWSplit:       1,
-		OtherProperty: 0,
-	}
-)
-
-type E2eConfig struct {
-	SingleMasterCluster *MysqlClusterConfig
-	MultiMasterCluster  *MysqlClusterConfig
-	MasterSlaveCluster  *MysqlClusterConfig
-	NamespaceManager    *NamespaceRegisterManager
-	GaeaUser            *models.User
-	GaeaHost            string
-	TestsBasePath       string
-}
-
-var (
-	once      sync.Once
-	e2eConfig *E2eConfig
-)
-
-var basePath string
-
-func init() {
-	_, currentFile, _, _ := runtime.Caller(0)
-	configDir := filepath.Dir(currentFile)
-	// 获取上级目录
-	basePath = filepath.Dir(configDir)
-}
-
-func GetDefaultE2eConfig() *E2eConfig {
-	once.Do(func() {
-		e2eConfig = &E2eConfig{
-			SingleMasterCluster: &MysqlClusterConfig{
-				Slices:     singleMasterClusterSlice,
-				SliceConns: map[string]*SliceConn{},
-			},
-			MasterSlaveCluster: &MysqlClusterConfig{
-				Slices:     masterSlaveClusterSlice,
-				SliceConns: map[string]*SliceConn{},
-			},
-			MultiMasterCluster: &MysqlClusterConfig{
-				Slices:     multiMasterClusterSlice,
-				SliceConns: map[string]*SliceConn{},
-			},
-			NamespaceManager: NewNamespaceRegisterManger(),
-			GaeaUser:         gaeaUser,
-			GaeaHost:         "127.0.0.1:13306",
-			TestsBasePath:    basePath,
-		}
-	})
-	return e2eConfig
-}
-
-func (e *E2eConfig) FilepathJoin(path string) string {
-	// 拼接路径
-	return filepath.Join(e2eConfig.TestsBasePath, path)
-}
-
-func (e *E2eConfig) RegisterNamespaces(ns ...*models.Namespace) error {
-	for _, v := range ns {
-		err := e.NamespaceManager.AddNamespace(v)
-		if err != nil {
-			return err
-		}
-	}
-	err := e.NamespaceManager.RegisterAllNamespaces()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (e *E2eConfig) UnRegisterNamespaces() error {
-	err := e.NamespaceManager.UnRegisterNamespaces()
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-type MysqlClusterConfig struct {
+type NsSlice struct {
+	Name       string
 	Slices     []*models.Slice
-	SliceConns map[string]*SliceConn
+	SliceConns []*LocalSliceConn
+	GaeaUsers  []*models.User
 }
 
-func (m *MysqlClusterConfig) InitMysqlClusterConn() error {
-	m.SliceConns = make(map[string]*SliceConn)
-
-	for _, slice := range m.Slices {
-		master, err := InitConn(slice.UserName, slice.Password, slice.Master, "")
+func (ns *NsSlice) GetLocalSliceConn() (res map[string]*LocalSliceConn, err error) {
+	sliceConns := make(map[string]*LocalSliceConn, len(ns.Slices))
+	for _, slice := range ns.Slices {
+		localConn := &LocalSliceConn{
+			MasterConn: nil,
+			SlaveConns: []*sql.DB{},
+		}
+		// 初始化主服务器连接
+		localConn.MasterConn, err = InitConn(slice.UserName, slice.Password, slice.Master, "")
 		if err != nil {
-			return err
+			return nil, fmt.Errorf("failed to initialize master connection for slice '%s': %v", slice.Name, err)
 		}
-		sliceConn := &SliceConn{
-			Master: master,
-			Slaves: []*sql.DB{},
+		// 初始化从服务器连接
+		for _, slave := range slice.Slaves {
+			slaveDb, err := InitConn(slice.UserName, slice.Password, slave, "")
+			if err != nil {
+				return nil, fmt.Errorf("failed to initialize slave connection for slice '%s': %v", slice.Name, err)
+			}
+			localConn.SlaveConns = append(localConn.SlaveConns, slaveDb)
 		}
 
-		for _, slave := range slice.Slaves {
-			slaveDB, err := InitConn(slice.UserName, slice.Password, slave, "")
-			if err != nil {
-				return err
-			}
-			sliceConn.Slaves = append(sliceConn.Slaves, slaveDB)
-		}
-		m.SliceConns[slice.Name] = sliceConn
+		sliceConns[slice.Name] = localConn
 	}
-	return nil
+
+	return sliceConns, nil
 }
 
-func getLastItem() template.FuncMap {
-	return template.FuncMap{
+// TODO: fix to rename SliceConn
+type LocalSliceConn struct {
+	MasterConn *sql.DB
+	SlaveConns []*sql.DB
+}
+
+// TODO: fix error
+func (ns *NsSlice) GetMasterConn(sliceIndex int) (*sql.DB, error) {
+	var err error
+	if sliceIndex > len(ns.Slices) {
+		return nil, fmt.Errorf("sliceIndex more than")
+	}
+	if ns.SliceConns == nil {
+		ns.SliceConns = make([]*LocalSliceConn, len(ns.Slices))
+	}
+	if ns.SliceConns[sliceIndex].MasterConn != nil {
+		return ns.SliceConns[sliceIndex].MasterConn, nil
+	}
+	ns.SliceConns[sliceIndex].MasterConn, err = InitConn(ns.Slices[sliceIndex].UserName, ns.Slices[sliceIndex].Password, ns.Slices[sliceIndex].Master, "")
+	return ns.SliceConns[sliceIndex].MasterConn, err
+}
+
+// TODO: fix error
+func (ns *NsSlice) GetSlaveConn(sliceIndex int, index int) (*sql.DB, error) {
+	if sliceIndex > len(ns.Slices) {
+		return nil, fmt.Errorf("sliceIndex more than")
+	}
+	if index > len(ns.Slices[sliceIndex].Slaves) {
+		return nil, fmt.Errorf("slaveIndex more than")
+	}
+	if ns.SliceConns[sliceIndex].SlaveConns[index] != nil {
+		return ns.SliceConns[sliceIndex].SlaveConns[index], nil
+	}
+	ns.SliceConns[sliceIndex].SlaveConns[index], _ = InitConn(ns.Slices[sliceIndex].UserName, ns.Slices[sliceIndex].Password, ns.Slices[sliceIndex].Slaves[index], "")
+	return ns.SliceConns[sliceIndex].SlaveConns[index], nil
+}
+
+func ParseTemplate(filenames string, ns *NsSlice) (*models.Namespace, error) {
+	temp := filepath.Base(filenames)
+	tmpl, err := template.New(temp).Funcs(template.FuncMap{
 		"lastItem": func(index int, all int) bool {
 			return index == all-1
 		},
-	}
-}
-
-func (m *MysqlClusterConfig) TemplateParse(filenames string) (*models.Namespace, error) {
-
-	temp := filepath.Base(filenames)
-	tmpl, err := template.New(temp).Funcs(getLastItem()).ParseFiles(filenames)
+	}).ParseFiles(filenames)
 	if err != nil {
 		return nil, err
 	}
 	var buf bytes.Buffer
-	err = tmpl.Execute(&buf, m)
+	err = tmpl.Execute(&buf, ns)
 	if err != nil {
 		return nil, err
 	}
@@ -209,6 +106,90 @@ func (m *MysqlClusterConfig) TemplateParse(filenames string) (*models.Namespace,
 		return nil, err
 	}
 	return nameSpace, nil
+}
+
+type MCluster struct {
+	Name   string
+	Master *MInstance
+	Slaves []*MInstance
+}
+
+type MInstance struct {
+	UserName string
+	Password string
+	Host     string
+	Port     int
+}
+
+func (m *MInstance) Addr() string {
+	return fmt.Sprintf("%s:%d", m.Host, m.Port)
+}
+
+type GCluster struct {
+	Host          string
+	Port          int
+	ReadWriteUser *models.User
+	ReadUser      *models.User
+	WriteUser     *models.User
+	LogPath       string
+	readWriteConn *sql.DB
+	readConn      *sql.DB
+	writeConn     *sql.DB
+}
+
+var basePath string
+
+func init() {
+	_, currentFile, _, _ := runtime.Caller(0)
+	configDir := filepath.Dir(currentFile)
+	// 获取上级目录
+	basePath = filepath.Dir(configDir)
+}
+
+func (e *E2eManager) AddNsFromFile(filenames string, nss *NsSlice) error {
+	ns, err := ParseTemplate(filenames, nss)
+	if err != nil {
+		return err
+	}
+	return e.AddNamespace(ns)
+}
+
+func (e *E2eManager) AddNamespace(ns *models.Namespace) error {
+	err := e.NsManager.AddNamespace(ns)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (e *E2eManager) Clean() {
+	// 删除所有的namespace
+	_ = e.NsManager.unRegisterNamespaces()
+	if e.GCluster != nil {
+		if e.GCluster.readWriteConn != nil {
+			_ = e.GCluster.readWriteConn.Close()
+		}
+		if e.GCluster.writeConn != nil {
+			_ = e.GCluster.writeConn.Close()
+		}
+		if e.GCluster.readConn != nil {
+			_ = e.GCluster.readConn.Close()
+		}
+	}
+
+	for _, v := range e.NsSlices {
+		for _, sliceConn := range v.SliceConns {
+			if sliceConn.MasterConn != nil {
+				_ = sliceConn.MasterConn.Close()
+			}
+
+			for _, slaveConn := range sliceConn.SlaveConns {
+				if slaveConn != nil {
+					_ = slaveConn.Close()
+				}
+			}
+		}
+	}
 }
 
 func GetJSONFilesFromDir(dir string) ([]string, error) {

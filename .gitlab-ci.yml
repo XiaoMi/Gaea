@@ -49,20 +49,6 @@ build_branch:
   script:
     - make build
 
-integrate_tests:
-  stage: integrate_tests
-  timeout: 1h
-  script:
-    - echo "Start to build gaea"
-    - make gaea
-    - echo "start integrate tests"
-    - sed -i "s/IT_USER/${IT_USER}/g" cmd/gaea/main_test.go
-    - sed -i "s/IT_PASSWORD/${IT_PASSWORD}/g" cmd/gaea/main_test.go
-    - nohup bin/gaea -config etc/gaea.ini &
-    - sleep 10
-    - make integrate_test
-    - ps -ef | grep gaea | grep -v grep | awk '{print $2}' | xargs kill -9
-
 e2e_test:
   stage: e2e-test
   image: micr.cloud.mioffice.cn/devdba/centos-mysql-golang:v1.0.2

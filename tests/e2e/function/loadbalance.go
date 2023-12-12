@@ -1,7 +1,9 @@
 package function
 
 import (
+	"database/sql"
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/XiaoMi/Gaea/tests/config"
@@ -11,93 +13,115 @@ import (
 )
 
 var _ = ginkgo.Describe("Load Balancing", func() {
-	var e2eConfig *config.E2eConfig
-	var masterSlaveCluster *config.MysqlClusterConfig
-	var db string
-	var table string
-	var startTime string
-
+	nsTemplateFile := "e2e/function/ns/default.template"
+	e2eMgr := config.NewE2eManager()
+	db := config.DefaultE2eDatabase
+	slice := e2eMgr.NsSlices[config.SliceMSName]
+	table := config.DefaultE2eTable
+	currentTime := time.Now()
 	ginkgo.BeforeEach(func() {
-		currentTime := time.Now()
-		startTime = currentTime.Format("2006-01-02 15:04:05.999")
-		e2eConfig = config.GetDefaultE2eConfig()
-		masterSlaveCluster = e2eConfig.MasterSlaveCluster
-		db = "db_e2e_test"
-		// 这里的数据表名最好和其他的表名不同，为了防止日志中拉取出的两条日志相同
-		table = "tbl_balance_test"
-		// 解析模版
-		ns, err := masterSlaveCluster.TemplateParse(e2eConfig.FilepathJoin("e2e/function/ns/default.template"))
+
+		err := e2eMgr.AddNsFromFile(filepath.Join(e2eMgr.BasePath, nsTemplateFile), slice)
 		gomega.Expect(err).Should(gomega.BeNil())
-
-		// 注册namespace
-		err = e2eConfig.RegisterNamespaces(ns)
+		masterConn, err := slice.GetMasterConn(0)
 		gomega.Expect(err).Should(gomega.BeNil())
-
-		// 初始化数据库实例
-		mysqlConn, err := config.InitConn(masterSlaveCluster.Slices[0].UserName, masterSlaveCluster.Slices[0].Password, masterSlaveCluster.Slices[0].Master, "")
+		err = util.SetupDatabaseAndInsertData(masterConn, db, table)
 		gomega.Expect(err).Should(gomega.BeNil())
-		defer mysqlConn.Close()
-
-		commands := []string{
-			fmt.Sprintf("DROP DATABASE IF EXISTS %s", db),
-			fmt.Sprintf("CREATE DATABASE %s", db),
-			fmt.Sprintf("USE %s", db),
-			fmt.Sprintf("CREATE TABLE %s (id INT AUTO_INCREMENT, name VARCHAR(20), PRIMARY KEY (id))", table),
-		}
-		for _, cmd := range commands {
-			_, err = mysqlConn.Exec(cmd)
-			gomega.Expect(err).Should(gomega.BeNil())
-		}
-		// 插入10条数据
-		for i := 0; i < 10; i++ {
-			_, err = mysqlConn.Exec(fmt.Sprintf("INSERT INTO %s (name) VALUES (?)", table), "nameValue")
-			gomega.Expect(err).Should(gomega.BeNil())
-		}
-
 	})
 
 	ginkgo.Context("When distributing queries among replicas", func() {
 		ginkgo.It("should evenly distribute read queries", func() {
-			// 初始化gaea连接
-			gaeaConn, err := config.InitConn(e2eConfig.GaeaUser.UserName, e2eConfig.GaeaUser.Password, e2eConfig.GaeaHost, "")
-			gomega.Expect(err).Should(gomega.BeNil())
-			defer gaeaConn.Close()
-			// 初始化数据库连接
-			mysqlConn, err := config.InitConn(masterSlaveCluster.Slices[0].UserName, masterSlaveCluster.Slices[0].Password, masterSlaveCluster.Slices[0].Master, "")
-			gomega.Expect(err).Should(gomega.BeNil())
-			defer mysqlConn.Close()
-			result := make([]string, 2)
-			sql := fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1", db, table)
-			_, err = gaeaConn.Exec(sql)
 
+			gaeaReadConn, err := e2eMgr.GetReadGaeaUserConn()
 			gomega.Expect(err).Should(gomega.BeNil())
-			res, err := util.ReadLog(e2eConfig.FilepathJoin("cmd/logs/gaea_sql.log"), sql, startTime)
 
+			gaeaWriteConn, err := e2eMgr.GetWriteGaeaUserConn()
 			gomega.Expect(err).Should(gomega.BeNil())
-			gomega.Expect(res).Should(gomega.HaveLen(1))
-			result[0] = res[0].BackendAddr
-			sql = fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 2", db, table)
-			_, err = gaeaConn.Exec(sql)
-			gomega.Expect(err).Should(gomega.BeNil())
-			res, err = util.ReadLog(e2eConfig.FilepathJoin("cmd/logs/gaea_sql.log"), sql, startTime)
-			gomega.Expect(err).Should(gomega.BeNil())
-			gomega.Expect(res).Should(gomega.HaveLen(1))
-			result[1] = res[0].BackendAddr
-			// check
-			actualMap := map[string]int{}
-			for _, v := range result {
-				actualMap[v]++
+
+			// 定义 SQL 测试用例
+			sqlCases := []struct {
+				GaeaConn          *sql.DB
+				GaeaSQL           string
+				ExpectBackendAddr string
+			}{
+				//读用户-读
+				{
+					GaeaConn:          gaeaReadConn,
+					GaeaSQL:           fmt.Sprintf("/*Load Balancing Case1 */SELECT * FROM `%s`.`%s` WHERE `id`= 1", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Slaves[0].Addr(),
+				},
+				{
+					GaeaConn:          gaeaReadConn,
+					GaeaSQL:           fmt.Sprintf("/*Load Balancing Case2 */ SELECT * FROM `%s`.`%s` WHERE `id`= 2", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Slaves[1].Addr(),
+				},
+				{
+					GaeaConn:          gaeaReadConn,
+					GaeaSQL:           fmt.Sprintf("/*Load Balancing Case3 */ SELECT * FROM `%s`.`%s` WHERE `id`= 3", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Slaves[0].Addr(),
+				},
+				{
+					GaeaConn:          gaeaReadConn,
+					GaeaSQL:           fmt.Sprintf("/*Load Balancing Case4 */ SELECT * FROM `%s`.`%s` WHERE `id`= 4", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Slaves[1].Addr(),
+				},
+				// 写用户-读
+				{
+					GaeaConn:          gaeaWriteConn,
+					GaeaSQL:           fmt.Sprintf("/*Load Balancing Case5 */SELECT * FROM `%s`.`%s` WHERE `id`= 1", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+				},
+				{
+					GaeaConn:          gaeaWriteConn,
+					GaeaSQL:           fmt.Sprintf("/*Load Balancing Case6 */ SELECT * FROM `%s`.`%s` WHERE `id`= 2", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+				},
+				{
+					GaeaConn:          gaeaWriteConn,
+					GaeaSQL:           fmt.Sprintf("/*Load Balancing Case7 */ SELECT * FROM `%s`.`%s` WHERE `id`= 3", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+				},
+				{
+					GaeaConn:          gaeaWriteConn,
+					GaeaSQL:           fmt.Sprintf("/*Load Balancing Case8 */ SELECT * FROM `%s`.`%s` WHERE `id`= 4", db, table),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+				},
+				// 写用户-写
+				{
+					GaeaConn:          gaeaWriteConn,
+					GaeaSQL:           fmt.Sprintf("/*Load Balancing Case9 */ INSERT INTO `%s`.`%s` (name) VALUES ('%s')", db, table, "nameValue"),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+				},
+				{
+					GaeaConn:          gaeaWriteConn,
+					GaeaSQL:           fmt.Sprintf("/*Load Balancing Case10 */ INSERT INTO `%s`.`%s` (name) VALUES ('%s')", db, table, "nameValue"),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+				},
+				{
+					GaeaConn:          gaeaWriteConn,
+					GaeaSQL:           fmt.Sprintf("/*Load Balancing Case11 */ INSERT INTO `%s`.`%s` (name) VALUES ('%s')", db, table, "nameValue"),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+				},
+				{
+					GaeaConn:          gaeaWriteConn,
+					GaeaSQL:           fmt.Sprintf("/*Load Balancing Case12 */ INSERT INTO `%s`.`%s` (name) VALUES ('%s')", db, table, "nameValue"),
+					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+				},
 			}
-
-			exceptMap := map[string]int{
-				masterSlaveCluster.Slices[0].Slaves[0]: 1,
-				masterSlaveCluster.Slices[0].Slaves[1]: 1,
+			// 执行 SQL 测试用例
+			for _, sqlCase := range sqlCases {
+				_, err := sqlCase.GaeaConn.Exec(sqlCase.GaeaSQL)
+				gomega.Expect(err).Should(gomega.BeNil())
+				res, err := e2eMgr.SearchLog(sqlCase.GaeaSQL, currentTime)
+				gomega.Expect(err).Should(gomega.BeNil())
+				// 避免扫到以前的数据
+				gomega.Expect(res).Should(gomega.HaveLen(1))
+				gomega.Expect(sqlCase.ExpectBackendAddr).Should(gomega.Equal(res[0].BackendAddr))
 			}
-			gomega.Expect(actualMap).To(gomega.Equal(exceptMap))
-
 		})
 	})
 	ginkgo.AfterEach(func() {
-		e2eConfig.NamespaceManager.UnRegisterNamespaces()
+		e2eMgr.Clean()
 	})
+
 })

@@ -192,15 +192,17 @@
         }
     ],
     "users": [
+        {{- range $index, $user := .GaeaUsers }}
         {
-            "user_name": "superroot",
-            "password": "superroot",
+            "user_name": "{{.UserName}}",
+            "password": "{{.Password}}", 
             "namespace": "test_mycat",
-            "rw_flag": 2,
-            "rw_split": 1,
-            "other_property": 0
-        }
-    ],
+            "rw_flag": {{.RWFlag}},
+            "rw_split": {{.RWSplit}},
+            "other_property":{{.OtherProperty}}
+        }{{ if not (lastItem $index (len $.GaeaUsers) ) }}, {{ end }}
+        {{- end}}
+  ],
     "default_slice": "slice-1",
     "global_sequences": null,
     "default_charset": "",

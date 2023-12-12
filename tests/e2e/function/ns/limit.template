@@ -1,7 +1,7 @@
 {
   "open_general_log": false,
   "is_encrypt": true,
-  "name": "test_namespace_e2e_test",
+  "name": "test_namespace_e2e_test_limit",
   "online": true,
   "read_only": false,
   "allowed_dbs": {
@@ -42,7 +42,7 @@
         {
             "user_name": "{{.UserName}}",
             "password": "{{.Password}}", 
-            "namespace": "test_namespace_e2e_test",
+            "namespace": "test_namespace_e2e_test_limit",
             "rw_flag": {{.RWFlag}},
             "rw_split": {{.RWSplit}},
             "other_property":{{.OtherProperty}}
@@ -55,7 +55,7 @@
   "default_collation": "",
   "max_sql_execute_time": 0,
   "max_sql_result_size": 0,
-  "max_client_connections": 100000,
+  "max_client_connections": 10,
   "down_after_no_alive": 0,
   "seconds_behind_master": 0,
   "check_select_lock": false,
