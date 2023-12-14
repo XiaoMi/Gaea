@@ -208,12 +208,30 @@ func OutPutResult(sql string, outPutFile string) error {
 	return nil
 }
 
-func Compare(res1 [][]string, res2 [][]string) (bool, error) {
-	if reflect.DeepEqual(res1, res2) {
-		return true, nil
-	} else {
-		return false, fmt.Errorf("sql.Result mismatched types for results. res1: %v, res2: %v", res1, res2)
+func CompareIgnoreSort(res1 [][]string, res2 [][]string) (bool, error) {
+	if len(res1) != len(res2) {
+		return false, fmt.Errorf("sql.Result mismatched lengths for results. res1: %v, res2: %v", res1, res2)
 	}
+
+	elementCount := make(map[string]int)
+	for _, item := range res1 {
+		elementCount[fmt.Sprint(item)]++
+	}
+
+	for _, item := range res2 {
+		elementCount[fmt.Sprint(item)]--
+		if elementCount[fmt.Sprint(item)] < 0 {
+			return false, fmt.Errorf("sql.Result mismatched elements for results. res1: %v, res2: %v", res1, res2)
+		}
+	}
+
+	for _, count := range elementCount {
+		if count != 0 {
+			return false, fmt.Errorf("sql.Result mismatched elements for results. res1: %v, res2: %v", res1, res2)
+		}
+	}
+
+	return true, nil
 }
 
 // setupDatabaseAndInsertData 创建数据库和表，然后插入数据

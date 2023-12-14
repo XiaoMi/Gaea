@@ -49,7 +49,7 @@ var _ = ginkgo.Describe("Unshard DML Support Test", func() {
 
 	})
 	ginkgo.Context("unshard support test", func() {
-		ginkgo.It("When testing sql support", func() {
+		ginkgo.It("When testing unshard sql support", func() {
 			ginkgo.By("get Gaea conn ")
 			gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
 			gomega.Expect(err).Should(gomega.BeNil())

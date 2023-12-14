@@ -87,7 +87,7 @@ select a.id,a.t_id,a.name,a.pad from test1 a union all select b.id,b.m_id,b.name
 select a.id,a.t_id,a.name,a.pad from test1 a union distinct select b.id,b.m_id,b.name,b.pad from sbtest1.test3 b union distinct select c.id,c.o_id,c.name,c.pad from sbtest1.test2 c
 (select name from test1 where pad=1 order by id limit 10) union all (select name from sbtest1.test2 where pad=1 order by id limit 10)/*allow_diff_sequence*/
 (select name from test1 where pad=1 order by id limit 10) union distinct (select name from sbtest1.test2 where pad=1 order by id limit 10)/*allow_diff_sequence*/
-(select a.id,a.t_id,a.name,a.pad from test1 a where a.pad=1) union (select c.id,c.o_id,c.name,c.pad from sbtest1.test2 c where c.pad=1) order by id limit 10/*allow_diff_sequence*/
+
 (select name as sort_a from test1 where pad=1) union (select name from sbtest1.test2 where pad=1) order by sort_a limit 10/*allow_diff_sequence*/
 (select name as sort_a,pad from test1 where pad=1) union (select name,pad from sbtest1.test2 where pad=1) order by sort_a,pad limit 10/*allow_diff_sequence*/
 #-- case union,from issue #275

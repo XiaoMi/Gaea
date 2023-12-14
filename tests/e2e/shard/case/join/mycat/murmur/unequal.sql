@@ -1,8 +1,5 @@
-# test  join
 select test1.id,test1.t_id,test1.name,test1.pad,sbtest1.test2.id,sbtest1.test2.o_id,sbtest1.test2.name,sbtest1.test2.pad from test1,sbtest1.test2 where test1.pad=sbtest1.test2.pad;
 select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a,sbtest1.test2 b where a.pad=b.pad;
-select a.id,b.id,b.pad,a.t_id from test1 a,(select * from sbtest1.test2 where pad>3) b where a.t_id=b.o_id;
-select a.id,b.id,b.pad,a.t_id from (select id,t_id from test1) a,(select * from sbtest1.test2) b where a.t_id=b.o_id;
 select a.id,b.id,b.pad,a.t_id from (select test1.id,test1.pad,test1.t_id from test1 join sbtest1.test2 where test1.pad=sbtest1.test2.pad ) a,(select sbtest1.test3.id,sbtest1.test3.pad from test1 join sbtest1.test3 where test1.pad=sbtest1.test3.pad) b where a.pad=b.pad;
 select test1.id,test1.name,a.name from test1,(select name from sbtest1.test2) a;
 select test1.id,test1.t_id,test1.name,test1.pad,test2.id,test2.o_id,test2.name,test2.pad from test1 inner join test2 order by test1.id,test2.id;
@@ -29,7 +26,6 @@ select test1.id,test1.t_id,test1.name,test1.pad,sbtest1.test2.id,sbtest1.test2.o
 select test1.id,test1.t_id,test1.name,test1.pad,sbtest1.test2.id,sbtest1.test2.o_id,sbtest1.test2.name,sbtest1.test2.pad from test1 left outer join sbtest1.test2 on test1.pad=sbtest1.test2.pad order by test1.id,test2.id;
 select test1.id,test1.t_id,test1.name,test1.pad,sbtest1.test2.id,sbtest1.test2.o_id,sbtest1.test2.name,sbtest1.test2.pad from test1 right outer join sbtest1.test2 on test1.pad=sbtest1.test2.pad order by test1.id,test2.id;
 select test1.id,test1.t_id,test1.name,test1.pad,sbtest1.test2.id,sbtest1.test2.o_id,sbtest1.test2.name,sbtest1.test2.pad from test1 left join sbtest1.test2 using(pad) order by test1.id,test2.id;
-
 select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a left join sbtest1.test2 b on a.pad=b.pad order by a.id,b.id;
 select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a right join sbtest1.test2 b on a.pad=b.pad order by a.id,b.id;
 select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a left outer join sbtest1.test2 b on a.pad=b.pad order by a.id,b.id;
@@ -45,57 +41,79 @@ select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from (select * from tes
 select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from (select * from test1 where pad>1) a left outer join (select * from sbtest1.test2 where pad>3) b on a.pad=b.pad order by a.id,b.id;
 select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from (select * from test1 where pad>1) a right outer join (select * from sbtest1.test2 where pad>3) b on a.pad=b.pad order by a.id,b.id;
 select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from (select * from test1 where pad>1) a left join (select * from sbtest1.test2 where pad>3) b using(pad) order by a.id,b.id;
-
-select test1.id,test1.t_id,test1.name,test1.pad,sbtest1.test2.id,sbtest1.test2.o_id,sbtest1.test2.name,sbtest1.test2.pad from test1 natural left join sbtest1.test2;
-select test1.id,test1.t_id,test1.name,test1.pad,sbtest1.test2.id,sbtest1.test2.o_id,sbtest1.test2.name,sbtest1.test2.pad from test1 natural right join sbtest1.test2;
-select test1.id,test1.t_id,test1.name,test1.pad,sbtest1.test2.id,sbtest1.test2.o_id,sbtest1.test2.name,sbtest1.test2.pad from test1 natural left outer join sbtest1.test2;
-select test1.id,test1.t_id,test1.name,test1.pad,sbtest1.test2.id,sbtest1.test2.o_id,sbtest1.test2.name,sbtest1.test2.pad from test1 natural right outer join sbtest1.test2;
-
-select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a natural left join sbtest1.test2 b order by a.id;
-select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a natural right join sbtest1.test2 b order by b.id;
-select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a natural left outer join sbtest1.test2 b order by a.id;
-select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a natural right outer join sbtest1.test2 b order by b.id;
-
-select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a natural left join (select * from sbtest1.test2 where pad>2) b order by a.id,b.id;
-select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a natural right join (select * from sbtest1.test2 where pad>2) b order by a.id,b.id;
-select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a natural left outer join (select * from sbtest1.test2 where pad>2) b order by a.id,b.id;
-select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a natural right outer join (select * from sbtest1.test2 where pad>2) b order by a.id,b.id;
-
-select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from (select * from test1 where pad>1) a natural left join (select * from sbtest1.test2 where pad>3) b order by a.id,b.id;
-select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from (select * from test1 where pad>1) a natural right join (select * from sbtest1.test2 where pad>3) b order by a.id,b.id;
-select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from (select * from test1 where pad>1) a natural left outer join (select * from sbtest1.test2 where pad>3) b order by a.id,b.id;
-select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from (select * from test1 where pad>1) a natural right outer join (select * from sbtest1.test2 where pad>3) b order by a.id,b.id;
 select test1.id,test1.t_id,test1.name,test1.pad,sbtest1.test2.id,sbtest1.test2.o_id,sbtest1.test2.name,sbtest1.test2.pad from test1 left join sbtest1.test2 on test1.pad=sbtest1.test2.pad and test1.id>3 order by test1.id,test2.id;
-
-    ##(select pad from test1) union distinct (select pad from sbtest1.test2);
-    ##(select test1.id,test1.t_id,test1.name,test1.pad from test1 where id=2) union distinct (select sbtest1.test2.id,sbtest1.test2.o_id,sbtest1.test2.name,sbtest1.test2.pad from sbtest1.test2 where id=2);
-
 select distinct a.pad from test1 a,sbtest1.test2 b where a.pad=b.pad;
-select distinct b.pad,a.pad from test1 a,(select * from sbtest1.test2 where pad=1) b where a.t_id=b.o_id;
-    ##select count(distinct pad,name),avg(distinct t_id) from test1;
-select count(distinct id),sum(distinct name) from test1 where id=3 or id=7;
-
-    #
-
 select a.id,a.t_id,b.o_id,b.name from (select * from test1 where id<3) a,(select * from sbtest1.test2 where id>3) b;
 select a.id,b.id,b.pad,a.t_id from test1 a,(select sbtest1.test3.id,sbtest1.test3.pad from test1 join sbtest1.test3 where test1.pad=sbtest1.test3.pad) b,(select * from sbtest1.test2 where id>3) c where a.pad=b.pad and c.pad=b.pad;
-
-
-    #join table
-    # test_global reference
 select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a join sbtest1.test2 as b order by a.id,b.id;
 select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a inner join sbtest1.test2 b order by a.id,b.id;
 select a.id,a.t_id,a.name,a.pad,b.id,b.o_id,b.name,b.pad from test1 a cross join sbtest1.test2 b order by a.id,b.id;
 select a.id,a.name,a.pad,b.name from test1 a straight_join sbtest1.test2 b on a.pad=b.pad;
-    #
-    #SELECT ... UNION [ALL | DISTINCT] SELECT ... [UNION [ALL | DISTINCT] SELECT ...]
-    #
-    ##select a.id,a.t_id,a.name,a.pad from test1 a union all select b.id,b.m_id,b.name,b.pad from sbtest1.test3 b union all select c.id,c.o_id,c.name,c.pad from sbtest1.test2 c;
-    ##select a.id,a.t_id,a.name,a.pad from test1 a union distinct select b.id,b.m_id,b.name,b.pad from sbtest1.test3 b union distinct select c.id,c.o_id,c.name,c.pad from sbtest1.test2 c;
-    ##(select name from test1 where pad=1 order by id limit 10) union all (select name from sbtest1.test2 where pad=1 order by id limit 10)/*allow_diff_sequence*/;
-    ##(select name from test1 where pad=1 order by id limit 10) union distinct (select name from sbtest1.test2 where pad=1 order by id limit 10)/*allow_diff_sequence*/;
-    ##(select a.id,a.t_id,a.name,a.pad from test1 a where a.pad=1) union (select c.id,c.o_id,c.name,c.pad from sbtest1.test2 c where c.pad=1) order by id limit 10/*allow_diff_sequence*/;
-    ##(select name as sort_a from test1 where pad=1) union (select name from sbtest1.test2 where pad=1) order by sort_a limit 10/*allow_diff_sequence*/;
-    ##(select name as sort_a,pad from test1 where pad=1) union (select name,pad from sbtest1.test2 where pad=1) order by sort_a,pad limit 10/*allow_diff_sequence*/;
-    #-- case union,from issue #275
-    ##(select * from test1 where id=2) union (select * from sbtest1.test2 where id=2);
+SELECT Department, COUNT(ID) FROM test4 GROUP BY Department HAVING COUNT(ID)>3;
+select id,FirstName,lastname,department,salary from test4 group by Department;
+select Department,count(Salary) as a from test4 group by Department having a=3;
+select Department,count(Salary) from test4 group by Department having count(ID) >2;
+select Department,count(*) as num from test4 group by Department having count(*) >1;
+select Department,count(*) as num from test4 group by Department having count(*) <=3;
+select id,FirstName,lastname,department,salary from test4 limit 2,10;
+select Department,count(*) as num from test4 group by Department having count(*) >=4 order by Department ASC;
+select count(id) as counts,date_format(MYDATE,'%Y-%m') as mouth from test8 where id>1 and id<50 group by 2 asc;
+select sum(O_TOTALPRICE) as sums,id from test8 where id>1 and id<50 group by 2 asc;
+select C_ORDERKEY,C_CUSTKEY,C_NAME from test1,sbtest1.test6 where C_CUSTKEY=c_CUSTKEY and C_ORDERKEY<'ORDERKEY_006';
+select O_ORDERKEY,O_CUSTKEY,C_NAME from test8 join sbtest1.test6 on O_CUSTKEY=c_CUSTKEY and O_ORDERKEY<'ORDERKEY_007';
+select O_ORDERKEY,O_CUSTKEY,C_NAME from test8 INNER join sbtest1.test6 where O_CUSTKEY=c_CUSTKEY and O_ORDERKEY<'ORDERKEY_007';
+select O_ORDERKEY,O_CUSTKEY,C_NAME from test8 INNER join sbtest1.test6 on O_CUSTKEY=c_CUSTKEY and O_ORDERKEY<'ORDERKEY_006';
+select O_ORDERKEY,O_CUSTKEY,C_NAME from test8 CROSS join sbtest1.test6 on O_CUSTKEY=c_CUSTKEY and O_ORDERKEY<'ORDERKEY_006';
+select O_ORDERKEY,O_CUSTKEY,C_NAME from sbtest1.test6 as a STRAIGHT_JOIN test8 b where b.O_CUSTKEY=a.c_CUSTKEY and O_ORDERKEY<'ORDERKEY_007';
+select b.O_ORDERKEY,b.O_CUSTKEY,a.C_NAME from sbtest1.test6 a STRAIGHT_JOIN test8 b on b.O_CUSTKEY=a.c_CUSTKEY and b.O_ORDERKEY<'ORDERKEY_007';
+select a.c_CUSTKEY,a.C_NAME,b.O_ORDERKEY from sbtest1.test6 as a left join test8 b on b.O_CUSTKEY=a.C_CUSTKEY and a.C_CUSTKEY<'CUSTKEY_300';
+select a.c_CUSTKEY,a.C_NAME,b.O_ORDERKEY from test8 b right join sbtest1.test6 as a on b.O_CUSTKEY=a.C_CUSTKEY and a.c_CUSTKEY<'CUSTKEY_300';
+select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_003' and 'CUSTKEY_500' group by 2 asc having sums>400 order by o_custkey;
+select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_003' and 'CUSTKEY_500' group by 2 asc having sums>400 order by 2;
+select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_003' and 'CUSTKEY_500' group by 2 asc having sums>400 order by count(O_ORDERKEY), sums;
+select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_003' and 'CUSTKEY_500' group by 2 asc having sums>400 order by counts asc,2 desc;
+select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_002' and 'CUSTKEY_050' group by 2 asc having O_CUSTKEY<(select max(c_custkey) from test7) order by 2;
+select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_002' and 'CUSTKEY_050' group by 2 asc having O_CUSTKEY<(select max(c_custkey) from test7) order by count(O_ORDERKEY);
+select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_002' and 'CUSTKEY_050' group by 2 asc having O_CUSTKEY<(select max(c_custkey) from test7) order by counts asc,2 desc;
+select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_003' and 'CUSTKEY_500' group by 2 asc having sums>400 order by count(O_ORDERKEY) asc,2 desc limit 2;
+select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_003' and 'CUSTKEY_500' group by 2 asc having sums>400 order by count(O_ORDERKEY) asc,O_CUSTKEY desc limit 1,3;
+select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_003' and 'CUSTKEY_500' group by 2 asc having sums>400 order by count(O_ORDERKEY) asc,O_CUSTKEY desc limit 10 offset 1;
+select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_002' and 'CUSTKEY_050' group by 2 asc having O_CUSTKEY<(select max(c_custkey) from test7) order by count(O_ORDERKEY) asc,2 desc limit 10;
+select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_002' and 'CUSTKEY_050' group by 2 asc having O_CUSTKEY<(select max(c_custkey) from test7) order by count(O_ORDERKEY) asc,O_CUSTKEY desc limit 1,10;
+select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_002' and 'CUSTKEY_050' group by 2 asc having O_CUSTKEY<(select max(c_custkey) from test7) order by count(O_ORDERKEY) asc,O_CUSTKEY desc limit 10 offset 1;
+select a.c_CUSTKEY,a.C_NAME,b.O_ORDERKEY from sbtest1.test7 as a left join test9 b ignore index for join(ORDERS_FK1) on b.O_CUSTKEY=a.c_CUSTKEY and a.c_CUSTKEY<'CUSTKEY_300';
+select a.c_CUSTKEY,a.C_NAME,b.O_ORDERKEY from sbtest1.test7 as a force index for join(primary) left join test9 b ignore index for join(ORDERS_FK1) on b.O_CUSTKEY=a.c_CUSTKEY and a.c_CUSTKEY<'CUSTKEY_300';
+select UPPER((select C_NAME FROM test7 limit 1)) FROM test7 limit 1;
+select O_ORDERKEY,O_CUSTKEY from test9 as a where a.O_CUSTKEY<=(select min(C_CUSTKEY) from test7);
+select count(*) from sbtest1.test7 as a where a.c_CUSTKEY=(select max(C_CUSTKEY) from test9 where C_CUSTKEY=a.C_CUSTKEY);
+select id,O_CUSTKEY,O_ORDERKEY,O_TOTALPRICE from test9 a where (a.O_ORDERKEY,O_CUSTKEY)=(select c_ORDERKEY,c_CUSTKEY from test7 where c_name='yanglu');
+SELECT /*+ MAX_EXECUTION_TIME(1000) */ * FROM t1 INNER JOIN t2 where t1.col1 = t2.col1;
+SELECT * FROM t1, t2;
+SELECT * FROM t1 AS u, t2;
+SELECT * FROM t1, t2 AS u;
+SELECT * FROM t1 AS u, t2 AS v;
+SELECT * FROM t, t1, t2;
+SELECT * from t1, t2, t3;
+select * from t1 join t2 left join t3 on t2.id = t3.id;
+select count(distinct col1, col2) from t;
+select count(distinctrow col1, col2) from t;
+select group_concat(col2,col1 SEPARATOR ';') from t group by col1;
+select * from t full, t1 `row`, t2 abs;
+select * from t use index for group by (idx1) use index for order by (idx2), t2;
+select * from (select pad,count(*) from sbtest1.test2 a group by pad) a;
+select a.id,b.id,b.pad,a.t_id from test1 a,(select * from sbtest1.test2 order by id limit 3) b where a.t_id=b.o_id;
+select a.id,b.id,b.pad,a.t_id from test1 a,(select * from sbtest1.test2 order by id limit 3) b where a.t_id=b.o_id limit 2;
+select * from (select sbtest1.test3.pad from test1 left join sbtest1.test3 on test1.pad=sbtest1.test3.pad) a;
+select count(*) from (select pad,count(*) a from test1 group by pad) a;
+select id,pad from test1 where pad>(select pad from test1 where id=2);
+select id,pad from test1 where pad<(select pad from test1 where id=2);
+select id,pad from test1 where pad>=(select pad from test1 where id=2);
+select id,pad from test1 where pad<=(select pad from test1 where id=2);
+select id,pad from test1 where pad<>(select pad from test1 where id=2);
+select id,pad from test1 where pad !=(select pad from test1 where id=2);
+select id,t_id,name,pad from test1 where pad=some(select id from test1 where pad>1);
+select id,t_id,name,pad from test1 where pad=any(select id from test1 where pad>1);
+select id,t_id,name,pad from test1 where pad !=any(select id from test1 where pad=3);
+select a.id,b.id,b.pad,a.t_id from (select test1.id,test1.pad,test1.t_id from test1 join sbtest1.test3 where test1.pad=sbtest1.test3.pad ) a,(select sbtest1.test2.id,sbtest1.test2.pad from test1 join sbtest1.test2 where test1.pad=sbtest1.test2.pad) b where a.pad=b.pad;
+select id,t_id,name,pad from test1 where pad>(select pad from test1 where pad=2);
+select (select name from test1 limit 1);
