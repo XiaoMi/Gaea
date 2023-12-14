@@ -10,7 +10,7 @@ import (
 	"github.com/onsi/gomega"
 )
 
-var _ = ginkgo.Describe("shard_join_support_test", func() {
+var _ = ginkgo.Describe("shard join support test in mycat murmur", func() {
 	nsTemplateFile := "e2e/shard/ns/mycat/murmur.template"
 	e2eMgr := config.NewE2eManager()
 	sliceMulti := e2eMgr.NsSlices[config.SliceMMName]
@@ -69,31 +69,50 @@ var _ = ginkgo.Describe("shard_join_support_test", func() {
 
 	ginkgo.Context("shard support test", func() {
 		ginkgo.It("When testing sql support", func() {
-			files := []string{
-				filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/test_join.sql"),
-				filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/test_select_global_old.sql"),
-				filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/test_simple.sql"),
-				filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/test_subquery_global.sql"),
+			cases := []struct {
+				path       string
+				resultType util.ResultType
+			}{
+				{
+					filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/mycat/murmur/equal.sql"),
+					util.Equal,
+				},
+				{
+					filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/mycat/murmur/unequal.sql"),
+					util.UnEqual,
+				},
+				{
+					filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/mycat/murmur/unsupport.sql"),
+					util.UnSupport,
+				},
 			}
-			for _, file := range files {
-				sqls, err := util.GetSqlFromFile(file)
+			for _, c := range cases {
+				sqls, err := util.GetSqlFromFile(c.path)
 				gomega.Expect(err).Should(gomega.BeNil())
 				for _, sql := range sqls {
 					err := util.VerifySqlParsable(sql)
 					gomega.Expect(err).Should(gomega.BeNil())
-					res1, err := util.MysqlQuery(gaeaConn, sql)
-					if err != nil {
-						OutputUnSupport(sql, res1, nil, err, e2eMgr.BasePath)
+					switch c.resultType {
+					case util.Equal:
+						res1, err := util.MysqlQuery(gaeaConn, sql)
+						gomega.Expect(err).Should(gomega.BeNil())
+						res2, err := util.MysqlQuery(singleMaster, sql)
+						gomega.Expect(err).Should(gomega.BeNil())
+						_, err = util.CompareIgnoreSort(res1, res2)
+						gomega.Expect(err).Should(gomega.BeNil())
+					case util.UnSupport:
+						_, err := util.MysqlQuery(singleMaster, sql)
+						gomega.Expect(err).Should(gomega.BeNil())
+						_, err = util.MysqlQuery(gaeaConn, sql)
+						gomega.Expect(err).ShouldNot(gomega.BeNil())
+					case util.UnEqual:
+						res1, err := util.MysqlQuery(gaeaConn, sql)
+						gomega.Expect(err).Should(gomega.BeNil())
+						res2, err := util.MysqlQuery(singleMaster, sql)
+						gomega.Expect(err).Should(gomega.BeNil())
+						_, err = util.CompareIgnoreSort(res1, res2)
+						gomega.Expect(err).ShouldNot(gomega.BeNil())
 					}
-					res2, err := util.MysqlQuery(singleMaster, sql)
-					gomega.Expect(err).Should(gomega.BeNil())
-					_, err = util.Compare(res1, res2)
-					if err != nil {
-						OutputUnEqual(sql, res1, res2, err, e2eMgr.BasePath)
-					} else {
-						OutputEqual(sql, res1, res2, err, e2eMgr.BasePath)
-					}
-
 				}
 			}
 		})
