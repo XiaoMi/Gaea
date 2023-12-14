@@ -3,7 +3,6 @@ package util
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
@@ -40,30 +39,6 @@ func CompareTimeStrings(currentTime string, time2 string) (int, error) {
 		return 1, nil
 	}
 	return 0, nil
-}
-
-func RemoveLog(directory string) error {
-	// 检查目录是否存在
-	if _, err := os.Stat(directory); os.IsNotExist(err) {
-		// 如果目录不存在，则创建目录
-		err := os.MkdirAll(directory, 0755)
-		if err != nil {
-			return err
-		}
-	}
-	files, err := ioutil.ReadDir(directory)
-	if err != nil {
-		return err
-	}
-	for _, file := range files {
-		if !file.IsDir() {
-			err := os.Remove(directory + "/" + file.Name())
-			if err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 func ParseLogEntries(file *os.File, re *regexp.Regexp, currentTime time.Time, searchString string) ([]LogEntry, error) {
