@@ -76,8 +76,8 @@ func (s *SelectPlan) ExecuteIn(reqCtx *util.RequestContext, sess Executor) (*mys
 	if err != nil {
 		return nil, fmt.Errorf("execute in SelectPlan error: %v", err)
 	}
-	// fix: 修复全局表或分片表 order by/group by等情况下单分片执行时多一列的问题
-	if s.isExecOnSingleNode() && s.noAddColumns() {
+	// fix: 修复全局表或分片表 order by/group by等情况下单分片执行时多一列的问题, 修复由于 limit offset 语句改写导致结果行数不正确问题
+	if s.isExecOnSingleNode() && s.noAddColumns() && !s.HasLimit() {
 		return rs[0], nil
 	}
 
