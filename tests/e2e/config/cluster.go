@@ -28,13 +28,14 @@ func (ns *NsSlice) GetLocalSliceConn() (res map[string]*LocalSliceConn, err erro
 			SlaveConns: []*sql.DB{},
 		}
 		// 初始化主服务器连接
-		localConn.MasterConn, err = InitConn(slice.UserName, slice.Password, slice.Master, "")
+		// TODO: fix hard user and password
+		localConn.MasterConn, err = InitConn(defaultMysqlAdminUser, defaultMysqlAdminPasswd, slice.Master, "")
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize master connection for slice '%s': %v", slice.Name, err)
 		}
 		// 初始化从服务器连接
 		for _, slave := range slice.Slaves {
-			slaveDb, err := InitConn(slice.UserName, slice.Password, slave, "")
+			slaveDb, err := InitConn(defaultMysqlAdminUser, defaultMysqlAdminPasswd, slave, "")
 			if err != nil {
 				return nil, fmt.Errorf("failed to initialize slave connection for slice '%s': %v", slice.Name, err)
 			}
@@ -54,7 +55,15 @@ type LocalSliceConn struct {
 }
 
 // TODO: fix error
+func (ns *NsSlice) GetMasterAdminConn(sliceIndex int) (*sql.DB, error) {
+	return InitConn(defaultMysqlAdminUser, defaultMysqlAdminPasswd, ns.Slices[sliceIndex].Master, "")
+}
+
+// TODO: fix error
+// TODO: refactor master user and password
 func (ns *NsSlice) GetMasterConn(sliceIndex int) (*sql.DB, error) {
+	return ns.GetMasterAdminConn(sliceIndex)
+	// TODO: remove this
 	var err error
 	if sliceIndex > len(ns.Slices) {
 		return nil, fmt.Errorf("sliceIndex more than")
@@ -108,24 +117,47 @@ func ParseTemplate(filenames string, ns *NsSlice) (*models.Namespace, error) {
 	return nameSpace, nil
 }
 
-type MCluster struct {
-	Name   string
-	Master *MInstance
-	Slaves []*MInstance
+func ParseNamespaceTmpl(nsTmpl string, ns *NsSlice) (*models.Namespace, error) {
+	tmpl, err := template.New(nsTmpl).Funcs(template.FuncMap{
+		"lastItem": func(index int, all int) bool {
+			return index == all-1
+		},
+	}).Parse(nsTmpl)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	err = tmpl.Execute(&buf, ns)
+	if err != nil {
+		return nil, err
+	}
+
+	var nameSpace = &models.Namespace{}
+	err = json.NewDecoder(&buf).Decode(&nameSpace)
+	if err != nil {
+		return nil, err
+	}
+	return nameSpace, nil
 }
 
-type MInstance struct {
+type MySqlCluster struct {
+	Type   string
+	Master *MysqlInstance
+	Slaves []*MysqlInstance
+}
+
+type MysqlInstance struct {
 	UserName string
 	Password string
 	Host     string
 	Port     int
 }
 
-func (m *MInstance) Addr() string {
+func (m *MysqlInstance) Addr() string {
 	return fmt.Sprintf("%s:%d", m.Host, m.Port)
 }
 
-type GCluster struct {
+type GaeaCluster struct {
 	Host          string
 	Port          int
 	ReadWriteUser *models.User
@@ -144,22 +176,17 @@ func init() {
 	configDir := filepath.Dir(currentFile)
 	// 获取上级目录
 	basePath = filepath.Dir(configDir)
+	fmt.Printf("basePath: %s\n", basePath)
 }
 
+// TODO: deprecated
 func (e *E2eManager) AddNsFromFile(filenames string, nss *NsSlice) error {
+	fmt.Printf("filenames: %s\n", filenames)
 	ns, err := ParseTemplate(filenames, nss)
 	if err != nil {
 		return err
 	}
-	return e.AddNamespace(ns)
-}
-
-func (e *E2eManager) AddNamespace(ns *models.Namespace) error {
-	err := e.NsManager.AddNamespace(ns)
-	if err != nil {
-		return err
-	}
-	return nil
+	return e.NsManager.ModifyNamespace(ns)
 }
 
 func (e *E2eManager) Clean() {

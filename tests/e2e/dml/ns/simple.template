@@ -44,8 +44,8 @@
   "shard_rules": [],
   "users": [
     {
-      "user_name": "superroot",
-      "password": "superroot",
+      "user_name": "gaea_user",
+      "password": "gaea_pass",
       "namespace": "test_namespace_sql_plan",
       "rw_flag": 2,
       "rw_split": 1,

@@ -234,26 +234,25 @@ func CompareIgnoreSort(gaeaRes [][]string, mysqlRes [][]string) (bool, error) {
 	return true, nil
 }
 
-// setupDatabaseAndInsertData 创建数据库和表，然后插入数据
+// SetupDatabaseAndInsertData 创建数据库和表，然后插入数据
 func SetupDatabaseAndInsertData(conn *sql.DB, db, table string) error {
 	commands := []string{
 		fmt.Sprintf("DROP DATABASE IF EXISTS %s", db),
 		fmt.Sprintf("CREATE DATABASE %s", db),
-		fmt.Sprintf("USE %s", db),
-		fmt.Sprintf("CREATE TABLE %s (id INT AUTO_INCREMENT, name VARCHAR(20), PRIMARY KEY (id))", table),
+		fmt.Sprintf("CREATE TABLE %s.%s (id INT AUTO_INCREMENT, name VARCHAR(20), PRIMARY KEY (id))", db, table),
 	}
 
 	// 执行数据库和表的创建命令
 	for _, cmd := range commands {
 		if _, err := conn.Exec(cmd); err != nil {
-			return err
+			return fmt.Errorf("failed to execute command '%s': %v", cmd, err)
 		}
 	}
 
 	// 插入数据
 	for i := 0; i < 10; i++ {
-		if _, err := conn.Exec(fmt.Sprintf("INSERT INTO %s (name) VALUES (?)", table), "nameValue"); err != nil {
-			return err
+		if _, err := conn.Exec(fmt.Sprintf("INSERT INTO %s.%s (name) VALUES (?)", db, table), "nameValue"); err != nil {
+			return fmt.Errorf("failed to insert data into table %s: %v", table, err)
 		}
 	}
 
@@ -299,7 +298,7 @@ func CompareQueryRows(db1 *sql.DB, db2 *sql.DB, query string) error {
 
 		// 比较列的数量和名称
 		if len(cols1) != len(cols2) || !reflect.DeepEqual(cols1, cols2) {
-			return fmt.Errorf("column mismatch")
+			return fmt.Errorf("column mismatch,res1:%+v,res2:%+v", cols1, cols2)
 		}
 
 		// 创建接收数据的切片

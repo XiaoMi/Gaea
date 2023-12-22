@@ -1,6 +1,6 @@
 module github.com/XiaoMi/Gaea
 
-go 1.12
+go 1.16
 
 require (
 	github.com/StackExchange/wmi v1.2.1 // indirect

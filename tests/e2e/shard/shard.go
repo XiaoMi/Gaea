@@ -2,32 +2,32 @@ package shard
 
 import (
 	"fmt"
+	"github.com/XiaoMi/Gaea/tests/e2e/config"
+	"github.com/XiaoMi/Gaea/tests/e2e/util"
 	"path/filepath"
 
-	"github.com/XiaoMi/Gaea/tests/config"
 	"github.com/onsi/ginkgo/v2"
-	"github.com/onsi/gomega"
 )
 
 var _ = ginkgo.Describe("shard_dml_support_test", func() {
-	nsTemplateFile := "e2e/shard/ns/simple/simple.template"
+	nsTemplateFile := "shard/ns/simple/simple.template"
 	e2eMgr := config.NewE2eManager()
-	sliceMulti := e2eMgr.NsSlices[config.SliceMMName]
+	sliceMulti := e2eMgr.NsSlices[config.SliceMultiMaster]
 	planManagers := []*config.PlanManager{}
 	gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
-	gomega.Expect(err).Should(gomega.BeNil())
+	util.ExpectNoError(err)
 
 	ginkgo.BeforeEach(func() {
 		err := e2eMgr.AddNsFromFile(filepath.Join(e2eMgr.BasePath, nsTemplateFile), sliceMulti)
-		gomega.Expect(err).Should(gomega.BeNil())
+		util.ExpectNoError(err)
 
 		ginkgo.By("init case path")
-		casesPath, err := config.GetJSONFilesFromDir(filepath.Join(e2eMgr.BasePath, "e2e/shard/case/dml"))
-		gomega.Expect(err).Should(gomega.BeNil())
+		casesPath, err := config.GetJSONFilesFromDir(filepath.Join(e2eMgr.BasePath, "shard/case/dml"))
+		util.ExpectNoError(err)
 
 		ginkgo.By("get sql plan")
 		clusterConn, err := sliceMulti.GetLocalSliceConn()
-		gomega.Expect(err).Should(gomega.BeNil())
+		util.ExpectNoError(err)
 
 		for _, v := range casesPath {
 			p := &config.PlanManager{
@@ -44,9 +44,9 @@ var _ = ginkgo.Describe("shard_dml_support_test", func() {
 		ginkgo.It("shard support", func() {
 			for _, p := range planManagers {
 				err = p.Init()
-				gomega.Expect(err).Should(gomega.BeNil())
+				util.ExpectNoError(err)
 				err := p.Run()
-				gomega.Expect(err).Should(gomega.BeNil())
+				util.ExpectNoError(err)
 			}
 		})
 	})

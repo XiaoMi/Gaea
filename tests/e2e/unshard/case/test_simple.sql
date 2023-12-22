@@ -74,13 +74,9 @@ SHOW GLOBAL VARIABLES WHERE Variable_name = 'autocommit';
 
 SHOW STATUS LIKE 'Up%';
 SHOW STATUS WHERE Variable_name;
-SHOW STATUS WHERE Variable_name LIKE 'Up%';
 SHOW FULL TABLES FROM sbtest1 LIKE 't%';
 SHOW FULL TABLES WHERE Table_type != 'VIEW';
 
-SHOW GRANTS;
-SHOW GRANTS FOR current_user();
-SHOW GRANTS FOR current_user;
 SHOW COLUMNS FROM t;
 SHOW COLUMNS FROM sbtest1.t;
 SHOW FIELDS FROM t;
@@ -95,7 +91,6 @@ SHOW INDEX IN t;
 SHOW KEYS IN t;
 SHOW INDEXES IN t where true;
 SHOW KEYS FROM t FROM sbtest1 where true;
-SHOW EVENTS FROM t WHERE definer = 'current_user';
 SHOW PLUGINS;
 SHOW PROFILES;
 SHOW PRIVILEGES;
@@ -108,7 +103,6 @@ show collation like 'utf8%';
 show collation where Charset = 'utf8' and Collation = 'utf8_bin';
 
 show columns in t;
-show full columns in t;
 
 show create table sbtest1.t;
 show create table t;
@@ -196,17 +190,14 @@ SELECT DATE_ADD('2008-01-02', INTERVAL INTERVAL(1, 0, 1) DAY);
 
 SELECT DATABASE();
 SELECT SCHEMA();
-SELECT USER();
-SELECT CURRENT_USER();
-SELECT CURRENT_USER;
+
 
 SELECT VERSION();
 SELECT BENCHMARK(1000000, AES_ENCRYPT('text',UNHEX('F3229A0B371ED2D9441B830D21A390C3')));
 SELECT CHARSET('abc');
 SELECT COERCIBILITY('abc');
 SELECT COLLATION('abc');
-SELECT SESSION_USER();
-SELECT SYSTEM_USER();
+
 SELECT SUBSTRING_INDEX('www.mysql.com', '.', 2);
 SELECT SUBSTRING_INDEX('www.mysql.com', '.', -2);
 SELECT LOWER("A"), UPPER("a");

@@ -14,3 +14,4 @@ select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 w
 select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_002' and 'CUSTKEY_050' group by 2 asc having O_CUSTKEY<(select max(c_custkey) from test7) order by count(O_ORDERKEY) asc,O_CUSTKEY desc limit 1,10;
 select sum(O_TOTALPRICE) as sums,O_CUSTKEY,count(O_ORDERKEY) counts from test9 where O_CUSTKEY between 'CUSTKEY_002' and 'CUSTKEY_050' group by 2 asc having O_CUSTKEY<(select max(c_custkey) from test7) order by count(O_ORDERKEY) asc,O_CUSTKEY desc limit 10 offset 1;
 select (select name from test1 limit 1);
+select CURRENT_USER FROM test5;

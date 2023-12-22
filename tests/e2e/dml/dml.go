@@ -1,31 +1,30 @@
 package dml
 
 import (
-	"path/filepath"
-
-	"github.com/XiaoMi/Gaea/tests/config"
+	config "github.com/XiaoMi/Gaea/tests/e2e/config"
+	"github.com/XiaoMi/Gaea/tests/e2e/util"
 	"github.com/onsi/ginkgo/v2"
-	"github.com/onsi/gomega"
+	"path/filepath"
 )
 
 var _ = ginkgo.Describe("sql_support_test", func() {
 	planManagers := []*config.PlanManager{}
-	nsTemplateFile := "e2e/dml/ns/simple.template"
+	nsTemplateFile := "dml/ns/simple.template"
 	e2eMgr := config.NewE2eManager()
-	slice := e2eMgr.NsSlices[config.SliceSMName]
+	slice := e2eMgr.NsSlices[config.SliceMaster]
 
 	gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
-	gomega.Expect(err).Should(gomega.BeNil())
+	util.ExpectNoError(err)
 
 	ginkgo.BeforeEach(func() {
-		err := e2eMgr.AddNsFromFile(filepath.Join(e2eMgr.BasePath, nsTemplateFile), e2eMgr.NsSlices[config.SliceSMName])
-		gomega.Expect(err).Should(gomega.BeNil())
+		err := e2eMgr.AddNsFromFile(filepath.Join(e2eMgr.BasePath, nsTemplateFile), e2eMgr.NsSlices[config.SliceMaster])
+		util.ExpectNoError(err)
 
-		casesPath, err := config.GetJSONFilesFromDir(filepath.Join(e2eMgr.BasePath, "e2e/dml/case"))
-		gomega.Expect(err).Should(gomega.BeNil())
+		casesPath, err := config.GetJSONFilesFromDir(filepath.Join(e2eMgr.BasePath, "dml/case"))
+		util.ExpectNoError(err)
 
 		conns, err := slice.GetLocalSliceConn()
-		gomega.Expect(err).Should(gomega.BeNil())
+		util.ExpectNoError(err)
 
 		ginkgo.By("get sql plan")
 		planManagers = []*config.PlanManager{}
@@ -37,19 +36,19 @@ var _ = ginkgo.Describe("sql_support_test", func() {
 			}
 			planManagers = append(planManagers, p)
 		}
-
 	})
 
 	ginkgo.Context("sql support test", func() {
 		ginkgo.It("sql support", func() {
 			for _, p := range planManagers {
 				err := p.Init()
-				gomega.Expect(err).Should(gomega.BeNil())
+				util.ExpectNoError(err)
 				err = p.Run()
-				gomega.Expect(err).Should(gomega.BeNil())
+				util.ExpectNoError(err)
 			}
 		})
 	})
+
 	ginkgo.AfterEach(func() {
 		for _, p := range planManagers {
 			p.MysqlClusterConnClose()

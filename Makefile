@@ -37,6 +37,12 @@ test:
 	tail -1 .coverage.func
 	go tool cover -html=.coverage.out -o .coverage.html
 
+e2e-test: gaea gaea-cc
+	cp bin/gaea bin/gaea-cc tests/e2e/cmd/
+	./hack/e2e.sh
+	ginkgo --v --progress --trace --flake-attempts=1 ./tests/e2e/
+
+
 integrate_test:
 	go test -timeout 30m -coverprofile=.integrate_coverage.out ./... -run ^TestIntegration$
 	go tool cover -func=.integrate_coverage.out -o .integrate_coverage.func

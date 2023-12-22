@@ -14,15 +14,15 @@
                 {
                     "slice": "slice-0",
                     "sql": "USE db_test_update"
-                  }
-             ],
+                },
+                {
+                    "slice": "slice-0",
+                    "sql": "CREATE TABLE tbl_test_update (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(50), age INT, score FLOAT)"
+                }
+            ],
             "gaeaActions": [
                 {
                     "sql": "USE db_test_update",
-                    "execType": "Default"
-                },
-                {
-                    "sql": "CREATE TABLE tbl_test_update (id INT PRIMARY KEY AUTO_INCREMENT, name VARCHAR(50), age INT, score FLOAT)",
                     "execType": "Default"
                 },
                 {

@@ -505,9 +505,13 @@ func checkSlaveSyncStatus(pc PooledConnect, secondsBehindMaster int) (bool, erro
 		return true, nil
 	}
 
-	slaveStatus, err := GetSlaveStatus(pc)
+	skipCheck, slaveStatus, err := GetSlaveStatus(pc)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("get slave status error:%s", err)
+	}
+	// if suspectedMaster is true, we think this is a master
+	if skipCheck {
+		return true, nil
 	}
 
 	if slaveStatus.SecondsBehindMaster > uint64(secondsBehindMaster) {
@@ -524,11 +528,27 @@ func checkSlaveSyncStatus(pc PooledConnect, secondsBehindMaster int) (bool, erro
 	return true, nil
 }
 
-func GetSlaveStatus(conn PooledConnect) (SlaveStatus, error) {
+// GetSlaveStatus get slave status, will check bellow cases:
+// 1. if we have no privileges to get slave status, will return skipCheck true.
+// 2. if slave status result is nil,maybe it's master but configured as slave, will return skipCheck true.
+// 3. return slave status result with skipCheck false.
+func GetSlaveStatus(conn PooledConnect) (bool, SlaveStatus, error) {
 	var slaveStatus SlaveStatus
 	res, err := conn.Execute("show slave status;", 0)
+
+	// if exec error is syntax error or no privilege, will return skipCheck true.
 	if err != nil {
-		return slaveStatus, err
+		if mysql.IsSQLNoPrivilegeErr(err) {
+			log.Warn("addr:%s, get slave status error,maybe configured error.err:%s.", conn.GetAddr(), err)
+			return true, slaveStatus, nil
+		}
+		return false, slaveStatus, fmt.Errorf("execute show slave status error:%s", err)
+	}
+
+	// if we have no privileges to get slave status, will return skipCheck true.
+	if res.RowNumber() == 0 {
+		log.Debug("addr:%s, slave status is empty,maybe is master\n", conn.GetAddr())
+		return true, slaveStatus, nil
 	}
 
 	for _, f := range res.Fields {
@@ -594,5 +614,5 @@ func GetSlaveStatus(conn PooledConnect) (SlaveStatus, error) {
 			continue
 		}
 	}
-	return slaveStatus, err
+	return false, slaveStatus, err
 }

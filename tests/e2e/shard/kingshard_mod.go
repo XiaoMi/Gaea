@@ -2,36 +2,36 @@ package shard
 
 import (
 	"database/sql"
+	"github.com/XiaoMi/Gaea/tests/e2e/config"
+	"github.com/XiaoMi/Gaea/tests/e2e/util"
 	"path/filepath"
 
-	"github.com/XiaoMi/Gaea/tests/config"
-	"github.com/XiaoMi/Gaea/tests/util"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 )
 
 var _ = ginkgo.Describe("shard join support test in king shard mod", func() {
-	nsTemplateFile := "e2e/shard/ns/kingshard/mod.template"
+	nsTemplateFile := "shard/ns/kingshard/mod.template"
 	e2eMgr := config.NewE2eManager()
-	sliceMulti := e2eMgr.NsSlices[config.SliceMMName]
-	sliceSingle := e2eMgr.NsSlices[config.SliceSMName]
-	multiMasterA, err := sliceMulti.GetMasterConn(0)
-	gomega.Expect(err).Should(gomega.BeNil())
+	sliceMulti := e2eMgr.NsSlices[config.SliceMultiMaster]
+	sliceSingle := e2eMgr.NsSlices[config.SliceMaster]
+	multiMasterA, err := sliceMulti.GetMasterAdminConn(0)
+	util.ExpectNoError(err)
 
-	multiMasterB, err := sliceMulti.GetMasterConn(1)
-	gomega.Expect(err).Should(gomega.BeNil())
+	multiMasterB, err := sliceMulti.GetMasterAdminConn(1)
+	util.ExpectNoError(err)
 
-	singleMaster, err := sliceSingle.GetMasterConn(0)
-	gomega.Expect(err).Should(gomega.BeNil())
+	singleMaster, err := sliceSingle.GetMasterAdminConn(0)
+	util.ExpectNoError(err)
 
 	gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
-	gomega.Expect(err).Should(gomega.BeNil())
+	util.ExpectNoError(err)
 	ginkgo.BeforeEach(func() {
 
 		err := e2eMgr.AddNsFromFile(filepath.Join(e2eMgr.BasePath, nsTemplateFile), sliceMulti)
-		gomega.Expect(err).Should(gomega.BeNil())
+		util.ExpectNoError(err)
 		_, err = gaeaConn.Exec("USE sbtest1")
-		gomega.Expect(err).Should(gomega.BeNil())
+		util.ExpectNoError(err)
 
 		prepareCases := []struct {
 			DB   *sql.DB
@@ -39,29 +39,29 @@ var _ = ginkgo.Describe("shard join support test in king shard mod", func() {
 		}{
 			{
 				DB:   multiMasterA,
-				file: filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/0-slice0-kingshard.sql"),
+				file: filepath.Join(e2eMgr.BasePath, "shard/case/join/0-slice0-kingshard.sql"),
 			},
 			{
 				DB:   multiMasterB,
-				file: filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/0-slice1-kingshard.sql"),
+				file: filepath.Join(e2eMgr.BasePath, "shard/case/join/0-slice1-kingshard.sql"),
 			},
 			{
 				DB:   singleMaster,
-				file: filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/0-test-prepare.sql"),
+				file: filepath.Join(e2eMgr.BasePath, "shard/case/join/0-test-prepare.sql"),
 			},
 			{
 				DB:   gaeaConn,
-				file: filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/0-gaea-prepare.sql"),
+				file: filepath.Join(e2eMgr.BasePath, "shard/case/join/0-gaea-prepare.sql"),
 			},
 		}
 		for _, v := range prepareCases {
 			sqls, err := util.GetSqlFromFile(v.file)
-			gomega.Expect(err).Should(gomega.BeNil())
+			util.ExpectNoError(err)
 			for _, sql := range sqls {
 				err := util.VerifySqlParsable(sql)
-				gomega.Expect(err).Should(gomega.BeNil())
+				util.ExpectNoError(err)
 				_, err = util.MysqlExec(v.DB, sql)
-				gomega.Expect(err).Should(gomega.BeNil())
+				util.ExpectNoError(err)
 			}
 		}
 
@@ -74,42 +74,42 @@ var _ = ginkgo.Describe("shard join support test in king shard mod", func() {
 				resultType util.ResultType
 			}{
 				{
-					filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/kingshard/equal.sql"),
+					filepath.Join(e2eMgr.BasePath, "shard/case/join/kingshard/equal.sql"),
 					util.Equal,
 				},
 				{
-					filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/kingshard/unequal.sql"),
+					filepath.Join(e2eMgr.BasePath, "shard/case/join/kingshard/unequal.sql"),
 					util.UnEqual,
 				},
 				{
-					filepath.Join(e2eMgr.BasePath, "e2e/shard/case/join/kingshard/unsupport.sql"),
+					filepath.Join(e2eMgr.BasePath, "shard/case/join/kingshard/unsupport.sql"),
 					util.UnSupport,
 				},
 			}
 			for _, c := range cases {
 				sqls, err := util.GetSqlFromFile(c.path)
-				gomega.Expect(err).Should(gomega.BeNil())
+				util.ExpectNoError(err)
 				for _, sql := range sqls {
 					err := util.VerifySqlParsable(sql)
-					gomega.Expect(err).Should(gomega.BeNil())
+					util.ExpectNoError(err)
 					switch c.resultType {
 					case util.Equal:
 						res1, err := util.MysqlQuery(gaeaConn, sql)
-						gomega.Expect(err).Should(gomega.BeNil())
+						util.ExpectNoError(err)
 						res2, err := util.MysqlQuery(singleMaster, sql)
-						gomega.Expect(err).Should(gomega.BeNil())
+						util.ExpectNoError(err)
 						_, err = util.CompareIgnoreSort(res1, res2)
-						gomega.Expect(err).Should(gomega.BeNil())
+						util.ExpectNoError(err)
 					case util.UnSupport:
 						_, err := util.MysqlQuery(singleMaster, sql)
-						gomega.Expect(err).Should(gomega.BeNil())
+						util.ExpectNoError(err)
 						_, err = util.MysqlQuery(gaeaConn, sql)
 						gomega.Expect(err).ShouldNot(gomega.BeNil())
 					case util.UnEqual:
 						res1, err := util.MysqlQuery(gaeaConn, sql)
-						gomega.Expect(err).Should(gomega.BeNil())
+						util.ExpectNoError(err)
 						res2, err := util.MysqlQuery(singleMaster, sql)
-						gomega.Expect(err).Should(gomega.BeNil())
+						util.ExpectNoError(err)
 						_, err = util.CompareIgnoreSort(res1, res2)
 						gomega.Expect(err).ShouldNot(gomega.BeNil())
 					}
@@ -119,6 +119,5 @@ var _ = ginkgo.Describe("shard join support test in king shard mod", func() {
 	})
 	ginkgo.AfterEach(func() {
 		e2eMgr.Clean()
-
 	})
 })

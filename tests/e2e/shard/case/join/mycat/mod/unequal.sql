@@ -125,5 +125,7 @@ select a.id,b.id,b.pad,a.t_id from (select test1.id,test1.pad,test1.t_id from te
 select id,t_id,name,pad from test1 where pad>(select pad from test1 where pad=2);
 select (select name from test1 limit 1);
 select id,t_id,name,pad from test1 where 2<>some(select id from test1 where pad>1);
+select CURRENT_USER FROM test5;
+show full columns from t1;
 
 

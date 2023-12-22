@@ -87,7 +87,6 @@ select max(salary) from test4 where department = 'Finance'
 select min(salary) from test4 where department = 'Finance'
 select avg(salary) from test4 where department = 'Finance'
 
-select CURRENT_USER FROM test5
 select sum(distinct id) from test5
 select sum(all id) from test5
 select id, R_REGIONKEY from test5

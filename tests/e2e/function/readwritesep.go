@@ -3,40 +3,43 @@ package function
 import (
 	"database/sql"
 	"fmt"
-	"path/filepath"
+	"github.com/XiaoMi/Gaea/tests/e2e/config"
+	"github.com/XiaoMi/Gaea/tests/e2e/util"
 	"time"
 
-	"github.com/XiaoMi/Gaea/tests/config"
-	"github.com/XiaoMi/Gaea/tests/util"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 )
 
 var _ = ginkgo.Describe("Read-Write Splitting", func() {
-	nsTemplateFile := "e2e/function/ns/default.template"
 	e2eMgr := config.NewE2eManager()
 	db := config.DefaultE2eDatabase
-	slice := e2eMgr.NsSlices[config.SliceMSName]
+	slice := e2eMgr.NsSlices[config.SliceMasterSlaves]
 	table := config.DefaultE2eTable
 	ginkgo.BeforeEach(func() {
-		err := e2eMgr.AddNsFromFile(filepath.Join(e2eMgr.BasePath, nsTemplateFile), slice)
-		gomega.Expect(err).Should(gomega.BeNil())
-		masterConn, err := slice.GetMasterConn(0)
-		gomega.Expect(err).Should(gomega.BeNil())
-		err = util.SetupDatabaseAndInsertData(masterConn, db, table)
-		gomega.Expect(err).Should(gomega.BeNil())
+		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
+		util.ExpectNoError(err, "parse namespace template")
+		err = e2eMgr.NsManager.ModifyNamespace(initNs)
+		util.ExpectNoError(err)
+		masterAdminConn, err := slice.GetMasterAdminConn(0)
+		util.ExpectNoError(err)
+		err = util.SetupDatabaseAndInsertData(masterAdminConn, db, table)
+		util.ExpectNoError(err)
 	})
 
 	ginkgo.Context("When handling read and write operations", func() {
 		ginkgo.It("should direct read operations to replicas", func() {
 			gaeaReadWriteConn, err := e2eMgr.GetReadWriteGaeaUserConn()
-			gomega.Expect(err).Should(gomega.BeNil())
+			util.ExpectNoError(err)
+			defer gaeaReadWriteConn.Close()
 
 			gaeaWriteConn, err := e2eMgr.GetWriteGaeaUserConn()
-			gomega.Expect(err).Should(gomega.BeNil())
+			util.ExpectNoError(err)
+			defer gaeaWriteConn.Close()
 
 			gaeaReadConn, err := e2eMgr.GetReadGaeaUserConn()
-			gomega.Expect(err).Should(gomega.BeNil())
+			util.ExpectNoError(err)
+			defer gaeaReadConn.Close()
 
 			sqlCases := []struct {
 				GaeaConn          *sql.DB
@@ -142,7 +145,7 @@ var _ = ginkgo.Describe("Read-Write Splitting", func() {
 					gomega.Expect(err).ShouldNot(gomega.BeNil())
 					continue
 				} else {
-					gomega.Expect(err).Should(gomega.BeNil())
+					util.ExpectNoError(err)
 				}
 
 				var res []util.LogEntry
@@ -155,7 +158,7 @@ var _ = ginkgo.Describe("Read-Write Splitting", func() {
 					}
 				}
 				// 检查结果
-				gomega.Expect(err).Should(gomega.BeNil())
+				util.ExpectNoError(err)
 				gomega.Expect(res).Should(gomega.HaveLen(1))
 				gomega.Expect(sqlCase.ExpectBackendAddr).Should(gomega.Equal(res[0].BackendAddr))
 			}
