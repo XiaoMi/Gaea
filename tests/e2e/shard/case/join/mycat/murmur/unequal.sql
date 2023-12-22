@@ -117,3 +117,4 @@ select id,t_id,name,pad from test1 where pad !=any(select id from test1 where pa
 select a.id,b.id,b.pad,a.t_id from (select test1.id,test1.pad,test1.t_id from test1 join sbtest1.test3 where test1.pad=sbtest1.test3.pad ) a,(select sbtest1.test2.id,sbtest1.test2.pad from test1 join sbtest1.test2 where test1.pad=sbtest1.test2.pad) b where a.pad=b.pad;
 select id,t_id,name,pad from test1 where pad>(select pad from test1 where pad=2);
 select (select name from test1 limit 1);
+select CURRENT_USER FROM test5;

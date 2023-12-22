@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"github.com/XiaoMi/Gaea/tests/e2e/util"
 	"testing"
 	"time"
 
@@ -9,7 +10,6 @@ import (
 
 	_ "github.com/XiaoMi/Gaea/tests/e2e/shard"
 	_ "github.com/XiaoMi/Gaea/tests/e2e/unshard"
-	"github.com/XiaoMi/Gaea/tests/util"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 )
@@ -25,13 +25,13 @@ func TestE2E(t *testing.T) {
 var _ = ginkgo.BeforeSuite(func() {
 	ginkgo.By("start gaea default.")
 	err := util.StartGaeaDefault()
-	gomega.Expect(err).Should(gomega.BeNil())
+	util.ExpectNoError(err)
 	time.Sleep(5 * time.Second)
 	ginkgo.By("start gaea default success.")
 
 	ginkgo.By("start gaea-cc default.")
 	err = util.StartGaeaCCDefault()
-	gomega.Expect(err).Should(gomega.BeNil())
+	util.ExpectNoError(err)
 	time.Sleep(5 * time.Second)
 	ginkgo.By("start gaea-cc default success.")
 })
@@ -39,12 +39,12 @@ var _ = ginkgo.BeforeSuite(func() {
 var _ = ginkgo.AfterSuite(func() {
 	ginkgo.By("stop gaea-cc default.")
 	err := util.StopGaeaCCDefault()
-	gomega.Expect(err).Should(gomega.BeNil())
+	util.ExpectNoError(err)
 	ginkgo.By("stop gaea-cc default success.")
 
 	ginkgo.By("stop gaea default.")
 	err = util.StopGaeaDefault()
-	gomega.Expect(err).Should(gomega.BeNil())
+	util.ExpectNoError(err)
 	ginkgo.By("stop gaea default success.")
 
 })

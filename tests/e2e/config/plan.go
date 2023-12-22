@@ -6,12 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/XiaoMi/Gaea/tests/e2e/util"
 	"time"
 
 	"os"
 	"reflect"
-
-	"github.com/XiaoMi/Gaea/tests/util"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -40,7 +39,7 @@ type (
 
 	DBAction struct {
 		Slice    string      `json:"slice"`
-		DB       string      `json:"db"`
+		DB       string      `json:"Db"`
 		SQL      string      `json:"sql"`
 		ExecType string      `json:"execType"`
 		Expect   interface{} `json:"expect"`
@@ -85,7 +84,7 @@ func (e ExecCase) GaeaRun(gaeaDB *sql.DB) error {
 	for _, action := range e.GaeaActions {
 		isSuccess, err := DBExecAndCompare(gaeaDB, action.ExecType, action.SQL, action.Expect)
 		if err != nil || !isSuccess {
-			return fmt.Errorf("[gaeaAction] failed to execute SQL statement:[%s]:[%v]", action.SQL, err)
+			return fmt.Errorf("[gaeaAction] failed to execute SQL:%s, err:%s", action.SQL, err)
 		}
 	}
 	return nil
@@ -138,7 +137,7 @@ func Query(db *sql.DB, sqlStr string, expect interface{}) (bool, error) {
 			if err == sql.ErrNoRows && len(v) == 0 {
 				return true, nil
 			}
-			return false, fmt.Errorf("db Exec Error %v", err)
+			return false, fmt.Errorf("Db Exec Error %v", err)
 		}
 		defer rows.Close()
 		res, err := util.GetDataFromRows(rows)
@@ -344,7 +343,7 @@ func (m *PlanManager) Run() error {
 		for _, initCase := range execCase.GetSetUpSQL() {
 			// Run Master actions
 			if err := initCase.MasterRun(m.MysqlClusterConn); err != nil {
-				return fmt.Errorf("master init action failed '%s': %v", initCase.Description, err)
+				return fmt.Errorf("master init action failed '%s',err:%v", initCase.Description, err)
 			}
 		}
 		// Run Gaea actions

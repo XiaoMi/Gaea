@@ -22,8 +22,16 @@
                 {
                     "slice": "slice-0",
                     "sql": "CREATE TABLE tbl_another (id INT PRIMARY KEY AUTO_INCREMENT, user_id INT, description TEXT)"
+                },
+                {
+                    "slice": "slice-0",
+                    "sql": "CREATE TABLE t_order (order_id INT PRIMARY KEY AUTO_INCREMENT, user_id INT, order_description VARCHAR(255))"
+                },
+                {
+                    "slice": "slice-0",
+                    "sql": "CREATE TABLE t_order_item (item_id INT PRIMARY KEY AUTO_INCREMENT, order_id INT, product_name VARCHAR(255), user_id INT)"
                 }
-             ],
+            ],
             "gaeaActions": [
                 {
                     "sql": "USE db_test_select",
@@ -67,14 +75,6 @@
                 },
                 {
                     "sql": "SELECT name FROM tbl_test WHERE age = 10 LOCK IN SHARE MODE",
-                    "execType": "Default"
-                },
-                {
-                    "sql": "CREATE TABLE t_order (order_id INT PRIMARY KEY AUTO_INCREMENT, user_id INT, order_description VARCHAR(255))",
-                    "execType": "Default"
-                },
-                {
-                    "sql": "CREATE TABLE t_order_item (item_id INT PRIMARY KEY AUTO_INCREMENT, order_id INT, product_name VARCHAR(255), user_id INT)",
                     "execType": "Default"
                 },
                 {

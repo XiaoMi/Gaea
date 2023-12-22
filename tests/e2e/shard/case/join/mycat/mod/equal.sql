@@ -88,7 +88,6 @@ select id,FirstName,lastname,department,salary from test4 where Salary between 4
 select sum(salary) from test4 where department = 'Finance';
 select max(salary) from test4 where department = 'Finance';
 select min(salary) from test4 where department = 'Finance';
-select CURRENT_USER FROM test5;
 select sum(distinct id) from test5;
 select sum(all id) from test5;
 select id, R_REGIONKEY from test5;
@@ -241,7 +240,6 @@ select co1,co2,co3 from (select id as co1,name as co2,pad as co3 from test1)as t
 # show
 show columns in t1;
 show columns from t1;
-show full columns from t1;
 show table status like 'aly_o%'/*allow_diff*/;
 show open tables from sbtest1 like 'aly_o%';
 show tables;

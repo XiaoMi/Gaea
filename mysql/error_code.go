@@ -13,6 +13,10 @@
 
 package mysql
 
+import (
+	"errors"
+)
+
 // MySQL error code.
 // This value is numeric. It is not portable to other database systems.
 const (
@@ -916,3 +920,21 @@ const (
 	ErrWindowExplainJSON                                            = 3598
 	ErrWindowFunctionIgnoresFrame                                   = 3599
 )
+
+func IsSQLSyntaxErr(err error) bool {
+	return IsSQLErrorCode(err, ErrSyntax)
+}
+
+func IsSQLNoPrivilegeErr(err error) bool {
+	return IsSQLErrorCode(err, ErrSpecificAccessDenied)
+}
+
+// IsSQLErrorCode check if error is a SQLError with the given code
+func IsSQLErrorCode(err error, code uint16) bool {
+	var sqlErr *SQLError
+	if errors.As(err, &sqlErr) {
+		sqlCode := sqlErr.SQLCode()
+		return sqlCode == code
+	}
+	return false
+}
