@@ -44,7 +44,6 @@ import (
 )
 
 const (
-	DefaultLogKeepDays       = 3
 	MasterRole               = "master"
 	SlaveRole                = "slave"
 	SQLExecTimeSize          = 5000
@@ -822,9 +821,14 @@ func initGeneralLogger(cfg *models.Proxy) (log.Logger, error) {
 	c["service"] = cfg.Service
 	c["runtime"] = "false"
 
-	c["log_keep_days"] = strconv.Itoa(DefaultLogKeepDays)
+	c["log_keep_days"] = strconv.Itoa(log.DefaultLogKeepDays)
 	if cfg.LogKeepDays != 0 {
 		c["log_keep_days"] = strconv.Itoa(cfg.LogKeepDays)
+	}
+
+	c["log_keep_counts"] = strconv.Itoa(log.DefaultLogKeepCounts)
+	if cfg.LogKeepCounts != 0 {
+		c["log_keep_counts"] = strconv.Itoa(cfg.LogKeepCounts)
 	}
 
 	return xlog.CreateLogManager(cfg.LogOutput, c)

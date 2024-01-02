@@ -110,8 +110,8 @@ func main() {
 			} else if sig == syscall.SIGPIPE {
 				log.Notice("ignore broken pipe signal")
 			} else if sig == syscall.SIGUSR1 {
-				log.Notice("got update config signal,old config:%#v", cfg)
-				if err := models.ReloadProxyConfig(*configFile); err != nil {
+				log.Notice("reload proxy config,out old config:%#v", cfg)
+				if err := svr.ReloadProxyConfig(); err != nil {
 					log.Notice("reload proxy confi error:%s", err)
 				} else {
 					log.Notice("reload proxy config success")

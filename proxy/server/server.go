@@ -45,6 +45,7 @@ type Server struct {
 	EncryptKey     string
 	ServerVersion  string
 	AuthPlugin     string
+	ServerConfig   *models.Proxy
 }
 
 // NewServer create new server
@@ -54,6 +55,7 @@ func NewServer(cfg *models.Proxy, manager *Manager) (*Server, error) {
 
 	// init key
 	s.EncryptKey = cfg.EncryptKey
+	s.ServerConfig = cfg
 	s.manager = manager
 	s.ServerVersion = util.CompactServerVersion(cfg.ServerVersion)
 	s.AuthPlugin = cfg.AuthPlugin
@@ -244,5 +246,34 @@ func (s *Server) DeleteNamespace(name string) error {
 	}
 
 	log.Notice("delete namespace end: %s", name)
+	return nil
+}
+
+func (s *Server) ReloadProxyConfig() error {
+	cfg := s.ServerConfig
+	log.Notice("reload proxy config,old config:%#v", cfg)
+	newCfg, err := models.ParseProxyConfigFromFile(cfg.ConfigFile)
+	if err != nil {
+		return fmt.Errorf("parse config file error:%s", err)
+	}
+	cfg.LogFileName = newCfg.LogFileName
+	cfg.LogLevel = newCfg.LogLevel
+	cfg.LogOutput = newCfg.LogOutput
+	cfg.LogPath = newCfg.LogPath
+	cfg.LogKeepDays = newCfg.LogKeepDays
+	cfg.LogKeepCounts = newCfg.LogKeepCounts
+	log.Notice("reload proxy config,new config:%#v", cfg)
+	// reload sys log
+	if err = models.InitXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service, cfg.LogKeepDays, cfg.LogKeepCounts); err != nil {
+		return fmt.Errorf("init xlog error:%s", err)
+	}
+	// reload general log
+	stm := s.manager.GetStatisticManager()
+	oldGeneralLogger := stm.generalLogger
+	if stm.generalLogger, err = initGeneralLogger(cfg); err != nil {
+		return fmt.Errorf("reset general logger error:%s", err)
+	}
+	oldGeneralLogger.Close()
+
 	return nil
 }
