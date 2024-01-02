@@ -15,6 +15,7 @@
 package xlog
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -38,6 +39,7 @@ type XFileLog struct {
 	service  string
 	split    sync.Once
 	mu       sync.Mutex
+	Cancel   context.CancelFunc
 }
 
 // constants of XFileLog
@@ -49,8 +51,8 @@ const (
 )
 
 // NewXFileLog is the constructor of XFileLog
-//生成一个日志实例，service用来标识业务的服务名。
-//比如：logger := xlog.NewXFileLog("gaea")
+// 生成一个日志实例，service用来标识业务的服务名。
+// 比如：logger := xlog.NewXFileLog("gaea")
 func NewXFileLog() XLogger {
 	return &XFileLog{
 		skip: XLogDefSkipNum,
@@ -59,7 +61,6 @@ func NewXFileLog() XLogger {
 
 // Init implements XLogger
 func (p *XFileLog) Init(config map[string]string) (err error) {
-
 	path, ok := config["path"]
 	if !ok {
 		err = fmt.Errorf("init XFileLog failed, not found path")
@@ -122,9 +123,10 @@ func (p *XFileLog) Init(config map[string]string) (err error) {
 	if counts, err := strconv.Atoi(config["log_keep_counts"]); err == nil && counts != 0 {
 		logKeepCounts = counts
 	}
-
+	var ctx context.Context
+	ctx, p.Cancel = context.WithCancel(context.Background())
 	body := func() {
-		go p.spliter(logKeepDays, logKeepCounts)
+		go p.spliter(ctx, logKeepDays, logKeepCounts)
 	}
 	doSplit, ok := config["dosplit"]
 	if !ok {
@@ -137,18 +139,22 @@ func (p *XFileLog) Init(config map[string]string) (err error) {
 }
 
 // split the log file
-func (p *XFileLog) spliter(keepDays int, logKeepCounts int) {
+func (p *XFileLog) spliter(ctx context.Context, keepDays int, logKeepCounts int) {
 	preHour := time.Now().Hour()
 	splitTime := time.Now().Format("2006010215")
 	defer p.Close()
 	for {
-		time.Sleep(time.Second * SpliterDelay)
-		p.clean(keepDays, logKeepCounts)
-		if time.Now().Hour() != preHour {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second * SpliterDelay):
 			p.clean(keepDays, logKeepCounts)
-			p.rename(splitTime)
-			preHour = time.Now().Hour()
-			splitTime = time.Now().Format("2006010215")
+			if time.Now().Hour() != preHour {
+				p.clean(keepDays, logKeepCounts)
+				p.rename(splitTime)
+				preHour = time.Now().Hour()
+				splitTime = time.Now().Format("2006010215")
+			}
 		}
 	}
 }
@@ -188,7 +194,7 @@ func (p *XFileLog) clean(keepDays int, logKeepCounts int) (err error) {
 	deadline := time.Now().AddDate(0, 0, -1*keepDays)
 	fileTypeMap := make(map[string]int)
 	var files []string
-	files, err = filepath.Glob(fmt.Sprintf("%s/%s*.log*", p.path, p.filename))
+	files, err = filepath.Glob(fmt.Sprintf("%s/%s.log*", p.path, p.filename))
 	if err != nil {
 		return
 	}
@@ -415,6 +421,8 @@ func (p *XFileLog) Close() {
 		p.errFile.Close()
 		p.errFile = nil
 	}
+
+	p.Cancel()
 }
 
 // GetHost getter of hostname

@@ -26,9 +26,7 @@ import (
 )
 
 const (
-	defaultGaeaCluster   = "gaea"
-	DefaultLogKeepDays   = 3
-	DefaultLogKeepCounts = 72
+	defaultGaeaCluster = "gaea"
 )
 
 // Proxy means proxy structure of proxy config
@@ -162,19 +160,6 @@ func (p *ProxyInfo) Encode() []byte {
 	return JSONEncode(p)
 }
 
-func ReloadProxyConfig(cfgFile string) error {
-	cfg, err := ParseProxyConfigFromFile(cfgFile)
-	if err != nil {
-		return fmt.Errorf("parse config file error:%s", err)
-	}
-
-	if err = InitXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service, cfg.LogKeepDays, cfg.LogKeepCounts); err != nil {
-		return fmt.Errorf("init xlog error:%s", err)
-	}
-
-	return nil
-}
-
 func InitXLog(output, path, filename, level, service string, logKeepDays int, logKeepCounts int) error {
 	cfg := make(map[string]string)
 	cfg["path"] = path
@@ -182,12 +167,12 @@ func InitXLog(output, path, filename, level, service string, logKeepDays int, lo
 	cfg["level"] = level
 	cfg["service"] = service
 	cfg["skip"] = "5" // 设置xlog打印方法堆栈需要跳过的层数, 5目前为调用log.Debug()等方法的方法名, 比xlog默认值多一层.
-	cfg["log_keep_days"] = strconv.Itoa(DefaultLogKeepDays)
+	cfg["log_keep_days"] = strconv.Itoa(log.DefaultLogKeepDays)
 	if logKeepDays != 0 {
 		cfg["log_keep_days"] = strconv.Itoa(logKeepDays)
 	}
 
-	cfg["log_keep_counts"] = strconv.Itoa(DefaultLogKeepCounts)
+	cfg["log_keep_counts"] = strconv.Itoa(log.DefaultLogKeepCounts)
 	if logKeepCounts != 0 {
 		cfg["log_keep_counts"] = strconv.Itoa(logKeepCounts)
 	}

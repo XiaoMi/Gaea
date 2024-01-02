@@ -286,7 +286,7 @@ func (s *AdminServer) ping(c *gin.Context) {
 // @Security BasicAuth
 // @Router /api/proxy/proxyconfig/reload [put]
 func (s *AdminServer) reloadProxyConfig(c *gin.Context) {
-	if err := models.ReloadProxyConfig(s.configFile); err != nil {
+	if err := s.proxy.ReloadProxyConfig(); err != nil {
 		c.JSON(selfDefinedInternalError, fmt.Sprintf("reload config file Error:%s", err))
 	}
 	log.Notice("reload proxy config success")
