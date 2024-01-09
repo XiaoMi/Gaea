@@ -1,8 +1,5 @@
-
-
-DROP DATABASE IF EXISTS sbtest1_2;
-CREATE DATABASE sbtest1_2;
-USE sbtest1_2;
+CREATE DATABASE  sbtest_2;
+USE sbtest_2;
 
 drop table if exists t,t1,t2,t3;
 
@@ -40,9 +37,8 @@ create table test8 (id int(11),O_ORDERKEY varchar(20) primary key,O_CUSTKEY varc
 create table test9 (id int(11),O_ORDERKEY varchar(20) primary key,O_CUSTKEY varchar(20),O_TOTALPRICE int(20),MYDATE date, index ORDERS_FK1 (`O_CUSTKEY`));
 
 
-DROP DATABASE IF EXISTS sbtest1_3;
-CREATE DATABASE sbtest1_3;
-USE sbtest1_3;
+CREATE DATABASE IF NOT EXISTS sbtest_3;
+USE sbtest_3;
 
 
 drop table if exists t,t1,t2,t3;

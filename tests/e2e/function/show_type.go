@@ -3,18 +3,23 @@ package function
 import (
 	"database/sql"
 	"fmt"
+	"time"
+
 	"github.com/XiaoMi/Gaea/tests/e2e/config"
 	"github.com/XiaoMi/Gaea/tests/e2e/util"
-	"time"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 )
 
+// This script, titled "Show Sql Type" is designed to evaluate the behavior of SQL queries, particularly SHOW VARIABLES LIKE, in a dual-slave database configuration.
+// The script sets up the environment and then executes the SHOW VARIABLES LIKE SQL command to determine whether it's correctly directed to the master node in the setup.
+// This test ensures that specific queries are handled by the appropriate database nodes (master or slave) as expected in a read-write split environment.
+// The results from the SQL log are checked to confirm that the execution happens on the correct backend address, validating the routing logic in the database setup.
 var _ = ginkgo.Describe("Show Sql Type", func() {
 	e2eMgr := config.NewE2eManager()
 	db := config.DefaultE2eDatabase
-	slice := e2eMgr.NsSlices[config.SliceMasterSlaves]
+	slice := e2eMgr.NsSlices[config.SliceDualSlave]
 	currentTime := time.Now()
 	ginkgo.BeforeEach(func() {
 		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
@@ -50,7 +55,7 @@ var _ = ginkgo.Describe("Show Sql Type", func() {
 					sql := fmt.Sprintf("/*i:%d*/ %s", i, sqlCase.sql)
 					_, err := sqlCase.gaeaConns[i].Exec(sql)
 					util.ExpectNoError(err)
-					res, err := e2eMgr.SearchLog(sql, currentTime)
+					res, err := e2eMgr.SearchSqlLog(sql, currentTime)
 					util.ExpectNoError(err)
 					gomega.Expect(res).Should(gomega.HaveLen(1))
 					gomega.Expect(res[0].BackendAddr).Should(gomega.Equal(sqlCase.expectAddrs[i]))

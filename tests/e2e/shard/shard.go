@@ -2,23 +2,25 @@ package shard
 
 import (
 	"fmt"
-	"github.com/XiaoMi/Gaea/tests/e2e/config"
-	"github.com/XiaoMi/Gaea/tests/e2e/util"
 	"path/filepath"
 
+	"github.com/XiaoMi/Gaea/tests/e2e/config"
+	"github.com/XiaoMi/Gaea/tests/e2e/util"
 	"github.com/onsi/ginkgo/v2"
 )
 
 var _ = ginkgo.Describe("shard_dml_support_test", func() {
-	nsTemplateFile := "shard/ns/simple/simple.template"
 	e2eMgr := config.NewE2eManager()
-	sliceMulti := e2eMgr.NsSlices[config.SliceMultiMaster]
+	sliceMulti := e2eMgr.NsSlices[config.SliceDualMaster]
 	planManagers := []*config.PlanManager{}
 	gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
 	util.ExpectNoError(err)
 
 	ginkgo.BeforeEach(func() {
-		err := e2eMgr.AddNsFromFile(filepath.Join(e2eMgr.BasePath, nsTemplateFile), sliceMulti)
+		// 注册
+		ns, err := config.ParseNamespaceTmpl(config.ShardNamespaceTmpl, sliceMulti)
+		util.ExpectNoError(err)
+		err = e2eMgr.ModifyNamespace(ns)
 		util.ExpectNoError(err)
 
 		ginkgo.By("init case path")

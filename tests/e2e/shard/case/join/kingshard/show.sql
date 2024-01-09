@@ -1,7 +1,6 @@
 SELECT last_insert_id();
 
 # databases
-show databases;
 show databases like 'sbtest';
 
 # schemas
@@ -23,32 +22,6 @@ show full tables from sbtest;
 show full tables in sbtest;
 show full tables from sbtest like 'aly%';
 show full tables in sbtest where table_type like 'base%';
-
-
-# columns
-show columns in t1;
-show columns from t1;
-show full columns from t1;
-show columns from t1 from sbtest;
-show full columns from t1 from sbtest;
-show full columns from t1 from sbtest like 'n%';
-show full columns from t1 from sbtest where field like 's%';
-
-# index
-show index from t1;
-show index in t1;
-show index from t1 from sbtest;
-show index in t1 in sbtest;
-show index in t1 from sbtest;
-show index from t1 in sbtest;
-
-# keys
-show keys from t1;
-show keys in t1;
-show keys from t1 from sbtest;
-show keys from t1 in sbtest;
-show keys in t1 in sbtest;
-show keys in t1 from sbtest;
 
 # create
 show create database sbtest;

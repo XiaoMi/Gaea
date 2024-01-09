@@ -3,18 +3,24 @@ package function
 import (
 	"database/sql"
 	"fmt"
+	"time"
+
 	"github.com/XiaoMi/Gaea/tests/e2e/config"
 	"github.com/XiaoMi/Gaea/tests/e2e/util"
-	"time"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
 )
 
+// This script, titled "Read-Write Splitting" focuses on verifying the correct routing of read and write operations in a database system with a dual-slave configuration.
+// The test sets up various scenarios using different types of database connections (read-only, write-only, and read-write) to execute SQL queries.
+// The goal is to ensure that read operations are directed to the slave nodes and write operations to the master node.
+// It uses a mixture of successful and expected-to-fail SQL operations to validate the read-write splitting functionality.
+// The results are then verified to confirm that the queries are executed on the intended backend nodes.
 var _ = ginkgo.Describe("Read-Write Splitting", func() {
 	e2eMgr := config.NewE2eManager()
 	db := config.DefaultE2eDatabase
-	slice := e2eMgr.NsSlices[config.SliceMasterSlaves]
+	slice := e2eMgr.NsSlices[config.SliceDualSlave]
 	table := config.DefaultE2eTable
 	ginkgo.BeforeEach(func() {
 		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
@@ -50,76 +56,76 @@ var _ = ginkgo.Describe("Read-Write Splitting", func() {
 				{
 					GaeaConn:          gaeaReadWriteConn,
 					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1 FOR UPDATE", db, table),
-					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					ExpectBackendAddr: slice.Slices[0].Master,
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaReadWriteConn,
 					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1", db, table),
-					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Slaves[0].Addr(),
+					ExpectBackendAddr: slice.Slices[0].Slaves[0],
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaReadWriteConn,
 					GaeaSQL:           fmt.Sprintf("DELETE FROM %s.%s WHERE id=2", db, table),
-					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					ExpectBackendAddr: slice.Slices[0].Master,
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaReadWriteConn,
 					GaeaSQL:           fmt.Sprintf("UPDATE %s.%s SET name= '%s' WHERE id=3", db, table, "newName"),
-					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					ExpectBackendAddr: slice.Slices[0].Master,
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaReadWriteConn,
 					GaeaSQL:           fmt.Sprintf("INSERT INTO %s.%s (name) VALUES ('tempValue')", db, table),
-					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					ExpectBackendAddr: slice.Slices[0].Master,
 					IsSuccess:         true,
 				},
 				// 写用户
 				{
 					GaeaConn:          gaeaWriteConn,
 					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1 FOR UPDATE", db, table),
-					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					ExpectBackendAddr: slice.Slices[0].Master,
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaWriteConn,
 					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1", db, table),
-					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					ExpectBackendAddr: slice.Slices[0].Master,
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaWriteConn,
 					GaeaSQL:           fmt.Sprintf("DELETE FROM %s.%s WHERE id=2", db, table),
-					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					ExpectBackendAddr: slice.Slices[0].Master,
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaWriteConn,
 					GaeaSQL:           fmt.Sprintf("UPDATE %s.%s SET name= '%s' WHERE id=3", db, table, "newName"),
-					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					ExpectBackendAddr: slice.Slices[0].Master,
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaWriteConn,
 					GaeaSQL:           fmt.Sprintf("INSERT INTO %s.%s (name) VALUES ('tempValue')", db, table),
-					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Master.Addr(),
+					ExpectBackendAddr: slice.Slices[0].Master,
 					IsSuccess:         true,
 				},
 				//读用户
 				{
 					GaeaConn:          gaeaReadConn,
 					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1 FOR UPDATE", db, table),
-					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Slaves[1].Addr(),
+					ExpectBackendAddr: slice.Slices[0].Slaves[1],
 					IsSuccess:         true,
 				},
 
 				{
 					GaeaConn:          gaeaReadConn,
 					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1", db, table),
-					ExpectBackendAddr: e2eMgr.MClusterMasterSlaves.Slaves[0].Addr(),
+					ExpectBackendAddr: slice.Slices[0].Slaves[0],
 					IsSuccess:         true,
 				},
 				{
@@ -142,7 +148,7 @@ var _ = ginkgo.Describe("Read-Write Splitting", func() {
 				currentTime := time.Now()
 				_, err := sqlCase.GaeaConn.Exec(sqlCase.GaeaSQL)
 				if !sqlCase.IsSuccess {
-					gomega.Expect(err).ShouldNot(gomega.BeNil())
+					util.ExpectError(err)
 					continue
 				} else {
 					util.ExpectNoError(err)
@@ -152,7 +158,7 @@ var _ = ginkgo.Describe("Read-Write Splitting", func() {
 				retryCount := 3 // 设置重试次数
 				for i := 0; i < retryCount; i++ {
 					time.Sleep(1 * time.Millisecond) // 等待一段时间再重试
-					res, err = e2eMgr.SearchLog(sqlCase.GaeaSQL, currentTime)
+					res, err = e2eMgr.SearchSqlLog(sqlCase.GaeaSQL, currentTime)
 					if err == nil && len(res) == 1 {
 						break
 					}

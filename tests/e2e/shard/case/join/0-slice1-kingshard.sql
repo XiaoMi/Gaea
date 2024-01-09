@@ -1,6 +1,5 @@
-DROP DATABASE IF EXISTS sbtest1;
-CREATE DATABASE sbtest1;
-USE sbtest1;
+CREATE DATABASE  sbtest;
+USE sbtest;
 
 drop table if exists t_0002,t1_0002,t2_0002,t3_0002;
 create table if not exists  t_0002(id  int(11) not null auto_increment,col1 varchar(20) default null, col2 int default null, primary key (`id`),KEY `idx1` (`col1`),KEY `idx2` (`col2`) ) ENGINE=Innodb DEFAULT CHARSET UTF8MB4;

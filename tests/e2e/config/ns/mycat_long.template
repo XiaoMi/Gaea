@@ -1,19 +1,19 @@
 {
-    "name": "test_mycat",
+    "name": "test_mycat_long",
     "online": true,
     "read_only": false,
     "allowed_dbs": {
-        "sbtest1": true
+        "sbtest": true
     },
     "default_phy_dbs": {
-        "sbtest1": "sbtest1_0"
+        "sbtest": "sbtest_0"
     },
-    "slow_sql_time": "0",
+    "slow_sql_time": "1000",
     "black_sql": [
         ""
     ],
-   "allowed_ip": null,
-   "slices": [
+    "allowed_ip": null,
+    "slices": [
         {{- range $index, $slice := .Slices }}
         {
             "name": "{{.Name}}",
@@ -39,10 +39,11 @@
         {{- end}}
     ],
     "shard_rules": [
+       
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t",
-            "type": "mycat_mod",
+            "type": "mycat_long",
             "key": "id",
             "locations": [
                 2,
@@ -53,34 +54,37 @@
                 "slice-1"
             ],
             "databases": [
-                "sbtest1_[0-3]"
-            ]
+                "sbtest_[0-3]"
+            ],
+            "partition_count": "4",
+            "partition_length": "256"
+
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t1",
             "type": "linked",
             "parent_table": "t",
             "key": "id"
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t2",
             "type": "linked",
             "parent_table": "t",
             "key": "id"
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t3",
             "type": "linked",
             "parent_table": "t",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test1",
-            "type": "mycat_mod",
+            "type": "mycat_long",
             "key": "id",
             "locations": [
                 2,
@@ -91,69 +95,71 @@
                 "slice-1"
             ],
             "databases": [
-                "sbtest1_[0-3]"
-            ]
+                "sbtest_[0-3]"
+            ],
+            "partition_count": "4",
+            "partition_length": "256"
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test2",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test3",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test4",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test5",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test6",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test7",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test8",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test9",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t4",
-            "type": "mycat_mod",
+            "type": "mycat_long",
             "key": "id",
             "locations": [
                 2,
@@ -164,18 +170,21 @@
                 "slice-1"
             ],
             "databases": [
-                "sbtest1_[0-3]"
-            ]
+                "sbtest_[0-3]"
+            ],
+            "partition_count": "4",
+            "partition_length": "256"
+
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t5",
             "type": "linked",
             "parent_table": "t4",
             "key": "id"
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t6",
             "type": "linked",
             "parent_table": "t4",
@@ -186,8 +195,8 @@
      {{- range $index, $user := .GaeaUsers }}
         {
             "user_name": "{{.UserName}}",
-            "password": "{{.Password}}",
-            "namespace": "test_mycat",
+            "password": "{{.Password}}", 
+            "namespace": "test_mycat_long",
             "rw_flag": {{.RWFlag}},
             "rw_split": {{.RWSplit}},
             "other_property":{{.OtherProperty}}

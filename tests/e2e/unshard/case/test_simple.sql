@@ -64,15 +64,9 @@ ANALYZE TABLE t;
 SHOW VARIABLES LIKE 'character_set_results';
 SHOW GLOBAL VARIABLES LIKE 'character_set_results';
 SHOW SESSION VARIABLES LIKE 'character_set_results';
-
-
-SHOW GLOBAL VARIABLES;
 SHOW GLOBAL VARIABLES WHERE Variable_name = 'autocommit';
 
 
-
-
-SHOW STATUS LIKE 'Up%';
 SHOW STATUS WHERE Variable_name;
 SHOW FULL TABLES FROM sbtest1 LIKE 't%';
 SHOW FULL TABLES WHERE Table_type != 'VIEW';

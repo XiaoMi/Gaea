@@ -3,18 +3,24 @@ package function
 import (
 	_ "embed"
 	"fmt"
+	"time"
+
 	"github.com/XiaoMi/Gaea/tests/e2e/config"
 	"github.com/XiaoMi/Gaea/tests/e2e/util"
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
-	"time"
 )
 
-var _ = ginkgo.Describe("test slave fuse", func() {
+// This script, titled "Test slave fuse" is designed to evaluate the behavior of a database system when slave nodes encounter specific issues.
+// The test involves modifying database privileges and configurations to simulate scenarios where slave nodes have restricted access or altered roles.
+// It checks whether the system correctly handles these changes without causing any service interruptions or incorrect data routing.
+// The test ensures the resilience and stability of the database system in handling slave node issues, maintaining consistent query distribution and data integrity.
+var _ = ginkgo.Describe("Test slave fuse", func() {
 	e2eMgr := config.NewE2eManager()
 	db, table := e2eMgr.Db, e2eMgr.Table
-	slice := e2eMgr.NsSlices[config.SliceMasterSlaves]
+	slice := e2eMgr.NsSlices[config.SliceDualSlave]
 	initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
+	util.ExpectNoError(err, "parse Namespace Tmpl")
 	masterAdminConn, err := slice.GetMasterAdminConn(0)
 	util.ExpectNoError(err, "get master admin conn")
 
@@ -51,7 +57,7 @@ var _ = ginkgo.Describe("test slave fuse", func() {
 		}
 
 		// step4: check the gaea log for distribution.
-		res, err := e2eMgr.SearchLog(sql, e2eMgr.StartTime)
+		res, err := e2eMgr.SearchSqlLog(sql, e2eMgr.StartTime)
 		util.ExpectNoError(err)
 		gomega.Expect(res).Should(gomega.HaveLen(counts))
 		for _, r := range res {
@@ -85,7 +91,7 @@ var _ = ginkgo.Describe("test slave fuse", func() {
 		}
 
 		// step4: check the gaea log for distribution.
-		res, err := e2eMgr.SearchLog(sql, e2eMgr.StartTime)
+		res, err := e2eMgr.SearchSqlLog(sql, e2eMgr.StartTime)
 		util.ExpectNoError(err)
 		gomega.Expect(res).Should(gomega.HaveLen(counts))
 		for _, r := range res {

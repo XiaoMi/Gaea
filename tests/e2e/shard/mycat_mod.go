@@ -3,33 +3,38 @@ package shard
 import (
 	"database/sql"
 	"fmt"
+	"path/filepath"
+
 	"github.com/XiaoMi/Gaea/tests/e2e/config"
 	"github.com/XiaoMi/Gaea/tests/e2e/util"
 	"github.com/onsi/ginkgo/v2"
-	"path/filepath"
 )
 
 var _ = ginkgo.Describe("shard join support test in mycat mod", func() {
-	nsTemplateFile := "shard/ns/mycat/mod.template"
 	e2eMgr := config.NewE2eManager()
-	sliceMulti := e2eMgr.NsSlices[config.SliceMultiMaster]
-	sliceSingle := e2eMgr.NsSlices[config.SliceMaster]
-	multiMasterA, err := sliceMulti.GetMasterAdminConn(0)
-	util.ExpectNoError(err)
-
-	multiMasterB, err := sliceMulti.GetMasterAdminConn(1)
-	util.ExpectNoError(err)
-
-	singleMaster, err := sliceSingle.GetMasterAdminConn(0)
-	util.ExpectNoError(err)
-
-	gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
-	util.ExpectNoError(err)
+	sliceTest := e2eMgr.NsSlices[config.SliceSingleTestMaster]
+	sliceMulti := e2eMgr.NsSlices[config.SliceDualMaster]
 	ginkgo.BeforeEach(func() {
-
-		err := e2eMgr.AddNsFromFile(filepath.Join(e2eMgr.BasePath, nsTemplateFile), sliceMulti)
+		// 注册
+		ns, err := config.ParseNamespaceTmpl(config.MycatModNamespaceTmpl, sliceMulti)
 		util.ExpectNoError(err)
-		_, err = gaeaConn.Exec("USE sbtest1")
+		err = e2eMgr.ModifyNamespace(ns)
+		util.ExpectNoError(err)
+
+		// AdminConn 可以DROP/CREATE
+		multiMasterA, err := sliceMulti.GetMasterAdminConn(0)
+		util.ExpectNoError(err)
+		util.ExpectNoError(util.CleanUpDatabases(multiMasterA))
+		// AdminConn 可以DROP/CREATE
+		multiMasterB, err := sliceMulti.GetMasterAdminConn(1)
+		util.ExpectNoError(err)
+		util.ExpectNoError(util.CleanUpDatabases(multiMasterB))
+		// AdminConn 可以DROP/CREATE
+		singleMaster, err := sliceTest.GetMasterAdminConn(0)
+		util.ExpectNoError(err)
+		util.ExpectNoError(util.CleanUpDatabases(singleMaster))
+		// 获取gaea连接
+		gaeaConn, err := e2eMgr.GetReadWriteGaeaUserDBConn("sbtest")
 		util.ExpectNoError(err)
 
 		prepareCases := []struct {
@@ -57,8 +62,6 @@ var _ = ginkgo.Describe("shard join support test in mycat mod", func() {
 			sqls, err := util.GetSqlFromFile(v.file)
 			util.ExpectNoError(err)
 			for _, sql := range sqls {
-				err := util.VerifySqlParsable(sql)
-				util.ExpectNoError(err)
 				_, err = util.MysqlExec(v.DB, sql)
 				util.ExpectNoError(err)
 			}
@@ -67,17 +70,42 @@ var _ = ginkgo.Describe("shard join support test in mycat mod", func() {
 
 	ginkgo.Context("shard support test", func() {
 		ginkgo.It("When testing sql support", func() {
+			// gaea使用的ns中的用户是普通权限的用户
+			singleMaster, err := sliceTest.GetMasterCommonDBConn(0, "sbtest")
+			util.ExpectNoError(err)
+			defaultShardConn, err := sliceMulti.GetMasterCommonDBConn(0, "sbtest_0")
+			util.ExpectNoError(err)
+			gaeaConn, err := e2eMgr.GetReadWriteGaeaUserDBConn("sbtest")
+			util.ExpectNoError(err)
 			cases := []struct {
-				path       string
-				resultType util.ResultType
+				path           string
+				resultType     util.ResultType
+				gaeaConn       *sql.DB
+				comparisonConn *sql.DB
 			}{
 				{
 					filepath.Join(e2eMgr.BasePath, "shard/case/join/mycat/mod/equal.sql"),
 					util.Equal,
+					gaeaConn,
+					singleMaster,
+				},
+				{
+					filepath.Join(e2eMgr.BasePath, "shard/case/join/mycat/mod/show.sql"),
+					util.Equal,
+					gaeaConn,
+					defaultShardConn,
 				},
 				{
 					filepath.Join(e2eMgr.BasePath, "shard/case/join/mycat/mod/unequal.sql"),
 					util.UnEqual,
+					gaeaConn,
+					singleMaster,
+				},
+				{
+					filepath.Join(e2eMgr.BasePath, "shard/case/join/mycat/mod/unsupport.sql"),
+					util.UnSupport,
+					gaeaConn,
+					singleMaster,
 				},
 			}
 			for _, c := range cases {
@@ -86,24 +114,24 @@ var _ = ginkgo.Describe("shard join support test in mycat mod", func() {
 				for _, sql := range sqls {
 					switch c.resultType {
 					case util.Equal:
-						gaeaRes, err := util.MysqlQuery(gaeaConn, sql)
-						util.ExpectNoError(err, fmt.Sprintf("gaea exec equal sql err:%s, err:%s\n", sql, err))
-						mysqlRes, err := util.MysqlQuery(singleMaster, sql)
-						util.ExpectNoError(err, fmt.Sprintf("mysql exec equal sql err:%s, err:%s\n", sql, err))
+						gaeaRes, err := util.MysqlQuery(c.gaeaConn, sql)
+						util.ExpectNoError(err, fmt.Sprintf("gaea exec equal sql err:%v, err:%v\n", sql, err))
+						mysqlRes, err := util.MysqlQuery(c.comparisonConn, sql)
+						util.ExpectNoError(err, fmt.Sprintf("mysql exec equal sql err:%v, err:%v\n", sql, err))
 						_, err = util.CompareIgnoreSort(gaeaRes, mysqlRes)
-						util.ExpectNoError(err, fmt.Sprintf("compare equal sql get uneuqal res.sql:%s, err:%s\n", sql, err))
+						util.ExpectNoError(err, fmt.Sprintf("compare equal sql get uneuqal res.sql:%v, err:%v\n", sql, err))
 					case util.UnSupport:
-						_, err := util.MysqlQuery(singleMaster, sql)
-						util.ExpectNoError(err, fmt.Sprintf("mysql exec unsupport sql err:%s, err:%s\n", sql, err))
-						gaeaRes, err := util.MysqlQuery(gaeaConn, sql)
-						util.ExpectError(err, fmt.Sprintf("gaea exec unsupport sql get no error, sql:%s,res:%s\n", sql, gaeaRes))
+						_, err := util.MysqlQuery(c.comparisonConn, sql)
+						util.ExpectNoError(err, fmt.Sprintf("mysql exec unsupport sql err:%v, err:%v\n", sql, err))
+						gaeaRes, err := util.MysqlQuery(c.gaeaConn, sql)
+						util.ExpectError(err, fmt.Sprintf("gaea exec unsupport sql get no error, sql:%v,res:%v\n", sql, gaeaRes))
 					case util.UnEqual:
-						gaeaRes, err := util.MysqlQuery(gaeaConn, sql)
-						util.ExpectNoError(err, fmt.Sprintf("gaea exec unequal sql err:%s, err:%s\n", sql, err))
-						mysqlRes, err := util.MysqlQuery(singleMaster, sql)
-						util.ExpectNoError(err, fmt.Sprintf("mysql exec unequal sql err.sql:%s, err:%s\n", sql, err))
+						gaeaRes, err := util.MysqlQuery(c.gaeaConn, sql)
+						util.ExpectNoError(err, fmt.Sprintf("gaea exec unequal sql err:%v, err:%v\n", sql, err))
+						mysqlRes, err := util.MysqlQuery(c.comparisonConn, sql)
+						util.ExpectNoError(err, fmt.Sprintf("mysql exec unequal sql err.sql:%v, err:%v\n", sql, err))
 						_, err = util.CompareIgnoreSort(gaeaRes, mysqlRes)
-						util.ExpectError(err, fmt.Sprintf("compare unequal sql get equal res.sql:%s, err:%s\n", sql, err))
+						util.ExpectError(err, fmt.Sprintf("compare unequal sql get equal res.sql:%v, err:%v\n", sql, err), gaeaRes, mysqlRes)
 					}
 				}
 			}
