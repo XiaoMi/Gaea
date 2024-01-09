@@ -14,10 +14,9 @@ import (
 )
 
 type NsSlice struct {
-	Name       string
-	Slices     []*models.Slice
-	SliceConns []*LocalSliceConn
-	GaeaUsers  []*models.User
+	Name      string
+	Slices    []*models.Slice
+	GaeaUsers []*models.User
 }
 
 func (ns *NsSlice) GetLocalSliceConn() (res map[string]*LocalSliceConn, err error) {
@@ -59,62 +58,37 @@ func (ns *NsSlice) GetMasterAdminConn(sliceIndex int) (*sql.DB, error) {
 	return InitConn(defaultMysqlAdminUser, defaultMysqlAdminPasswd, ns.Slices[sliceIndex].Master, "")
 }
 
-// TODO: fix error
-// TODO: refactor master user and password
-func (ns *NsSlice) GetMasterConn(sliceIndex int) (*sql.DB, error) {
-	return ns.GetMasterAdminConn(sliceIndex)
-	// TODO: remove this
-	var err error
-	if sliceIndex > len(ns.Slices) {
-		return nil, fmt.Errorf("sliceIndex more than")
-	}
-	if ns.SliceConns == nil {
-		ns.SliceConns = make([]*LocalSliceConn, len(ns.Slices))
-	}
-	if ns.SliceConns[sliceIndex].MasterConn != nil {
-		return ns.SliceConns[sliceIndex].MasterConn, nil
-	}
-	ns.SliceConns[sliceIndex].MasterConn, err = InitConn(ns.Slices[sliceIndex].UserName, ns.Slices[sliceIndex].Password, ns.Slices[sliceIndex].Master, "")
-	return ns.SliceConns[sliceIndex].MasterConn, err
+func (ns *NsSlice) GetMasterAdminDBConn(sliceIndex int, db string) (*sql.DB, error) {
+	return InitConn(defaultMysqlAdminUser, defaultMysqlAdminPasswd, ns.Slices[sliceIndex].Master, db)
+}
+
+func (ns *NsSlice) GetMasterCommonConn(sliceIndex int) (*sql.DB, error) {
+	return InitConn(defaultGaeaBackendUser, defaultGaeaBackendPass, ns.Slices[sliceIndex].Master, "")
+}
+
+func (ns *NsSlice) GetMasterCommonDBConn(sliceIndex int, db string) (*sql.DB, error) {
+	return InitConn(defaultGaeaBackendUser, defaultGaeaBackendPass, ns.Slices[sliceIndex].Master, db)
 }
 
 // TODO: fix error
-func (ns *NsSlice) GetSlaveConn(sliceIndex int, index int) (*sql.DB, error) {
+func (ns *NsSlice) GetSlaveAdminConn(sliceIndex int, index int) (*sql.DB, error) {
 	if sliceIndex > len(ns.Slices) {
 		return nil, fmt.Errorf("sliceIndex more than")
 	}
 	if index > len(ns.Slices[sliceIndex].Slaves) {
 		return nil, fmt.Errorf("slaveIndex more than")
 	}
-	if ns.SliceConns[sliceIndex].SlaveConns[index] != nil {
-		return ns.SliceConns[sliceIndex].SlaveConns[index], nil
-	}
-	ns.SliceConns[sliceIndex].SlaveConns[index], _ = InitConn(ns.Slices[sliceIndex].UserName, ns.Slices[sliceIndex].Password, ns.Slices[sliceIndex].Slaves[index], "")
-	return ns.SliceConns[sliceIndex].SlaveConns[index], nil
+	return InitConn(defaultMysqlAdminUser, defaultMysqlAdminPasswd, ns.Slices[sliceIndex].Master, "")
 }
 
-func ParseTemplate(filenames string, ns *NsSlice) (*models.Namespace, error) {
-	temp := filepath.Base(filenames)
-	tmpl, err := template.New(temp).Funcs(template.FuncMap{
-		"lastItem": func(index int, all int) bool {
-			return index == all-1
-		},
-	}).ParseFiles(filenames)
-	if err != nil {
-		return nil, err
+func (ns *NsSlice) GetSlaveCommonConn(sliceIndex int, index int) (*sql.DB, error) {
+	if sliceIndex > len(ns.Slices) {
+		return nil, fmt.Errorf("sliceIndex more than")
 	}
-	var buf bytes.Buffer
-	err = tmpl.Execute(&buf, ns)
-	if err != nil {
-		return nil, err
+	if index > len(ns.Slices[sliceIndex].Slaves) {
+		return nil, fmt.Errorf("slaveIndex more than")
 	}
-
-	var nameSpace = &models.Namespace{}
-	err = json.NewDecoder(&buf).Decode(&nameSpace)
-	if err != nil {
-		return nil, err
-	}
-	return nameSpace, nil
+	return InitConn(defaultGaeaBackendUser, defaultGaeaBackendPass, ns.Slices[sliceIndex].Master, "")
 }
 
 func ParseNamespaceTmpl(nsTmpl string, ns *NsSlice) (*models.Namespace, error) {
@@ -163,7 +137,7 @@ type GaeaCluster struct {
 	ReadWriteUser *models.User
 	ReadUser      *models.User
 	WriteUser     *models.User
-	LogPath       string
+	LogDirectory  string
 	readWriteConn *sql.DB
 	readConn      *sql.DB
 	writeConn     *sql.DB
@@ -179,16 +153,6 @@ func init() {
 	fmt.Printf("basePath: %s\n", basePath)
 }
 
-// TODO: deprecated
-func (e *E2eManager) AddNsFromFile(filenames string, nss *NsSlice) error {
-	fmt.Printf("filenames: %s\n", filenames)
-	ns, err := ParseTemplate(filenames, nss)
-	if err != nil {
-		return err
-	}
-	return e.NsManager.ModifyNamespace(ns)
-}
-
 func (e *E2eManager) Clean() {
 	// 删除所有的namespace
 	_ = e.NsManager.unRegisterNamespaces()
@@ -201,20 +165,6 @@ func (e *E2eManager) Clean() {
 		}
 		if e.GCluster.readConn != nil {
 			_ = e.GCluster.readConn.Close()
-		}
-	}
-
-	for _, v := range e.NsSlices {
-		for _, sliceConn := range v.SliceConns {
-			if sliceConn.MasterConn != nil {
-				_ = sliceConn.MasterConn.Close()
-			}
-
-			for _, slaveConn := range sliceConn.SlaveConns {
-				if slaveConn != nil {
-					_ = slaveConn.Close()
-				}
-			}
 		}
 	}
 }

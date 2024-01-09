@@ -3,17 +3,22 @@ package function
 import (
 	"database/sql"
 	"fmt"
+	"reflect"
+
 	"github.com/XiaoMi/Gaea/tests/e2e/config"
 	"github.com/XiaoMi/Gaea/tests/e2e/util"
-	"reflect"
 
 	"github.com/onsi/ginkgo/v2"
 )
 
+// This script, titled "Simple SQL Queries" is designed to verify basic SQL operations in a database system.
+// It sets up a test environment and then performs a series of SQL commands such as SELECT, DELETE, UPDATE, and INSERT.
+// The test checks if these operations yield the expected results, using a custom function checkFunc to validate the outcomes.
+// This approach ensures the database system accurately processes and reflects changes made by standard SQL queries, highlighting its capability to handle essential database operations reliably.
 var _ = ginkgo.Describe("Simple SQL Queries", func() {
 	e2eMgr := config.NewE2eManager()
 	db := config.DefaultE2eDatabase
-	slice := e2eMgr.NsSlices[config.SliceMasterSlaves]
+	slice := e2eMgr.NsSlices[config.SliceDualSlave]
 	table := config.DefaultE2eTable
 	ginkgo.BeforeEach(func() {
 		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
@@ -30,7 +35,7 @@ var _ = ginkgo.Describe("Simple SQL Queries", func() {
 		ginkgo.It("should handle SELECT operations correctly", func() {
 			gaeaConn, err := e2eMgr.GetWriteGaeaUserConn()
 			util.ExpectNoError(err)
-			mysqlConn, err := slice.GetMasterConn(0)
+			mysqlConn, err := slice.GetMasterAdminConn(0)
 			util.ExpectNoError(err)
 
 			// 定义 SQL 测试用例

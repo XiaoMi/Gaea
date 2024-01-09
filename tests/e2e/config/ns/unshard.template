@@ -1,7 +1,7 @@
 {
   "open_general_log": false,
   "is_encrypt": true,
-  "name": "test_namespace_1",
+  "name": "test_namespace_un_shard",
   "online": true,
   "read_only": false,
   "allowed_dbs": {
@@ -43,7 +43,7 @@
         {
             "user_name": "{{.UserName}}",
             "password": "{{.Password}}", 
-            "namespace": "test_namespace_1",
+            "namespace": "test_namespace_un_shard",
             "rw_flag": {{.RWFlag}},
             "rw_split": {{.RWSplit}},
             "other_property":{{.OtherProperty}}

@@ -4,13 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"io/ioutil"
-	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/XiaoMi/Gaea/parser"
 )
 
 // This function does not call rows.Close()
@@ -69,6 +66,10 @@ func GetDataFromRows(rows *sql.Rows) ([][]string, error) {
 	return converts, nil
 }
 
+// GetDataFromRow retrieves data from a single SQL row and returns it as a slice of strings.
+// It handles various SQL data types and converts them into a readable string format.
+// If the row contains SQL null values, they are converted to a readable format.
+// The function returns an error if the row scan fails.
 func GetDataFromRow(row *sql.Row, numCols int) ([]string, error) {
 	pr := func(t interface{}) (r string) {
 		r = "\\N"
@@ -119,6 +120,9 @@ func GetDataFromRow(row *sql.Row, numCols int) ([]string, error) {
 	return result, nil
 }
 
+// GetDataFromResult retrieves the number of rows affected by an SQL operation.
+// It is useful for understanding the impact of non-query SQL commands like INSERT, UPDATE, or DELETE.
+// The function returns the number of rows affected and an error if the operation fails.
 func GetDataFromResult(result sql.Result) (int64, error) {
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
@@ -127,6 +131,9 @@ func GetDataFromResult(result sql.Result) (int64, error) {
 	return rowsAffected, nil
 }
 
+// MysqlQuery executes a given SQL query on the provided database connection and returns the results.
+// The results are returned as a slice of string slices, where each inner slice represents a row.
+// The function handles no-row scenarios and returns an error for other query failures.
 func MysqlQuery(db *sql.DB, execSql string) ([][]string, error) {
 	rows, err := db.Query(execSql)
 	if err != nil {
@@ -145,6 +152,8 @@ func MysqlQuery(db *sql.DB, execSql string) ([][]string, error) {
 	return res, nil
 }
 
+// MysqlExec executes a given SQL command (like INSERT, UPDATE, DELETE) on the provided database connection.
+// It returns the number of rows affected by the command and an error if the command execution fails.
 func MysqlExec(db *sql.DB, execSql string) (int64, error) {
 	result, err := db.Exec(execSql)
 	if err != nil {
@@ -161,10 +170,26 @@ func MysqlExec(db *sql.DB, execSql string) (int64, error) {
 	return rowsAffected, nil
 }
 
+// IsSlice function takes an interface{} type argument i and returns a boolean
+// indicating whether i is of a slice type.
 func IsSlice(i interface{}) bool {
-	return reflect.TypeOf(i).Kind() == reflect.Slice
+	// Use reflect.TypeOf to get the reflection Type object of i.
+	// If i is nil, reflect.TypeOf(i) will return nil,
+	// so it's necessary to check for nil before calling the .Kind() method.
+	t := reflect.TypeOf(i)
+	if t == nil {
+		return false
+	}
+
+	// The .Kind() method returns the specific kind of the type.
+	// reflect.Slice is a constant representing the slice type.
+	// If the kind of i is a slice, return true; otherwise, return false.
+	return t.Kind() == reflect.Slice
 }
 
+// GetSqlFromFile reads SQL commands from a file and returns them as a slice of strings.
+// It ignores lines that are comments (starting with "//", "#", or "--").
+// The function returns an error if reading the file fails.
 func GetSqlFromFile(path string) ([]string, error) {
 	bys, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -182,32 +207,9 @@ func GetSqlFromFile(path string) ([]string, error) {
 	return res, nil
 }
 
-func VerifySqlParsable(sqlString string) error {
-	p := parser.New()
-	_, _, err := p.Parse(sqlString, "", "")
-	if err != nil {
-		return fmt.Errorf("sql parsing error: %v, SQL: %s", err, sqlString)
-	}
-	return nil
-}
-
-func OutPutResult(sql string, outPutFile string) error {
-	// 尝试打开或创建文件
-	file, err := os.OpenFile(outPutFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open or create file %s: %v", outPutFile, err)
-	}
-	defer file.Close()
-
-	// 将SQL语句写入文件
-	_, err = file.WriteString(sql + "\n")
-	if err != nil {
-		return fmt.Errorf("failed to write to file: %v", err)
-	}
-
-	return nil
-}
-
+// CompareIgnoreSort compares two slices of string slices (representing SQL query results) without considering the order of rows.
+// It is useful for comparing query results where the row order is not guaranteed.
+// The function returns true if the results are equivalent, and false with an error if they are not.
 func CompareIgnoreSort(gaeaRes [][]string, mysqlRes [][]string) (bool, error) {
 	if len(gaeaRes) != len(mysqlRes) {
 		return false, fmt.Errorf("sql.Result mismatched lengths for results. gaeaRes: %v, mysqlRes: %v", gaeaRes, mysqlRes)
@@ -234,7 +236,11 @@ func CompareIgnoreSort(gaeaRes [][]string, mysqlRes [][]string) (bool, error) {
 	return true, nil
 }
 
-// SetupDatabaseAndInsertData 创建数据库和表，然后插入数据
+// SetupDatabaseAndInsertData sets up a database and a table, and then inserts data into the table.
+// It first drops the database if it already exists, creates a new database, and then creates a table within that database.
+// After setting up the database and table, it inserts a predefined number of rows into the table.
+// The function takes a database connection, and the names of the database and table as parameters.
+// It returns an error if any of the database setup or data insertion commands fail.
 func SetupDatabaseAndInsertData(conn *sql.DB, db, table string) error {
 	commands := []string{
 		fmt.Sprintf("DROP DATABASE IF EXISTS %s", db),
@@ -259,6 +265,11 @@ func SetupDatabaseAndInsertData(conn *sql.DB, db, table string) error {
 	return nil
 }
 
+// CompareQueryRows executes a given query on two different database connections (db1 and db2)
+// and compares the results to check if they are identical. It compares both the structure (columns)
+// and the content (rows) of the query result sets.
+// The function returns nil if the results are identical, or an error if there are any differences
+// or issues encountered during the execution or comparison process.
 func CompareQueryRows(db1 *sql.DB, db2 *sql.DB, query string) error {
 	rows1, err := db1.Query(query)
 	if err != nil {
@@ -337,6 +348,9 @@ func CompareQueryRows(db1 *sql.DB, db2 *sql.DB, query string) error {
 	return nil
 }
 
+// GetSecondsBehindMaster retrieves the replication delay (in seconds) of a MySQL slave server from its master.
+// This function executes the 'SHOW SLAVE STATUS' SQL command and parses the output to find the 'Seconds_Behind_Master' value.
+// It returns the number of seconds the slave is behind the master, or an error if the query fails, the value is null, or the field is not found.
 func GetSecondsBehindMaster(db *sql.DB) (secondsBehindMaster int, err error) {
 	rows, err := db.Query(`SHOW SLAVE STATUS`)
 	if err != nil {
@@ -399,7 +413,9 @@ func GetSecondsBehindMaster(db *sql.DB) (secondsBehindMaster int, err error) {
 	return -1, fmt.Errorf("can not find Seconds Behind Master")
 }
 
-// sendReadRequest 发送读请求
+// GetRealServerID retrieves the server ID of the MySQL instance connected through the given database connection.
+// It executes a query to fetch the server ID and returns it.
+// If the query fails, it returns an error with a descriptive message.
 func GetRealSeverID(conn *sql.DB) (serverID int, err error) {
 	query := "SELECT @@server_id"
 	err = conn.QueryRow(query).Scan(&serverID)
@@ -410,6 +426,10 @@ func GetRealSeverID(conn *sql.DB) (serverID int, err error) {
 	return serverID, nil
 }
 
+// LockWithReadLock executes a 'FLUSH TABLES WITH READ LOCK' SQL command on the provided database connection.
+// This command is used to lock all tables for read operations, which is useful for creating consistent backups
+// or synchronizing replication slaves with the master.
+// It returns an error if the locking operation fails.
 func LockWithReadLock(db *sql.DB) error {
 	_, err := db.Exec("FLUSH TABLES WITH READ LOCK")
 	if err != nil {
@@ -418,10 +438,50 @@ func LockWithReadLock(db *sql.DB) error {
 	return nil
 }
 
+// UnLockReadLock releases any table locks held by the current session on the provided database connection.
+// This function is typically used to unlock the tables that were locked using the 'FLUSH TABLES WITH READ LOCK' command.
+// It returns an error if the unlocking operation fails.
 func UnLockReadLock(db *sql.DB) error {
 	_, err := db.Exec("UNLOCK TABLES")
 	if err != nil {
 		return fmt.Errorf("failed to unlock slave: %v", err)
+	}
+	return nil
+}
+
+// CleanUpDatabases removes all non-system databases from the MySQL server.
+// This function is intended to be used for cleaning up a database server by
+// dropping all user-created databases while preserving the essential system databases.
+// System databases like 'information_schema', 'mysql', 'performance_schema', and 'sys'
+// are not affected by this operation.
+func CleanUpDatabases(db *sql.DB) error {
+	// 获取非系统数据库列表
+	rows, err := db.Query("SHOW DATABASES WHERE `Database` NOT IN ('information_schema', 'mysql', 'performance_schema', 'sys')")
+	if err != nil {
+		return fmt.Errorf("error querying non-system databases: %w", err)
+	}
+	defer rows.Close()
+
+	var databases []string
+	for rows.Next() {
+		var database string
+		if err := rows.Scan(&database); err != nil {
+			return fmt.Errorf("error scanning database result: %w", err)
+		}
+		databases = append(databases, database)
+	}
+
+	// 检查是否在获取数据库列表时出错
+	if err = rows.Err(); err != nil {
+		return fmt.Errorf("error after iterating over rows: %w", err)
+	}
+
+	// 清理非系统数据库
+	for _, database := range databases {
+		_, err := db.Exec(fmt.Sprintf("DROP DATABASE `%s`", database))
+		if err != nil {
+			return fmt.Errorf("error dropping database %s: %w", database, err)
+		}
 	}
 	return nil
 }

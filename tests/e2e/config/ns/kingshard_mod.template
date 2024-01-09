@@ -1,12 +1,12 @@
 {
-    "name": "test_kingshard",
+    "name": "test_kingshard_mod",
     "online": true,
     "read_only": false,
     "allowed_dbs": {
-        "sbtest1": true
+        "sbtest": true
     },
     "default_phy_dbs": {
-        "sbtest1": "sbtest1"
+        "sbtest": "sbtest"
     },
     "slow_sql_time": "1000",
     "black_sql": [
@@ -40,7 +40,7 @@
     ],
     "shard_rules": [
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t",
             "type": "mod",
             "key": "id",
@@ -55,28 +55,28 @@
            
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t1",
             "type": "linked",
             "parent_table": "t",
             "key": "id"
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t2",
             "type": "linked",
             "parent_table": "t",
             "key": "id"
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t3",
             "type": "linked",
             "parent_table": "t",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test1",
             "type": "mod",
             "key": "id",
@@ -91,63 +91,63 @@
           
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test2",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test3",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test4",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test5",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test6",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test7",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test8",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test9",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t4",
             "type": "mod",
             "key": "id",
@@ -163,14 +163,14 @@
 
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t5",
             "type": "linked",
             "parent_table": "t4",
             "key": "id"
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t6",
             "type": "linked",
             "parent_table": "t4",
@@ -182,14 +182,14 @@
         {
             "user_name": "{{.UserName}}",
             "password": "{{.Password}}", 
-            "namespace": "test_kingshard",
+            "namespace": "test_kingshard_mod",
             "rw_flag": {{.RWFlag}},
             "rw_split": {{.RWSplit}},
             "other_property":{{.OtherProperty}}
         }{{ if not (lastItem $index (len $.GaeaUsers) ) }}, {{ end }}
         {{- end}}
    ],
-    "default_slice": "slice-1",
+    "default_slice": "slice-0",
     "global_sequences": null,
     "default_charset": "",
     "default_collation": "",

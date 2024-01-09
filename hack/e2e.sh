@@ -62,5 +62,16 @@ EOF
 
 
 
-
+# Cluster-3: 3349(master)
+cp ./tests/docker/my3349.cnf /data/etc/my3349.cnf
+mysqld --defaults-file=/data/etc/my3349.cnf --user=work --initialize-insecure
+mysqld --defaults-file=/data/etc/my3349.cnf --user=work &
+sleep 3
+mysql -h127.0.0.1 -P3349 -uroot -S/data/tmp/mysql3349.sock <<EOF
+reset master;
+GRANT REPLICATION SLAVE, REPLICATION CLIENT on *.* to 'mysqlsync'@'%' IDENTIFIED BY 'mysqlsync';
+GRANT ALL ON *.* TO 'superroot'@'%' IDENTIFIED BY 'superroot' WITH GRANT OPTION;
+GRANT SELECT, INSERT, UPDATE, DELETE ON *.* TO 'gaea_backend_user'@'%' IDENTIFIED BY 'gaea_backend_pass';
+GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'gaea_backend_user'@'%' IDENTIFIED BY 'gaea_backend_pass';
+EOF
 

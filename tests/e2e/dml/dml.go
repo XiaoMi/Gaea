@@ -1,23 +1,25 @@
 package dml
 
 import (
+	"path/filepath"
+
 	config "github.com/XiaoMi/Gaea/tests/e2e/config"
 	"github.com/XiaoMi/Gaea/tests/e2e/util"
 	"github.com/onsi/ginkgo/v2"
-	"path/filepath"
 )
 
 var _ = ginkgo.Describe("sql_support_test", func() {
 	planManagers := []*config.PlanManager{}
-	nsTemplateFile := "dml/ns/simple.template"
 	e2eMgr := config.NewE2eManager()
-	slice := e2eMgr.NsSlices[config.SliceMaster]
-
+	slice := e2eMgr.NsSlices[config.SliceSingleSlave]
 	gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
 	util.ExpectNoError(err)
 
 	ginkgo.BeforeEach(func() {
-		err := e2eMgr.AddNsFromFile(filepath.Join(e2eMgr.BasePath, nsTemplateFile), e2eMgr.NsSlices[config.SliceMaster])
+		// 注册
+		ns, err := config.ParseNamespaceTmpl(config.UnShardDMLNamespaceTmpl, slice)
+		util.ExpectNoError(err)
+		err = e2eMgr.ModifyNamespace(ns)
 		util.ExpectNoError(err)
 
 		casesPath, err := config.GetJSONFilesFromDir(filepath.Join(e2eMgr.BasePath, "dml/case"))

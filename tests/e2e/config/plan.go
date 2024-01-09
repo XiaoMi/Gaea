@@ -6,8 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/XiaoMi/Gaea/tests/e2e/util"
 	"time"
+
+	"github.com/XiaoMi/Gaea/tests/e2e/util"
 
 	"os"
 	"reflect"
@@ -137,7 +138,7 @@ func Query(db *sql.DB, sqlStr string, expect interface{}) (bool, error) {
 			if err == sql.ErrNoRows && len(v) == 0 {
 				return true, nil
 			}
-			return false, fmt.Errorf("Db Exec Error %v", err)
+			return false, fmt.Errorf("db Exec Error %v", err)
 		}
 		defer rows.Close()
 		res, err := util.GetDataFromRows(rows)

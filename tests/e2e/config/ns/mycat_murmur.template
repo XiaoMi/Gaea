@@ -1,12 +1,12 @@
 {
-    "name": "test_kingshard",
+    "name": "test_mycat_murmur",
     "online": true,
     "read_only": false,
     "allowed_dbs": {
-        "sbtest1": true
+        "sbtest": true
     },
     "default_phy_dbs": {
-        "sbtest1": "sbtest1"
+        "sbtest": "sbtest_0"
     },
     "slow_sql_time": "1000",
     "black_sql": [
@@ -39,10 +39,11 @@
         {{- end}}
     ],
     "shard_rules": [
+       
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t",
-            "type": "hash",
+            "type": "mycat_murmur",
             "key": "id",
             "locations": [
                 2,
@@ -51,34 +52,39 @@
             "slices": [
                 "slice-0",
                 "slice-1"
-            ]
-           
+            ],
+            "databases": [
+                "sbtest_[0-3]"
+            ],
+            "seed": "0",
+            "virtual_bucket_times": "160"
+
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t1",
             "type": "linked",
             "parent_table": "t",
             "key": "id"
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t2",
             "type": "linked",
             "parent_table": "t",
             "key": "id"
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t3",
             "type": "linked",
             "parent_table": "t",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test1",
-            "type": "hash",
+            "type": "mycat_murmur",
             "key": "id",
             "locations": [
                 2,
@@ -87,69 +93,73 @@
             "slices": [
                 "slice-0",
                 "slice-1"
-            ]
-          
+            ],
+            "databases": [
+                "sbtest_[0-3]"
+            ],
+            "seed": "0",
+            "virtual_bucket_times": "160"
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test2",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test3",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test4",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test5",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test6",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test7",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test8",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "test9",
             "type": "linked",
             "parent_table": "test1",
             "key": "id"
         },
         {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t4",
-            "type": "hash",
+            "type": "mycat_murmur",
             "key": "id",
             "locations": [
                 2,
@@ -158,19 +168,23 @@
             "slices": [
                 "slice-0",
                 "slice-1"
-            ]
-          
+            ],
+            "databases": [
+                "sbtest_[0-3]"
+            ],
+            "seed": "0",
+            "virtual_bucket_times": "160"
 
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t5",
             "type": "linked",
             "parent_table": "t4",
             "key": "id"
         },
          {
-            "db": "sbtest1",
+            "db": "sbtest",
             "table": "t6",
             "type": "linked",
             "parent_table": "t4",
@@ -178,18 +192,18 @@
         }
     ],
     "users": [
-     {{- range $index, $user := .GaeaUsers }}
+        {{- range $index, $user := .GaeaUsers }}
         {
             "user_name": "{{.UserName}}",
             "password": "{{.Password}}", 
-            "namespace": "test_kingshard",
+            "namespace": "test_mycat_murmur",
             "rw_flag": {{.RWFlag}},
             "rw_split": {{.RWSplit}},
             "other_property":{{.OtherProperty}}
         }{{ if not (lastItem $index (len $.GaeaUsers) ) }}, {{ end }}
         {{- end}}
   ],
-    "default_slice": "slice-1",
+    "default_slice": "slice-0",
     "global_sequences": null,
     "default_charset": "",
     "default_collation": "",
