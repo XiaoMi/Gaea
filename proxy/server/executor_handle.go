@@ -166,7 +166,6 @@ func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*my
 	reqCtx.Set(util.DefaultSlice, se.GetNamespace().GetDefaultSlice())
 	r, err := p.ExecuteIn(reqCtx, se)
 	if err != nil {
-		log.Warn("execute select: %s", err.Error())
 		return nil, err
 	}
 
