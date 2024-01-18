@@ -22,7 +22,7 @@ type LogEntry struct {
 }
 
 // CompareTimeStrings 比较两个时间字符串的大小
-// 返回值为-1，0或1。-1表示time1 < time2，0表示time1 = time2，1表示time1 > time2
+// 返回值为-1，0或1。-1表示time Before time2，0表示time1 = time2，1表示time1 After time2
 func CompareTimeStrings(currentTime string, time2 string) (int, error) {
 	// 解析时间字符串
 	t1, err1 := time.Parse("2006-01-02 15:04:05.999", currentTime)

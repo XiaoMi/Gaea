@@ -398,6 +398,7 @@ func (g *GaeaCCManager) deleteNamespace(key string) error {
 // It uses regular expressions to parse and match log entries based on the input parameters.
 // If a matching entry is found, it's added to the result slice. The function handles errors such as file access issues and returns an error if any problems occur during the file reading and parsing process.
 func (e *E2eManager) SearchSqlLog(searchString string, currentTime time.Time) ([]util.LogEntry, error) {
+	searchString = strings.TrimSuffix(searchString, ";")
 	var allEntries []util.LogEntry
 
 	err := filepath.Walk(e.GCluster.LogDirectory, func(path string, info os.FileInfo, err error) error {
