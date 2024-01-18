@@ -78,7 +78,8 @@ func (ns *NsSlice) GetSlaveAdminConn(sliceIndex int, index int) (*sql.DB, error)
 	if index > len(ns.Slices[sliceIndex].Slaves) {
 		return nil, fmt.Errorf("slaveIndex more than")
 	}
-	return InitConn(defaultMysqlAdminUser, defaultMysqlAdminPasswd, ns.Slices[sliceIndex].Master, "")
+
+	return InitConn(defaultMysqlAdminUser, defaultMysqlAdminPasswd, ns.Slices[sliceIndex].Slaves[index], "")
 }
 
 func (ns *NsSlice) GetSlaveCommonConn(sliceIndex int, index int) (*sql.DB, error) {
@@ -88,7 +89,7 @@ func (ns *NsSlice) GetSlaveCommonConn(sliceIndex int, index int) (*sql.DB, error
 	if index > len(ns.Slices[sliceIndex].Slaves) {
 		return nil, fmt.Errorf("slaveIndex more than")
 	}
-	return InitConn(defaultGaeaBackendUser, defaultGaeaBackendPass, ns.Slices[sliceIndex].Master, "")
+	return InitConn(defaultGaeaBackendUser, defaultGaeaBackendPass, ns.Slices[sliceIndex].Slaves[index], "")
 }
 
 func ParseNamespaceTmpl(nsTmpl string, ns *NsSlice) (*models.Namespace, error) {
