@@ -14,28 +14,32 @@ import (
 // The actual test, within the It block, attempts to create more connections (20) than the maximum allowed, and then checks if connections exceeding the limit are correctly rejected.
 // The script counts the number of errors (expected to be equal to the number of connections exceeding the limit) and successful connections (expected to be equal to the limit).
 // The AfterEach block cleans up the environment after the test.
-var _ = ginkgo.Describe("test client connection limit", func() {
+var _ = ginkgo.Describe("Test client connection limit", func() {
 	e2eMgr := config.NewE2eManager()
 	db := config.DefaultE2eDatabase
 	slice := e2eMgr.NsSlices[config.SliceSingleMaster]
 	table := config.DefaultE2eTable
 	maxConnections := 10
 	ginkgo.BeforeEach(func() {
-		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
-		util.ExpectNoError(err, "parse namespace template")
-		initNs.MaxClientConnections = maxConnections
-		e2eMgr.NsManager.DeleteNamespace(initNs)
-		initNs.Name = "test_client_limit"
-		for i := 0; i < len(initNs.Users); i++ {
-			initNs.Users[i].Namespace = initNs.Name
-		}
-
-		err = e2eMgr.NsManager.ModifyNamespace(initNs)
-		util.ExpectNoError(err, "create namespace")
+		// mysql prepare
 		masterAdminConn, err := slice.GetMasterAdminConn(0)
 		util.ExpectNoError(err, "get master admin conn")
 		err = util.SetupDatabaseAndInsertData(masterAdminConn, db, table)
 		util.ExpectNoError(err, "setup database and insert data")
+		// namespace prepare
+		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
+		util.ExpectNoError(err, "parse namespace template")
+		initNs.MaxClientConnections = maxConnections
+		e2eMgr.DeleteNamespace(initNs)
+		initNs.Name = "test_client_limit"
+		for i := 0; i < len(initNs.Users); i++ {
+			initNs.Users[i].Namespace = initNs.Name
+		}
+		err = e2eMgr.ModifyNamespace(initNs)
+		util.ExpectNoError(err, "create namespace")
+		// wait mysql data  sync and namespace load
+		time.Sleep(3 * time.Millisecond)
+
 	})
 	ginkgo.Context("When handling client limit operations", func() {
 		ginkgo.It("should limit exceeded maximum connection ", func() {

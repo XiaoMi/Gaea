@@ -278,6 +278,10 @@ func (e *E2eManager) ModifyNamespace(m *models.Namespace) error {
 	return e.NsManager.ModifyNamespace(m)
 }
 
+func (e *E2eManager) DeleteNamespace(m *models.Namespace) error {
+	return e.NsManager.DeleteNamespace(m)
+}
+
 type NamespaceRegisterManager struct {
 	Namespaces    map[string]*models.Namespace
 	GaeaCCManager *GaeaCCManager

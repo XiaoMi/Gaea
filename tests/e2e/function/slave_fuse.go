@@ -25,10 +25,14 @@ var _ = ginkgo.Describe("Test slave fuse", func() {
 	util.ExpectNoError(err, "get master admin conn")
 
 	ginkgo.BeforeEach(func() {
-		err = e2eMgr.NsManager.ModifyNamespace(initNs)
-		util.ExpectNoError(err, "create namespace")
+		// mysql prepare
 		err = util.SetupDatabaseAndInsertData(masterAdminConn, db, table)
 		util.ExpectNoError(err, "setup database and insert data")
+		// namespace prepare
+		err = e2eMgr.ModifyNamespace(initNs)
+		util.ExpectNoError(err, "create namespace")
+		// wait mysql data  sync and namespace load
+		time.Sleep(3 * time.Second)
 	})
 
 	ginkgo.It("slave will not fuse when no privilege to show slave status", func() {
@@ -44,7 +48,7 @@ var _ = ginkgo.Describe("Test slave fuse", func() {
 		// set slave to one slave for checking log
 		ns.Slices[0].Slaves = []string{slice.Slices[0].Slaves[0]}
 		ns.SecondsBehindMaster = 10
-		err = e2eMgr.NsManager.ModifyNamespace(ns)
+		err = e2eMgr.ModifyNamespace(ns)
 		util.ExpectNoError(err, "modify namespace")
 
 		// step3: continue query and check the query distribution.
@@ -76,7 +80,7 @@ var _ = ginkgo.Describe("Test slave fuse", func() {
 		ns.Slices[0].Master = slice.Slices[0].Slaves[0]
 		ns.Slices[0].Slaves = []string{slice.Slices[0].Master}
 		ns.SecondsBehindMaster = 10
-		err = e2eMgr.NsManager.ModifyNamespace(ns)
+		err = e2eMgr.ModifyNamespace(ns)
 		util.ExpectNoError(err, "modify namespace")
 
 		// step3: continue query and check the query distribution.

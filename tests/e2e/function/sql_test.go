@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/XiaoMi/Gaea/tests/e2e/config"
 	"github.com/XiaoMi/Gaea/tests/e2e/util"
@@ -21,14 +22,18 @@ var _ = ginkgo.Describe("Simple SQL Queries", func() {
 	slice := e2eMgr.NsSlices[config.SliceDualSlave]
 	table := config.DefaultE2eTable
 	ginkgo.BeforeEach(func() {
-		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
-		util.ExpectNoError(err, "parse namespace template")
-		err = e2eMgr.NsManager.ModifyNamespace(initNs)
-		util.ExpectNoError(err)
+		// mysql prepare
 		masterAdminConn, err := slice.GetMasterAdminConn(0)
 		util.ExpectNoError(err)
 		err = util.SetupDatabaseAndInsertData(masterAdminConn, db, table)
 		util.ExpectNoError(err)
+		// namespace prepare
+		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
+		util.ExpectNoError(err, "parse namespace template")
+		err = e2eMgr.ModifyNamespace(initNs)
+		util.ExpectNoError(err)
+		// wait mysql data  sync and namespace load
+		time.Sleep(500 * time.Millisecond)
 	})
 
 	ginkgo.Context("When executing basic SQL operations", func() {
