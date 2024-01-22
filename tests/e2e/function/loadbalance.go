@@ -24,14 +24,18 @@ var _ = ginkgo.Describe("Load Balancing", func() {
 	table := config.DefaultE2eTable
 	currentTime := time.Now()
 	ginkgo.BeforeEach(func() {
-		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
-		util.ExpectNoError(err, "parse namespace template")
-		err = e2eMgr.NsManager.ModifyNamespace(initNs)
-		util.ExpectNoError(err)
+		// mysql prepare
 		masterAdminConn, err := slice.GetMasterAdminConn(0)
 		util.ExpectNoError(err)
 		err = util.SetupDatabaseAndInsertData(masterAdminConn, db, table)
 		util.ExpectNoError(err)
+		// namespace prepare
+		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
+		util.ExpectNoError(err, "parse namespace template")
+		err = e2eMgr.ModifyNamespace(initNs)
+		util.ExpectNoError(err)
+		// wait mysql data  sync and namespace load
+		time.Sleep(3 * time.Millisecond)
 	})
 
 	ginkgo.Context("When distributing queries among replicas", func() {

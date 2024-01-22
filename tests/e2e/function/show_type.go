@@ -22,16 +22,18 @@ var _ = ginkgo.Describe("Show Sql Type", func() {
 	slice := e2eMgr.NsSlices[config.SliceDualSlave]
 	currentTime := time.Now()
 	ginkgo.BeforeEach(func() {
-		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
-		util.ExpectNoError(err, "parse namespace template")
-		err = e2eMgr.NsManager.ModifyNamespace(initNs)
-		util.ExpectNoError(err)
-
+		// mysql prepare
 		masterAdminConn, err := slice.GetMasterAdminConn(0)
 		util.ExpectNoError(err)
-
 		_, err = masterAdminConn.Exec(fmt.Sprintf(`CREATE DATABASE IF NOT EXISTS %s`, db))
 		util.ExpectNoError(err)
+		// namespace prepare
+		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
+		util.ExpectNoError(err, "parse namespace template")
+		err = e2eMgr.ModifyNamespace(initNs)
+		util.ExpectNoError(err)
+		// wait mysql data  sync and namespace load
+		time.Sleep(3 * time.Millisecond)
 	})
 
 	ginkgo.Context("show variables like", func() {

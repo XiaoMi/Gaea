@@ -347,6 +347,8 @@ func (m *PlanManager) Run() error {
 				return fmt.Errorf("master init action failed '%s',err:%v", initCase.Description, err)
 			}
 		}
+		// increase time to wait mysql  effect
+		time.Sleep(100 * time.Millisecond)
 		// Run Gaea actions
 		if err := execCase.GaeaRun(m.GaeaDB); err != nil {
 			return fmt.Errorf("gaea action failed for test '%s': %v", execCase.Description, err)

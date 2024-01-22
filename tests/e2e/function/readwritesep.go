@@ -23,14 +23,18 @@ var _ = ginkgo.Describe("Read-Write Splitting", func() {
 	slice := e2eMgr.NsSlices[config.SliceDualSlave]
 	table := config.DefaultE2eTable
 	ginkgo.BeforeEach(func() {
-		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
-		util.ExpectNoError(err, "parse namespace template")
-		err = e2eMgr.NsManager.ModifyNamespace(initNs)
-		util.ExpectNoError(err)
+		// mysql prepare
 		masterAdminConn, err := slice.GetMasterAdminConn(0)
 		util.ExpectNoError(err)
 		err = util.SetupDatabaseAndInsertData(masterAdminConn, db, table)
 		util.ExpectNoError(err)
+		// namespace prepare
+		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
+		util.ExpectNoError(err, "parse namespace template")
+		err = e2eMgr.ModifyNamespace(initNs)
+		util.ExpectNoError(err)
+		// wait mysql data  sync and namespace load
+		time.Sleep(3 * time.Millisecond)
 	})
 
 	ginkgo.Context("When handling read and write operations", func() {
@@ -144,20 +148,20 @@ var _ = ginkgo.Describe("Read-Write Splitting", func() {
 					IsSuccess: false,
 				},
 			}
-			for _, sqlCase := range sqlCases {
+			for index, sqlCase := range sqlCases {
 				currentTime := time.Now()
 				_, err := sqlCase.GaeaConn.Exec(sqlCase.GaeaSQL)
 				if !sqlCase.IsSuccess {
-					util.ExpectError(err)
+					util.ExpectError(err, fmt.Sprintf("sql Case %d", index))
 					continue
 				} else {
-					util.ExpectNoError(err)
+					util.ExpectNoError(err, fmt.Sprintf("sql Case %d", index))
 				}
 
 				var res []util.LogEntry
 				retryCount := 3 // 设置重试次数
 				for i := 0; i < retryCount; i++ {
-					time.Sleep(1 * time.Millisecond) // 等待一段时间再重试
+					time.Sleep(100 * time.Millisecond) // 等待一段时间再重试
 					res, err = e2eMgr.SearchSqlLog(sqlCase.GaeaSQL, currentTime)
 					if err == nil && len(res) == 1 {
 						break
