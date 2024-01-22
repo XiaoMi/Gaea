@@ -1,4 +1,4 @@
-package dml
+package unshard
 
 import (
 	"path/filepath"
@@ -22,7 +22,7 @@ var _ = ginkgo.Describe("sql_support_test", func() {
 		err = e2eMgr.ModifyNamespace(ns)
 		util.ExpectNoError(err)
 
-		casesPath, err := config.GetJSONFilesFromDir(filepath.Join(e2eMgr.BasePath, "dml/case"))
+		casesPath, err := config.GetJSONFilesFromDir(filepath.Join(e2eMgr.BasePath, "unshard/case/dml"))
 		util.ExpectNoError(err)
 
 		conns, err := slice.GetLocalSliceConn()

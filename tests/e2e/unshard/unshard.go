@@ -20,17 +20,17 @@ var _ = ginkgo.Describe("Unshard DML Support Test", func() {
 		CleanSqlFiles   []string
 	}{
 		PrepareSqlFiles: []string{
-			filepath.Join(e2eMgr.BasePath, "unshard/case/0-prepare.sql"),
+			filepath.Join(e2eMgr.BasePath, "unshard/case/join/0-prepare.sql"),
 		},
 		TestSqlFiles: []string{
-			filepath.Join(e2eMgr.BasePath, "unshard/case/test_join_unsharding.sql"),
-			filepath.Join(e2eMgr.BasePath, "unshard/case/test_join.sql"),
-			filepath.Join(e2eMgr.BasePath, "unshard/case/test_select_global_old.sql"),
-			filepath.Join(e2eMgr.BasePath, "unshard/case/test_simple.sql"),
-			filepath.Join(e2eMgr.BasePath, "unshard/case/test_subquery_global.sql"),
+			filepath.Join(e2eMgr.BasePath, "unshard/case/join/test_join_unsharding.sql"),
+			filepath.Join(e2eMgr.BasePath, "unshard/case/join/test_join.sql"),
+			filepath.Join(e2eMgr.BasePath, "unshard/case/join/test_select_global_old.sql"),
+			filepath.Join(e2eMgr.BasePath, "unshard/case/join/test_simple.sql"),
+			filepath.Join(e2eMgr.BasePath, "unshard/case/join/test_subquery_global.sql"),
 		},
 		CleanSqlFiles: []string{
-			filepath.Join(e2eMgr.BasePath, "unshard/case/1-clean.sql"),
+			filepath.Join(e2eMgr.BasePath, "unshard/case/join/1-clean.sql"),
 		},
 	}
 	ginkgo.BeforeEach(func() {

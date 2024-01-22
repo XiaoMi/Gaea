@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/XiaoMi/Gaea/tests/e2e/dml"
 	_ "github.com/XiaoMi/Gaea/tests/e2e/function"
 	"github.com/XiaoMi/Gaea/tests/e2e/util"
 
