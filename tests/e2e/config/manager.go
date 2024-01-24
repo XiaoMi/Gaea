@@ -128,6 +128,7 @@ func NewE2eManager() *E2eManager {
 				Slaves:          nil,
 				StatisticSlaves: nil,
 				Capacity:        12,
+				HealthCheckSql:  "",
 				MaxCapacity:     24,
 				IdleTimeout:     60,
 			},
@@ -146,6 +147,7 @@ func NewE2eManager() *E2eManager {
 				Slaves:          nil,
 				StatisticSlaves: nil,
 				Capacity:        12,
+				HealthCheckSql:  "",
 				MaxCapacity:     24,
 				IdleTimeout:     60,
 			},
@@ -164,6 +166,7 @@ func NewE2eManager() *E2eManager {
 				Slaves:          []string{fmt.Sprintf("%s:%d", defaultHost, 3329), fmt.Sprintf("%s:%d", defaultHost, 3339)},
 				StatisticSlaves: nil,
 				Capacity:        12,
+				HealthCheckSql:  "",
 				MaxCapacity:     24,
 				IdleTimeout:     60,
 			},
@@ -183,6 +186,7 @@ func NewE2eManager() *E2eManager {
 				Slaves:          []string{fmt.Sprintf("%s:%d", defaultHost, 3329)},
 				StatisticSlaves: nil,
 				Capacity:        12,
+				HealthCheckSql:  "",
 				MaxCapacity:     24,
 				IdleTimeout:     60,
 			},
@@ -201,6 +205,7 @@ func NewE2eManager() *E2eManager {
 				Slaves:          nil,
 				StatisticSlaves: nil,
 				Capacity:        12,
+				HealthCheckSql:  "",
 				MaxCapacity:     24,
 				IdleTimeout:     60,
 			},
@@ -212,6 +217,7 @@ func NewE2eManager() *E2eManager {
 				Slaves:          nil,
 				StatisticSlaves: nil,
 				Capacity:        12,
+				HealthCheckSql:  "",
 				MaxCapacity:     24,
 				IdleTimeout:     60,
 			},
@@ -275,7 +281,10 @@ func (e *E2eManager) GetWriteGaeaUserDBConn(db string) (*sql.DB, error) {
 }
 
 func (e *E2eManager) ModifyNamespace(m *models.Namespace) error {
-	return e.NsManager.ModifyNamespace(m)
+	if e.NsManager == nil {
+		return fmt.Errorf("namespace manager has not been initialized")
+	}
+	return e.NsManager.modifyNamespace(m)
 }
 
 func (e *E2eManager) DeleteNamespace(m *models.Namespace) error {
@@ -298,15 +307,12 @@ func NewNamespaceRegisterManger() *NamespaceRegisterManager {
 	}
 }
 
-func (nr *NamespaceRegisterManager) ModifyNamespace(m *models.Namespace) error {
+func (nr *NamespaceRegisterManager) modifyNamespace(m *models.Namespace) error {
 	// 存在就替换
 	err := m.Verify()
 	if err != nil {
 		return err
 	}
-	//if _, ok := nr.Namespaces[m.Type]; ok {
-	//	return fmt.Errorf("namespace has exists")
-	//}
 	nr.Namespaces[m.Name] = m
 	err = nr.GaeaCCManager.modifyNamespace(m)
 	if err != nil {
@@ -398,6 +404,7 @@ func (g *GaeaCCManager) deleteNamespace(key string) error {
 
 // SearchSqlLog function in the provided code is designed to search through SQL log files for specific entries.
 // It takes a search string and a timestamp, and returns a slice of log entries that match the criteria.
+// The incoming searchString will be unblocked.
 // The function reads log files within a specified directory, looking for files named with the prefix "gaea_sql.log".
 // It uses regular expressions to parse and match log entries based on the input parameters.
 // If a matching entry is found, it's added to the result slice. The function handles errors such as file access issues and returns an error if any problems occur during the file reading and parsing process.

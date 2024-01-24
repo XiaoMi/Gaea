@@ -548,7 +548,7 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	s.Cfg = *cfg
 	s.ProxyDatacenter = dc
 	s.SetCharsetInfo(charset, collationID)
-
+	s.HealthCheckSql = cfg.HealthCheckSql
 	// parse master
 	err = s.ParseMaster(cfg.Master)
 	if err != nil {

@@ -83,10 +83,23 @@ func (m *MockPooledConnect) Execute(arg0 string, arg1 int) (*mysql.Result, error
 	return ret0, ret1
 }
 
+func (m *MockPooledConnect) ExecuteWithTimeout(arg0 string, arg1 int,time time.Duration) (*mysql.Result, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecuteWithTimeout", arg0, arg1)
+	ret0, _ := ret[0].(*mysql.Result)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
 // Execute indicates an expected call of Execute
 func (mr *MockPooledConnectMockRecorder) Execute(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockPooledConnect)(nil).Execute), arg0, arg1)
+}
+
+func (mr *MockPooledConnectMockRecorder) ExecuteWithTimeout(arg0, arg1 interface{},arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteWithTimeout", reflect.TypeOf((*MockPooledConnect)(nil).recorder.ExecuteWithTimeout), arg0, arg1,arg2)
 }
 
 // FieldList mocks base method

@@ -89,6 +89,10 @@ func (pc *pooledConnectImpl) Execute(sql string, maxRows int) (*mysql.Result, er
 	return pc.directConnection.Execute(sql, maxRows)
 }
 
+func (pc *pooledConnectImpl) ExecuteWithTimeout(sql string, maxRows int, timeout time.Duration) (*mysql.Result, error) {
+	return pc.directConnection.ExecuteWithTimeout(sql, maxRows, timeout)
+}
+
 // SetAutoCommit wrapper of direct connection, set autocommit
 func (pc *pooledConnectImpl) SetAutoCommit(v uint8) error {
 	return pc.directConnection.SetAutoCommit(v)

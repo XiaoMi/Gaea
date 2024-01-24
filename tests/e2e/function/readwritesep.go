@@ -161,7 +161,7 @@ var _ = ginkgo.Describe("Read-Write Splitting", func() {
 				var res []util.LogEntry
 				retryCount := 3 // 设置重试次数
 				for i := 0; i < retryCount; i++ {
-					time.Sleep(100 * time.Millisecond) // 等待一段时间再重试
+					time.Sleep(500 * time.Millisecond) // 等待一段时间再重试
 					res, err = e2eMgr.SearchSqlLog(sqlCase.GaeaSQL, currentTime)
 					if err == nil && len(res) == 1 {
 						break

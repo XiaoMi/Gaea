@@ -31,15 +31,16 @@ package backend
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
 type StatusCode uint32
@@ -100,6 +101,7 @@ type Slice struct {
 	ProxyDatacenter string
 	charset         string
 	collationID     mysql.CollationID
+	HealthCheckSql  string
 }
 
 // GetSliceName return name of slice
@@ -181,8 +183,7 @@ func (s *Slice) checkBackendMasterStatus(ctx context.Context, name string, downA
 			}
 			cp := s.Master.ConnPool[0]
 			log.Debug("[ns:%s, %s:%s] start check master", name, s.Cfg.Name, cp.Addr())
-
-			_, err := checkInstanceStatus(name, cp)
+			_, err := checkInstanceStatus(name, cp, s.HealthCheckSql)
 
 			if time.Now().Unix()-cp.GetLastChecked() >= int64(downAfterNoAlive) {
 				s.SetMasterStatus(StatusDown)
@@ -225,9 +226,7 @@ func (s *Slice) checkBackendSlaveStatus(ctx context.Context, db *DBInfo, name st
 					log.Warn("[ns:%s, %s:%s] get slave status error:%s", name, s.Cfg.Name, cp.Addr(), err)
 					continue
 				}
-
-				pc, err := checkInstanceStatus(name, cp)
-
+				pc, err := checkInstanceStatus(name, cp, s.HealthCheckSql)
 				// check slave status
 				if time.Now().Unix()-cp.GetLastChecked() >= int64(downAfterNoAlive) {
 					db.SetStatus(idx, StatusDown)
@@ -268,7 +267,7 @@ func (s *Slice) checkBackendSlaveStatus(ctx context.Context, db *DBInfo, name st
 	}
 }
 
-func checkInstanceStatus(name string, cp ConnectionPool) (PooledConnect, error) {
+func checkInstanceStatus(name string, cp ConnectionPool, healthCheckSql string) (PooledConnect, error) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Fatal("[ns:%s, %s] check instance status panic:%s", name, cp.Addr(), err)
@@ -287,6 +286,18 @@ func checkInstanceStatus(name string, cp ConnectionPool) (PooledConnect, error) 
 		return nil, fmt.Errorf("get nil check conn, ins:%s", cp.Addr())
 	}
 
+	if len(healthCheckSql) > 0 {
+		_, err := pc.ExecuteWithTimeout(healthCheckSql, 0, ExecTimeOut)
+		if err == nil {
+			cp.SetLastChecked()
+			return pc, nil
+		}
+		log.Warn("[ns:%s instance:%s] exec health check sql:%s sqlError:%v", name, cp.Addr(), healthCheckSql, err)
+		if mysql.IsServerShutdownErr(err) || mysql.IsTableSpaceMissingErr(err) || mysql.IsTableSpaceDiscardeErr(err) || err == ErrExecuteTimeout {
+			pc.Close()
+			return nil, fmt.Errorf("exec health check query error:%s", err)
+		}
+	}
 	if err = pc.PingWithTimeout(GetConnTimeout); err != nil {
 		pc.Close()
 		return nil, fmt.Errorf("ping conn error:%s", err)

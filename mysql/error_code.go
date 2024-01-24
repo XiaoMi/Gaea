@@ -921,10 +921,37 @@ const (
 	ErrWindowFunctionIgnoresFrame                                   = 3599
 )
 
+// IsTableSpaceMissingErr 检查给定的错误是否是缺少表空间
+func IsTableSpaceMissingErr(err error) bool {
+	return IsSQLErrorCode(err, ErrTablespaceMissing)
+}
+
+// IsTablespaceAutoExtendErr 检查给定的错误是否是表空间自动扩展错误(与表空间的自动扩展配置有关)
+func IsTablespaceAutoExtendErr(err error) bool {
+	return IsSQLErrorCode(err, ErrTablespaceAutoExtend)
+}
+
+// IsTablespaceExistsErr 检查给定的错误是否是表空间已存在(在尝试创建新的表空间时发现同名表空间已存在)
+func IsTablespaceExistsErr(err error) bool {
+	return IsSQLErrorCode(err, ErrTablespaceExists)
+}
+
+// IsTableSpaceDiscardeErr 检查给定的错误是否是表空间已丢弃(尝试访问一个标记为丢弃的表空间)
+func IsTableSpaceDiscardeErr(err error) bool {
+	return IsSQLErrorCode(err, ErrTablespaceDiscarded)
+}
+
+// IsServerShutdownErr 检查给定的错误是否是MySQL服务器已关闭
+func IsServerShutdownErr(err error) bool {
+	return IsSQLErrorCode(err, ErrServerShutdown)
+}
+
+// IsSQLSyntaxErr 检查给定的错误是否是SQL语法错误
 func IsSQLSyntaxErr(err error) bool {
 	return IsSQLErrorCode(err, ErrSyntax)
 }
 
+// IsSQLNoPrivilegeErr 检查给定的错误是否表示没有足够的SQL权限。
 func IsSQLNoPrivilegeErr(err error) bool {
 	return IsSQLErrorCode(err, ErrSpecificAccessDenied)
 }
