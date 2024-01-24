@@ -14,6 +14,7 @@ type PooledConnect interface {
 	IsClosed() bool
 	UseDB(db string) error
 	Execute(sql string, maxRows int) (*mysql.Result, error)
+	ExecuteWithTimeout(sql string, maxRows int, timeout time.Duration) (*mysql.Result, error)
 	SetAutoCommit(v uint8) error
 	Begin() error
 	Commit() error

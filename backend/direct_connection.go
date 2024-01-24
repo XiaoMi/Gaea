@@ -19,14 +19,17 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"net"
+	"strings"
+	"time"
+
 	sqlerr "github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util/sync2"
-	"net"
-	"strings"
-	"time"
 )
+
+var ErrExecuteTimeout = errors.New("execute timeout")
 
 // DirectConnection means connection to backend mysql
 type DirectConnection struct {
@@ -441,6 +444,27 @@ func (dc *DirectConnection) GetAddr() string {
 // Execute send ComQuery or ComStmtPrepare/ComStmtExecute/ComStmtClose to backend mysql
 func (dc *DirectConnection) Execute(sql string, maxRows int) (*mysql.Result, error) {
 	return dc.exec(sql, maxRows)
+}
+
+func (dc *DirectConnection) ExecuteWithTimeout(sql string, maxRows int, timeout time.Duration) (*mysql.Result, error) {
+	errChan := make(chan error, 1)
+	var res *mysql.Result
+
+	go func() {
+		var err error
+		res, err = dc.exec(sql, maxRows)
+		errChan <- err
+	}()
+
+	select {
+	case <-time.After(timeout):
+		return nil, ErrExecuteTimeout
+	case err := <-errChan:
+		if err != nil {
+			return nil, err
+		}
+		return res, nil
+	}
 }
 
 // Begin send ComQuery with 'begin' to backend mysql to start transaction

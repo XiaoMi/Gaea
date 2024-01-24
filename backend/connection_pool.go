@@ -27,6 +27,7 @@ import (
 )
 
 const (
+	ExecTimeOut    = 2 * time.Second
 	GetConnTimeout = 2 * time.Second
 	pingPeriod     = 4 * time.Second
 )
