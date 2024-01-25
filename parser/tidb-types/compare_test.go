@@ -14,22 +14,18 @@
 package types
 
 import (
+	"testing"
 	"time"
 
-	. "github.com/pingcap/check"
+	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/stmtctx"
 	"github.com/XiaoMi/Gaea/util/testleak"
 )
 
-var _ = Suite(&testCompareSuite{})
-
-type testCompareSuite struct {
-}
-
-func (s *testCompareSuite) TestCompare(c *C) {
-	defer testleak.AfterTest(c)()
+func TestCompare(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	cmpTbl := []struct {
 		lhs interface{}
 		rhs interface{}
@@ -138,16 +134,16 @@ func (s *testCompareSuite) TestCompare(c *C) {
 		{NewDecFromInt(0), "hello", 0},
 	}
 
-	for i, t := range cmpTbl {
-		comment := Commentf("%d %v %v", i, t.lhs, t.rhs)
-		ret, err := compareForTest(t.lhs, t.rhs)
-		c.Assert(err, IsNil)
-		c.Assert(ret, Equals, t.ret, comment)
+	for i, tt := range cmpTbl {
+		ret, err := compareForTest(tt.lhs, tt.rhs)
+		require.NoError(t, err)
+		require.Equal(t, tt.ret, ret, "%d %v %v", i, tt.lhs, tt.rhs)
 
-		ret, err = compareForTest(t.rhs, t.lhs)
-		c.Assert(err, IsNil)
-		c.Assert(ret, Equals, -t.ret, comment)
+		ret, err = compareForTest(tt.rhs, tt.lhs)
+		require.NoError(t, err)
+		require.Equal(t, -tt.ret, ret, "%d %v %v", i, tt.lhs, tt.rhs)
 	}
+
 }
 
 func compareForTest(a, b interface{}) (int, error) {
@@ -158,8 +154,8 @@ func compareForTest(a, b interface{}) (int, error) {
 	return aDatum.CompareDatum(sc, &bDatum)
 }
 
-func (s *testCompareSuite) TestCompareDatum(c *C) {
-	defer testleak.AfterTest(c)()
+func TestCompareDatum(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	cmpTbl := []struct {
 		lhs Datum
 		rhs Datum
@@ -176,14 +172,13 @@ func (s *testCompareSuite) TestCompareDatum(c *C) {
 	}
 	sc := new(stmtctx.StatementContext)
 	sc.IgnoreTruncate = true
-	for i, t := range cmpTbl {
-		comment := Commentf("%d %v %v", i, t.lhs, t.rhs)
-		ret, err := t.lhs.CompareDatum(sc, &t.rhs)
-		c.Assert(err, IsNil)
-		c.Assert(ret, Equals, t.ret, comment)
+	for i, tt := range cmpTbl {
+		ret, err := tt.lhs.CompareDatum(sc, &tt.rhs)
+		require.NoError(t, err)
+		require.Equal(t, tt.ret, ret, "%d %v %v", i, tt.lhs, tt.rhs)
 
-		ret, err = t.rhs.CompareDatum(sc, &t.lhs)
-		c.Assert(err, IsNil)
-		c.Assert(ret, Equals, -t.ret, comment)
+		ret, err = tt.rhs.CompareDatum(sc, &tt.lhs)
+		require.NoError(t, err)
+		require.Equal(t, -tt.ret, ret, "%d %v %v", i, tt.lhs, tt.rhs)
 	}
 }

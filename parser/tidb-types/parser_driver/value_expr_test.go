@@ -17,22 +17,13 @@ import (
 	"strings"
 	"testing"
 
-	. "github.com/pingcap/check"
+	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/parser/format"
-	"github.com/XiaoMi/Gaea/parser/tidb-types"
+	types "github.com/XiaoMi/Gaea/parser/tidb-types"
 )
 
-var _ = Suite(&testValueExprRestoreSuite{})
-
-func TestT(t *testing.T) {
-	TestingT(t)
-}
-
-type testValueExprRestoreSuite struct {
-}
-
-func (s *testValueExprRestoreSuite) TestValueExprRestore(c *C) {
+func TestValueExprRestore(t *testing.T) {
 	testCases := []struct {
 		datum  types.Datum
 		expect string
@@ -54,7 +45,7 @@ func (s *testValueExprRestoreSuite) TestValueExprRestore(c *C) {
 		sb.Reset()
 		expr := &ValueExpr{Datum: testCase.datum}
 		err := expr.Restore(format.NewRestoreCtx(format.DefaultRestoreFlags, &sb))
-		c.Assert(err, IsNil)
-		c.Assert(sb.String(), Equals, testCase.expect, Commentf("Datum: %#v", testCase.datum))
+		require.NoError(t, err)
+		require.Equal(t, testCase.expect, sb.String())
 	}
 }

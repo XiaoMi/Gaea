@@ -18,6 +18,7 @@ import (
 	"testing"
 
 	. "github.com/pingcap/check"
+	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/terror"
@@ -28,89 +29,84 @@ func TestT(t *testing.T) {
 	TestingT(t)
 }
 
-var _ = Suite(&testTypeEtcSuite{})
-
-type testTypeEtcSuite struct {
-}
-
-func testIsTypeBlob(c *C, tp byte, expect bool) {
+func testIsTypeBlob(t *testing.T, tp byte, expect bool) {
 	v := IsTypeBlob(tp)
-	c.Assert(v, Equals, expect)
+	require.Equal(t, expect, v)
 }
 
-func testIsTypeChar(c *C, tp byte, expect bool) {
+func testIsTypeChar(t *testing.T, tp byte, expect bool) {
 	v := IsTypeChar(tp)
-	c.Assert(v, Equals, expect)
+	require.Equal(t, expect, v)
 }
 
-func (s *testTypeEtcSuite) TestIsType(c *C) {
-	defer testleak.AfterTest(c)()
-	testIsTypeBlob(c, mysql.TypeTinyBlob, true)
-	testIsTypeBlob(c, mysql.TypeMediumBlob, true)
-	testIsTypeBlob(c, mysql.TypeBlob, true)
-	testIsTypeBlob(c, mysql.TypeLongBlob, true)
-	testIsTypeBlob(c, mysql.TypeInt24, false)
+func TestIsType(t *testing.T) {
+	defer testleak.AfterTestT(t)()
+	testIsTypeBlob(t, mysql.TypeTinyBlob, true)
+	testIsTypeBlob(t, mysql.TypeMediumBlob, true)
+	testIsTypeBlob(t, mysql.TypeBlob, true)
+	testIsTypeBlob(t, mysql.TypeLongBlob, true)
+	testIsTypeBlob(t, mysql.TypeInt24, false)
 
-	testIsTypeChar(c, mysql.TypeString, true)
-	testIsTypeChar(c, mysql.TypeVarchar, true)
-	testIsTypeChar(c, mysql.TypeLong, false)
+	testIsTypeChar(t, mysql.TypeString, true)
+	testIsTypeChar(t, mysql.TypeVarchar, true)
+	testIsTypeChar(t, mysql.TypeLong, false)
 }
 
-func testTypeStr(c *C, tp byte, expect string) {
+func testTypeStr(t *testing.T, tp byte, expect string) {
 	v := TypeStr(tp)
-	c.Assert(v, Equals, expect)
+	require.Equal(t, expect, v)
 }
 
-func testTypeToStr(c *C, tp byte, charset string, expect string) {
+func testTypeToStr(t *testing.T, tp byte, charset string, expect string) {
 	v := TypeToStr(tp, charset)
-	c.Assert(v, Equals, expect)
+	require.Equal(t, expect, v)
 }
 
-func (s *testTypeEtcSuite) TestTypeToStr(c *C) {
-	defer testleak.AfterTest(c)()
-	testTypeStr(c, mysql.TypeYear, "year")
-	testTypeStr(c, 0xdd, "")
+func TestTypeToStr(t *testing.T) {
+	defer testleak.AfterTestT(t)()
+	testTypeStr(t, mysql.TypeYear, "year")
+	testTypeStr(t, 0xdd, "")
 
-	testTypeToStr(c, mysql.TypeBlob, "utf8", "text")
-	testTypeToStr(c, mysql.TypeLongBlob, "utf8", "longtext")
-	testTypeToStr(c, mysql.TypeTinyBlob, "utf8", "tinytext")
-	testTypeToStr(c, mysql.TypeMediumBlob, "utf8", "mediumtext")
-	testTypeToStr(c, mysql.TypeVarchar, "binary", "varbinary")
-	testTypeToStr(c, mysql.TypeString, "binary", "binary")
-	testTypeToStr(c, mysql.TypeTiny, "binary", "tinyint")
-	testTypeToStr(c, mysql.TypeBlob, "binary", "blob")
-	testTypeToStr(c, mysql.TypeLongBlob, "binary", "longblob")
-	testTypeToStr(c, mysql.TypeTinyBlob, "binary", "tinyblob")
-	testTypeToStr(c, mysql.TypeMediumBlob, "binary", "mediumblob")
-	testTypeToStr(c, mysql.TypeVarchar, "utf8", "varchar")
-	testTypeToStr(c, mysql.TypeString, "utf8", "char")
-	testTypeToStr(c, mysql.TypeShort, "binary", "smallint")
-	testTypeToStr(c, mysql.TypeInt24, "binary", "mediumint")
-	testTypeToStr(c, mysql.TypeLong, "binary", "int")
-	testTypeToStr(c, mysql.TypeLonglong, "binary", "bigint")
-	testTypeToStr(c, mysql.TypeFloat, "binary", "float")
-	testTypeToStr(c, mysql.TypeDouble, "binary", "double")
-	testTypeToStr(c, mysql.TypeYear, "binary", "year")
-	testTypeToStr(c, mysql.TypeDuration, "binary", "time")
-	testTypeToStr(c, mysql.TypeDatetime, "binary", "datetime")
-	testTypeToStr(c, mysql.TypeDate, "binary", "date")
-	testTypeToStr(c, mysql.TypeTimestamp, "binary", "timestamp")
-	testTypeToStr(c, mysql.TypeNewDecimal, "binary", "decimal")
-	testTypeToStr(c, mysql.TypeUnspecified, "binary", "unspecified")
-	testTypeToStr(c, 0xdd, "binary", "")
-	testTypeToStr(c, mysql.TypeBit, "binary", "bit")
-	testTypeToStr(c, mysql.TypeEnum, "binary", "enum")
-	testTypeToStr(c, mysql.TypeSet, "binary", "set")
+	testTypeToStr(t, mysql.TypeBlob, "utf8", "text")
+	testTypeToStr(t, mysql.TypeLongBlob, "utf8", "longtext")
+	testTypeToStr(t, mysql.TypeTinyBlob, "utf8", "tinytext")
+	testTypeToStr(t, mysql.TypeMediumBlob, "utf8", "mediumtext")
+	testTypeToStr(t, mysql.TypeVarchar, "binary", "varbinary")
+	testTypeToStr(t, mysql.TypeString, "binary", "binary")
+	testTypeToStr(t, mysql.TypeTiny, "binary", "tinyint")
+	testTypeToStr(t, mysql.TypeBlob, "binary", "blob")
+	testTypeToStr(t, mysql.TypeLongBlob, "binary", "longblob")
+	testTypeToStr(t, mysql.TypeTinyBlob, "binary", "tinyblob")
+	testTypeToStr(t, mysql.TypeMediumBlob, "binary", "mediumblob")
+	testTypeToStr(t, mysql.TypeVarchar, "utf8", "varchar")
+	testTypeToStr(t, mysql.TypeString, "utf8", "char")
+	testTypeToStr(t, mysql.TypeShort, "binary", "smallint")
+	testTypeToStr(t, mysql.TypeInt24, "binary", "mediumint")
+	testTypeToStr(t, mysql.TypeLong, "binary", "int")
+	testTypeToStr(t, mysql.TypeLonglong, "binary", "bigint")
+	testTypeToStr(t, mysql.TypeFloat, "binary", "float")
+	testTypeToStr(t, mysql.TypeDouble, "binary", "double")
+	testTypeToStr(t, mysql.TypeYear, "binary", "year")
+	testTypeToStr(t, mysql.TypeDuration, "binary", "time")
+	testTypeToStr(t, mysql.TypeDatetime, "binary", "datetime")
+	testTypeToStr(t, mysql.TypeDate, "binary", "date")
+	testTypeToStr(t, mysql.TypeTimestamp, "binary", "timestamp")
+	testTypeToStr(t, mysql.TypeNewDecimal, "binary", "decimal")
+	testTypeToStr(t, mysql.TypeUnspecified, "binary", "unspecified")
+	testTypeToStr(t, 0xdd, "binary", "")
+	testTypeToStr(t, mysql.TypeBit, "binary", "bit")
+	testTypeToStr(t, mysql.TypeEnum, "binary", "enum")
+	testTypeToStr(t, mysql.TypeSet, "binary", "set")
 }
 
-func (s *testTypeEtcSuite) TestEOFAsNil(c *C) {
-	defer testleak.AfterTest(c)()
+func TestEOFAsNil(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	err := EOFAsNil(io.EOF)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 }
 
-func (s *testTypeEtcSuite) TestMaxFloat(c *C) {
-	defer testleak.AfterTest(c)()
+func TestMaxFloat(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	tbl := []struct {
 		Flen    int
 		Decimal int
@@ -122,14 +118,14 @@ func (s *testTypeEtcSuite) TestMaxFloat(c *C) {
 		{5, 5, 0.99999},
 	}
 
-	for _, t := range tbl {
-		f := GetMaxFloat(t.Flen, t.Decimal)
-		c.Assert(f, Equals, t.Expect)
+	for _, test := range tbl {
+		f := GetMaxFloat(test.Flen, test.Decimal)
+		require.Equal(t, test.Expect, f)
 	}
 }
 
-func (s *testTypeEtcSuite) TestRoundFloat(c *C) {
-	defer testleak.AfterTest(c)()
+func TestRoundFloat(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	tbl := []struct {
 		Input  float64
 		Expect float64
@@ -145,14 +141,14 @@ func (s *testTypeEtcSuite) TestRoundFloat(c *C) {
 		{-1.5, -2},
 	}
 
-	for _, t := range tbl {
-		f := RoundFloat(t.Input)
-		c.Assert(f, Equals, t.Expect)
+	for _, test := range tbl {
+		f := RoundFloat(test.Input)
+		require.Equal(t, test.Expect, f)
 	}
 }
 
-func (s *testTypeEtcSuite) TestRound(c *C) {
-	defer testleak.AfterTest(c)()
+func TestRound(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	tbl := []struct {
 		Input  float64
 		Dec    int
@@ -166,14 +162,14 @@ func (s *testTypeEtcSuite) TestRound(c *C) {
 		{23.298, -1, 20},
 	}
 
-	for _, t := range tbl {
-		f := Round(t.Input, t.Dec)
-		c.Assert(f, Equals, t.Expect)
+	for _, test := range tbl {
+		f := Round(test.Input, test.Dec)
+		require.Equal(t, test.Expect, f)
 	}
 }
 
-func (s *testTypeEtcSuite) TestTruncate(c *C) {
-	defer testleak.AfterTest(c)()
+func TestTruncate(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	tbl := []struct {
 		Input   float64
 		Flen    int
@@ -188,9 +184,9 @@ func (s *testTypeEtcSuite) TestTruncate(c *C) {
 		{1.36, 10, 2, 1.36, nil},
 	}
 
-	for _, t := range tbl {
-		f, err := TruncateFloat(t.Input, t.Flen, t.Decimal)
-		c.Assert(f, Equals, t.Expect)
-		c.Assert(terror.ErrorEqual(err, t.Err), IsTrue, Commentf("err %v", err))
+	for _, test := range tbl {
+		f, err := TruncateFloat(test.Input, test.Flen, test.Decimal)
+		require.Equal(t, test.Expect, f)
+		require.True(t, terror.ErrorEqual(err, test.Err))
 	}
 }
