@@ -14,18 +14,15 @@
 package types
 
 import (
-	. "github.com/pingcap/check"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/util/testleak"
 )
 
-var _ = Suite(&testSetSuite{})
-
-type testSetSuite struct {
-}
-
-func (s *testSetSuite) TestSet(c *C) {
-	defer testleak.AfterTest(c)()
+func TestSet(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	elems := []string{"a", "b", "c", "d"}
 	tbl := []struct {
 		Name          string
@@ -41,11 +38,11 @@ func (s *testSetSuite) TestSet(c *C) {
 		{"0", 0, ""},
 	}
 
-	for _, t := range tbl {
-		e, err := ParseSetName(elems, t.Name)
-		c.Assert(err, IsNil)
-		c.Assert(e.ToNumber(), Equals, float64(t.ExpectedValue))
-		c.Assert(e.String(), Equals, t.ExpectedName)
+	for _, tt := range tbl {
+		e, err := ParseSetName(elems, tt.Name)
+		require.NoError(t, err)
+		require.Equal(t, float64(tt.ExpectedValue), e.ToNumber())
+		require.Equal(t, tt.ExpectedName, e.String())
 	}
 
 	tblNumber := []struct {
@@ -58,27 +55,27 @@ func (s *testSetSuite) TestSet(c *C) {
 		{9, "a,d"},
 	}
 
-	for _, t := range tblNumber {
-		e, err := ParseSetValue(elems, t.Number)
-		c.Assert(err, IsNil)
-		c.Assert(e.String(), Equals, t.ExpectedName)
-		c.Assert(e.ToNumber(), Equals, float64(t.Number))
+	for _, tt := range tblNumber {
+		e, err := ParseSetValue(elems, tt.Number)
+		require.NoError(t, err)
+		require.Equal(t, tt.ExpectedName, e.String())
+		require.Equal(t, float64(tt.Number), e.ToNumber())
 	}
 
 	tblErr := []string{
 		"a.e",
 		"e.f",
 	}
-	for _, t := range tblErr {
-		_, err := ParseSetName(elems, t)
-		c.Assert(err, NotNil)
+	for _, tt := range tblErr {
+		_, err := ParseSetName(elems, tt)
+		require.Error(t, err)
 	}
 
 	tblNumberErr := []uint64{
 		100, 16, 64,
 	}
-	for _, t := range tblNumberErr {
-		_, err := ParseSetValue(elems, t)
-		c.Assert(err, NotNil)
+	for _, tt := range tblNumberErr {
+		_, err := ParseSetValue(elems, tt)
+		require.Error(t, err)
 	}
 }

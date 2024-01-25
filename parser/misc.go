@@ -583,7 +583,7 @@ var btFuncTokenMap = map[string]int{
 	"VAR_SAMP":     builtinVarSamp,
 }
 
-var windowFuncTokenMap = map[string]int{
+var WindowFuncTokenMap = map[string]int{
 	"CUME_DIST":    cumeDist,
 	"DENSE_RANK":   denseRank,
 	"FIRST_VALUE":  firstValue,
@@ -646,7 +646,7 @@ func (s *Scanner) isTokenIdentifier(lit string, offset int) int {
 	}
 	tok, ok := tokenMap[string(data)]
 	if !ok && s.supportWindowFunc {
-		tok = windowFuncTokenMap[string(data)]
+		tok = WindowFuncTokenMap[string(data)]
 	}
 	return tok
 }

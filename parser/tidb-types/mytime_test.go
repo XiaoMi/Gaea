@@ -14,24 +14,22 @@
 package types
 
 import (
-	. "github.com/pingcap/check"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
-type testMyTimeSuite struct{}
+func TestWeekBehaviour(t *testing.T) {
+	require.Equal(t, weekBehaviour(1), weekBehaviourMondayFirst)
+	require.Equal(t, weekBehaviour(2), weekBehaviourYear)
+	require.Equal(t, weekBehaviour(4), weekBehaviourFirstWeekday)
 
-var _ = Suite(&testMyTimeSuite{})
-
-func (s *testMyTimeSuite) TestWeekBehaviour(c *C) {
-	c.Assert(weekBehaviourMondayFirst, Equals, weekBehaviour(1))
-	c.Assert(weekBehaviourYear, Equals, weekBehaviour(2))
-	c.Assert(weekBehaviourFirstWeekday, Equals, weekBehaviour(4))
-
-	c.Check(weekBehaviour(1).test(weekBehaviourMondayFirst), IsTrue)
-	c.Check(weekBehaviour(2).test(weekBehaviourYear), IsTrue)
-	c.Check(weekBehaviour(4).test(weekBehaviourFirstWeekday), IsTrue)
+	require.True(t, weekBehaviour(1).test(weekBehaviourMondayFirst))
+	require.True(t, weekBehaviour(2).test(weekBehaviourYear))
+	require.True(t, weekBehaviour(4).test(weekBehaviourFirstWeekday))
 }
 
-func (s *testMyTimeSuite) TestWeek(c *C) {
+func TestWeek(t *testing.T) {
 	tests := []struct {
 		Input  MysqlTime
 		Mode   int
@@ -42,22 +40,22 @@ func (s *testMyTimeSuite) TestWeek(c *C) {
 		{MysqlTime{2008, 12, 31, 0, 0, 0, 0}, 1, 53},
 	}
 
-	for ith, tt := range tests {
+	for _, tt := range tests {
 		_, week := calcWeek(&tt.Input, weekMode(tt.Mode))
-		c.Check(week, Equals, tt.Expect, Commentf("%d failed.", ith))
+		require.Equal(t, tt.Expect, week)
 	}
 }
 
-func (s *testMyTimeSuite) TestCalcDaynr(c *C) {
-	c.Assert(calcDaynr(0, 0, 0), Equals, 0)
-	c.Assert(calcDaynr(9999, 12, 31), Equals, 3652424)
-	c.Assert(calcDaynr(1970, 1, 1), Equals, 719528)
-	c.Assert(calcDaynr(2006, 12, 16), Equals, 733026)
-	c.Assert(calcDaynr(10, 1, 2), Equals, 3654)
-	c.Assert(calcDaynr(2008, 2, 20), Equals, 733457)
+func TestCalcDaynr(t *testing.T) {
+	require.Equal(t, 0, calcDaynr(0, 0, 0))
+	require.Equal(t, 3652424, calcDaynr(9999, 12, 31))
+	require.Equal(t, 719528, calcDaynr(1970, 1, 1))
+	require.Equal(t, 733026, calcDaynr(2006, 12, 16))
+	require.Equal(t, 3654, calcDaynr(10, 1, 2))
+	require.Equal(t, 733457, calcDaynr(2008, 2, 20))
 }
 
-func (s *testMyTimeSuite) TestCalcTimeDiff(c *C) {
+func TestCalcTimeDiff(t *testing.T) {
 	tests := []struct {
 		T1     MysqlTime
 		T2     MysqlTime
@@ -89,11 +87,11 @@ func (s *testMyTimeSuite) TestCalcTimeDiff(c *C) {
 		seconds, microseconds, _ := calcTimeDiff(tt.T1, tt.T2, tt.Sign)
 		var result MysqlTime
 		calcTimeFromSec(&result, seconds, microseconds)
-		c.Assert(result, Equals, tt.Expect, Commentf("%d failed.", i))
+		require.Equal(t, tt.Expect, result, i)
 	}
 }
 
-func (s *testMyTimeSuite) TestCompareTime(c *C) {
+func TestCompareTime(t *testing.T) {
 	tests := []struct {
 		T1     MysqlTime
 		T2     MysqlTime
@@ -106,13 +104,13 @@ func (s *testMyTimeSuite) TestCompareTime(c *C) {
 		{MysqlTime{9999, 12, 30, 23, 59, 59, 999999}, MysqlTime{0, 1, 2, 3, 4, 5, 6}, 1},
 	}
 
-	for _, tt := range tests {
-		c.Assert(compareTime(tt.T1, tt.T2), Equals, tt.Expect)
-		c.Assert(compareTime(tt.T2, tt.T1), Equals, -tt.Expect)
+	for i, tt := range tests {
+		require.Equal(t, tt.Expect, compareTime(tt.T1, tt.T2), i)
+		require.Equal(t, -tt.Expect, compareTime(tt.T2, tt.T1), i)
 	}
 }
 
-func (s *testMyTimeSuite) TestGetDateFromDaynr(c *C) {
+func TestGetDateFromDaynr(t *testing.T) {
 	tests := []struct {
 		daynr uint
 		year  uint
@@ -135,13 +133,13 @@ func (s *testMyTimeSuite) TestGetDateFromDaynr(c *C) {
 
 	for _, tt := range tests {
 		yy, mm, dd := getDateFromDaynr(tt.daynr)
-		c.Assert(yy, Equals, tt.year)
-		c.Assert(mm, Equals, tt.month)
-		c.Assert(dd, Equals, tt.day)
+		require.Equal(t, tt.year, yy)
+		require.Equal(t, tt.month, mm)
+		require.Equal(t, tt.day, dd)
 	}
 }
 
-func (s *testMyTimeSuite) TestMixDateAndTime(c *C) {
+func TestMixDateAndTime(t *testing.T) {
 	tests := []struct {
 		date   MysqlTime
 		time   MysqlTime
@@ -180,13 +178,13 @@ func (s *testMyTimeSuite) TestMixDateAndTime(c *C) {
 		},
 	}
 
-	for ith, t := range tests {
-		mixDateAndTime(&t.date, &t.time, t.neg)
-		c.Assert(compareTime(t.date, t.expect), Equals, 0, Commentf("%d", ith))
+	for _, tt := range tests {
+		mixDateAndTime(&tt.date, &tt.time, tt.neg)
+		require.Equal(t, 0, compareTime(tt.date, tt.expect))
 	}
 }
 
-func (s *testMyTimeSuite) TestIsLeapYear(c *C) {
+func TestIsLeapYear(t *testing.T) {
 	tests := []struct {
 		T      MysqlTime
 		Expect bool
@@ -207,10 +205,10 @@ func (s *testMyTimeSuite) TestIsLeapYear(c *C) {
 	}
 
 	for _, tt := range tests {
-		c.Assert(tt.T.IsLeapYear(), Equals, tt.Expect)
+		require.Equal(t, tt.Expect, tt.T.IsLeapYear())
 	}
 }
-func (s *testMyTimeSuite) TestGetLastDay(c *C) {
+func TestGetLastDay(t *testing.T) {
 	tests := []struct {
 		year        int
 		month       int
@@ -223,8 +221,8 @@ func (s *testMyTimeSuite) TestGetLastDay(c *C) {
 		{1996, 2, 29},
 	}
 
-	for _, t := range tests {
-		day := GetLastDay(t.year, t.month)
-		c.Assert(day, Equals, t.expectedDay)
+	for _, tt := range tests {
+		day := GetLastDay(tt.year, tt.month)
+		require.Equal(t, tt.expectedDay, day)
 	}
 }

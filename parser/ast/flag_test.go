@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	. "github.com/pingcap/check"
+	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/parser"
 	"github.com/XiaoMi/Gaea/parser/ast"
@@ -27,17 +28,7 @@ func TestT(t *testing.T) {
 	TestingT(t)
 }
 
-var _ = Suite(&testFlagSuite{})
-
-type testFlagSuite struct {
-	*parser.Parser
-}
-
-func (ts *testFlagSuite) SetUpSuite(c *C) {
-	ts.Parser = parser.New()
-}
-
-func (ts *testFlagSuite) TestHasAggFlag(c *C) {
+func TestHasAggFlag(t *testing.T) {
 	expr := &ast.BetweenExpr{}
 	flagTests := []struct {
 		flag   uint64
@@ -49,11 +40,11 @@ func (ts *testFlagSuite) TestHasAggFlag(c *C) {
 	}
 	for _, tt := range flagTests {
 		expr.SetFlag(tt.flag)
-		c.Assert(ast.HasAggFlag(expr), Equals, tt.hasAgg)
+		require.Equal(t, tt.hasAgg, ast.HasAggFlag(expr))
 	}
 }
 
-func (ts *testFlagSuite) TestFlag(c *C) {
+func TestFlag(t *testing.T) {
 	flagTests := []struct {
 		expr string
 		flag uint64
@@ -143,12 +134,13 @@ func (ts *testFlagSuite) TestFlag(c *C) {
 			ast.FlagHasReference,
 		},
 	}
+	p := parser.New()
 	for _, tt := range flagTests {
-		stmt, err := ts.ParseOneStmt("select "+tt.expr, "", "")
-		c.Assert(err, IsNil)
+		stmt, err := p.ParseOneStmt("select "+tt.expr, "", "")
+		require.NoError(t, err)
 		selectStmt := stmt.(*ast.SelectStmt)
 		ast.SetFlag(selectStmt)
 		expr := selectStmt.Fields.Fields[0].Expr
-		c.Assert(expr.GetFlag(), Equals, tt.flag, Commentf("For %s", tt.expr))
+		require.Equalf(t, tt.flag, expr.GetFlag(), "For %s", tt.expr)
 	}
 }

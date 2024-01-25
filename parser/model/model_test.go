@@ -19,30 +19,21 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/pingcap/check"
+	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/types"
 )
 
 func TestT(t *testing.T) {
-	CustomVerboseFlag = true
-	TestingT(t)
-}
-
-var _ = Suite(&testModelSuite{})
-
-type testModelSuite struct {
-}
-
-func (*testModelSuite) TestT(c *C) {
 	abc := NewCIStr("aBC")
-	c.Assert(abc.O, Equals, "aBC")
-	c.Assert(abc.L, Equals, "abc")
-	c.Assert(abc.String(), Equals, "aBC")
+	require.Equal(t, "aBC", abc.O)
+	require.Equal(t, "abc", abc.L)
+	require.Equal(t, "aBC", abc.String())
+
 }
 
-func (*testModelSuite) TestModelBasic(c *C) {
+func TestModelBasic(t *testing.T) {
 	column := &ColumnInfo{
 		ID:           1,
 		Name:         NewCIStr("c"),
@@ -90,55 +81,55 @@ func (*testModelSuite) TestModelBasic(c *C) {
 	}
 
 	n := dbInfo.Clone()
-	c.Assert(n, DeepEquals, dbInfo)
+	require.Equal(t, dbInfo, n)
 
 	pkName := table.GetPkName()
-	c.Assert(pkName, Equals, NewCIStr("c"))
+	require.Equal(t, NewCIStr("c"), pkName)
 	newColumn := table.GetPkColInfo()
-	c.Assert(newColumn, DeepEquals, column)
+	require.Equal(t, column, newColumn)
 	inIdx := table.ColumnIsInIndex(column)
-	c.Assert(inIdx, Equals, true)
+	require.True(t, inIdx)
 	tp := IndexTypeBtree
-	c.Assert(tp.String(), Equals, "BTREE")
+	require.Equal(t, "BTREE", tp.String())
 	tp = IndexTypeHash
-	c.Assert(tp.String(), Equals, "HASH")
-	tp = 1E5
-	c.Assert(tp.String(), Equals, "")
+	require.Equal(t, "HASH", tp.String())
+	tp = 1e5
+	require.Equal(t, "", tp.String())
 	has := index.HasPrefixIndex()
-	c.Assert(has, Equals, true)
-	t := table.GetUpdateTime()
-	c.Assert(t, Equals, TSConvert2Time(table.UpdateTS))
+	require.True(t, has)
+	tbl := table.GetUpdateTime()
+	require.Equal(t, TSConvert2Time(table.UpdateTS), tbl)
 
 	// Corner cases
 	column.Flag ^= mysql.PriKeyFlag
 	pkName = table.GetPkName()
-	c.Assert(pkName, Equals, NewCIStr(""))
+	require.Equal(t, NewCIStr(""), pkName)
 	newColumn = table.GetPkColInfo()
-	c.Assert(newColumn, IsNil)
+	require.Nil(t, newColumn)
 	anCol := &ColumnInfo{
 		Name: NewCIStr("d"),
 	}
 	exIdx := table.ColumnIsInIndex(anCol)
-	c.Assert(exIdx, Equals, false)
+	require.False(t, exIdx)
 	anIndex := &IndexInfo{
 		Columns: []*IndexColumn{},
 	}
 	no := anIndex.HasPrefixIndex()
-	c.Assert(no, Equals, false)
+	require.False(t, no)
 }
 
-func (*testModelSuite) TestJobStartTime(c *C) {
+func TestJobStartTime(t *testing.T) {
 	job := &Job{
 		ID:         123,
 		BinlogInfo: &HistoryInfo{},
 	}
-	t := time.Unix(0, 0)
-	c.Assert(t, Equals, TSConvert2Time(job.StartTS))
+	time := time.Unix(0, 0)
+	require.Equal(t, TSConvert2Time(job.StartTS), time)
 	ret := fmt.Sprintf("%s", job)
-	c.Assert(job.String(), Equals, ret)
+	require.Equal(t, ret, job.String())
 }
 
-func (*testModelSuite) TestJobCodec(c *C) {
+func TestJobCodec(t *testing.T) {
 	type A struct {
 		Name string
 	}
@@ -165,10 +156,10 @@ func (*testModelSuite) TestJobCodec(c *C) {
 		Args:       []interface{}{int64(3), NewCIStr("new_table_name")},
 	}
 	job1.RawArgs, err = json.Marshal(job1.Args)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	isDependent, err := job.IsDependentOn(job1)
-	c.Assert(err, IsNil)
-	c.Assert(isDependent, IsTrue)
+	require.NoError(t, err)
+	require.True(t, isDependent)
 	// job1: rename table, old schema ID is 3
 	// job2: create schema, schema ID is 3
 	job2 := &Job{
@@ -179,62 +170,63 @@ func (*testModelSuite) TestJobCodec(c *C) {
 		BinlogInfo: &HistoryInfo{},
 	}
 	isDependent, err = job2.IsDependentOn(job1)
-	c.Assert(err, IsNil)
-	c.Assert(isDependent, IsTrue)
-
-	c.Assert(job.IsCancelled(), Equals, false)
+	require.NoError(t, err)
+	require.True(t, isDependent)
+	require.False(t, job.IsCancelled())
 	b, err := job.Encode(false)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	newJob := &Job{}
 	err = newJob.Decode(b)
-	c.Assert(err, IsNil)
-	c.Assert(newJob.BinlogInfo, DeepEquals, job.BinlogInfo)
+	require.NoError(t, err)
+	require.Equal(t, job.BinlogInfo, newJob.BinlogInfo)
 	name := CIStr{}
 	a := A{}
 	err = newJob.DecodeArgs(&name, &a)
-	c.Assert(err, IsNil)
-	c.Assert(name, DeepEquals, NewCIStr(""))
-	c.Assert(a, DeepEquals, A{Name: ""})
-	c.Assert(len(newJob.String()), Greater, 0)
+	require.NoError(t, err)
+	require.Equal(t, NewCIStr(""), name)
+	require.Equal(t, A{Name: ""}, a)
+	require.Greater(t, len(newJob.String()), 0)
 
 	job.BinlogInfo.Clean()
 	b1, err := job.Encode(true)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	newJob = &Job{}
 	err = newJob.Decode(b1)
-	c.Assert(err, IsNil)
-	c.Assert(newJob.BinlogInfo, DeepEquals, &HistoryInfo{})
+	require.NoError(t, err)
+	require.Equal(t, &HistoryInfo{}, newJob.BinlogInfo)
 	name = CIStr{}
 	a = A{}
 	err = newJob.DecodeArgs(&name, &a)
-	c.Assert(err, IsNil)
-	c.Assert(name, DeepEquals, NewCIStr("a"))
-	c.Assert(a, DeepEquals, A{Name: "abc"})
-	c.Assert(len(newJob.String()), Greater, 0)
+	require.NoError(t, err)
+	require.Equal(t, NewCIStr("a"), name)
+	require.Equal(t, A{Name: "abc"}, a)
+	require.Greater(t, len(newJob.String()), 0)
 
 	b2, err := job.Encode(true)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	newJob = &Job{}
 	err = newJob.Decode(b2)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	name = CIStr{}
 	// Don't decode to a here.
 	err = newJob.DecodeArgs(&name)
-	c.Assert(err, IsNil)
-	c.Assert(name, DeepEquals, NewCIStr("a"))
-	c.Assert(len(newJob.String()), Greater, 0)
+	require.NoError(t, err)
+	require.Equal(t, NewCIStr("a"), name)
+	require.Greater(t, len(newJob.String()), 0)
 
 	job.State = JobStateDone
-	c.Assert(job.IsDone(), IsTrue)
-	c.Assert(job.IsFinished(), IsTrue)
-	c.Assert(job.IsRunning(), IsFalse)
-	c.Assert(job.IsSynced(), IsFalse)
-	c.Assert(job.IsRollbackDone(), IsFalse)
+	require.True(t, job.IsDone())
+	require.True(t, job.IsFinished())
+	require.False(t, job.IsRunning())
+	require.False(t, job.IsSynced())
+	require.False(t, job.IsRollbackDone())
+
 	job.SetRowCount(3)
-	c.Assert(job.GetRowCount(), Equals, int64(3))
+	require.Equal(t, int64(3), job.GetRowCount())
+
 }
 
-func (testModelSuite) TestState(c *C) {
+func TestState(t *testing.T) {
 	schemaTbl := []SchemaState{
 		StateDeleteOnly,
 		StateWriteOnly,
@@ -244,7 +236,7 @@ func (testModelSuite) TestState(c *C) {
 	}
 
 	for _, state := range schemaTbl {
-		c.Assert(len(state.String()), Greater, 0)
+		require.Greater(t, len(state.String()), 0)
 	}
 
 	jobTbl := []JobState{
@@ -257,11 +249,11 @@ func (testModelSuite) TestState(c *C) {
 	}
 
 	for _, state := range jobTbl {
-		c.Assert(len(state.String()), Greater, 0)
+		require.Greater(t, len(state.String()), 0)
 	}
 }
 
-func (testModelSuite) TestString(c *C) {
+func TestString(t *testing.T) {
 	acts := []struct {
 		act    ActionType
 		result string
@@ -285,24 +277,25 @@ func (testModelSuite) TestString(c *C) {
 
 	for _, v := range acts {
 		str := v.act.String()
-		c.Assert(str, Equals, v.result)
+		require.Equal(t, v.result, str)
 	}
 }
 
-func (testModelSuite) TestUnmarshalCIStr(c *C) {
+func TestUnmarshalCIStr(t *testing.T) {
 	var ci CIStr
 
 	// Test unmarshal CIStr from a single string.
 	str := "aaBB"
 	buf, err := json.Marshal(str)
-	c.Assert(err, IsNil)
-	ci.UnmarshalJSON(buf)
-	c.Assert(ci.O, Equals, str)
-	c.Assert(ci.L, Equals, "aabb")
+	require.NoError(t, err)
+	require.NoError(t, ci.UnmarshalJSON(buf))
+	require.Equal(t, str, ci.O)
+	require.Equal(t, "aabb", ci.L)
 
 	buf, err = json.Marshal(ci)
-	c.Assert(string(buf), Equals, `{"O":"aaBB","L":"aabb"}`)
-	ci.UnmarshalJSON(buf)
-	c.Assert(ci.O, Equals, str)
-	c.Assert(ci.L, Equals, "aabb")
+	require.NoError(t, err)
+	require.Equal(t, `{"O":"aaBB","L":"aabb"}`, string(buf))
+	require.NoError(t, ci.UnmarshalJSON(buf))
+	require.Equal(t, str, ci.O)
+	require.Equal(t, "aabb", ci.L)
 }

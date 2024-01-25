@@ -14,10 +14,12 @@
 package json
 
 import (
-	. "github.com/pingcap/check"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
-func (s *testJSONSuite) TestContainsAnyAsterisk(c *C) {
+func TestContainsAnyAsterisk(t *testing.T) {
 	var tests = []struct {
 		exprString        string
 		containsAsterisks bool
@@ -29,12 +31,12 @@ func (s *testJSONSuite) TestContainsAnyAsterisk(c *C) {
 	}
 	for _, tt := range tests {
 		pe, err := ParseJSONPathExpr(tt.exprString)
-		c.Assert(err, IsNil)
-		c.Assert(pe.flags.containsAnyAsterisk(), Equals, tt.containsAsterisks)
+		require.NoError(t, err)
+		require.Equal(t, tt.containsAsterisks, pe.flags.containsAnyAsterisk())
 	}
 }
 
-func (s *testJSONSuite) TestValidatePathExpr(c *C) {
+func TestValidatePathExpr(t *testing.T) {
 	var tests = []struct {
 		exprString string
 		success    bool
@@ -55,10 +57,10 @@ func (s *testJSONSuite) TestValidatePathExpr(c *C) {
 	for _, tt := range tests {
 		pe, err := ParseJSONPathExpr(tt.exprString)
 		if tt.success {
-			c.Assert(err, IsNil)
-			c.Assert(len(pe.legs), Equals, tt.legs)
+			require.NoError(t, err)
+			require.Len(t, pe.legs, tt.legs)
 		} else {
-			c.Assert(err, NotNil)
+			require.Error(t, err)
 		}
 	}
 }
