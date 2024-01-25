@@ -29,6 +29,8 @@ const (
 	SQLModeStr     = "sql_mode"
 	SQLSafeUpdates = "sql_safe_updates"
 	TimeZone       = "time_zone"
+	SQLSelectLimit = "sql_select_limit"
+	TxReadOnly     = "tx_read_only"
 )
 
 // not allowed session variables
@@ -40,6 +42,8 @@ var variableVerifyFuncMap = map[string]verifyFunc{
 	SQLModeStr:     verifySQLMode,
 	SQLSafeUpdates: verifyOnOffInteger,
 	TimeZone:       verifyTimeZone,
+	SQLSelectLimit: verifyInteger,
+	TxReadOnly:     verifyOnOffInteger,
 }
 
 // SessionVariables variables in session
@@ -266,6 +270,14 @@ func verifyOnOffInteger(v interface{}) error {
 	}
 	if val != 0 && val != 1 {
 		return fmt.Errorf("value is not 0 or 1")
+	}
+	return nil
+}
+
+func verifyInteger(v interface{}) error {
+	_, ok := v.(int64)
+	if !ok {
+		return fmt.Errorf("value is not int64")
 	}
 	return nil
 }

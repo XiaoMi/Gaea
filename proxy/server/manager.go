@@ -51,6 +51,7 @@ const (
 	DefaultDatacenter        = "default"
 	SQLExecStatusOk          = "OK"
 	SQLExecStatusErr         = "ERROR"
+	SQLExecStatusIgnore      = "IGNORE"
 	SQLExecStatusSlow        = "SLOW"
 	SQLBackendExecStatusSlow = "backend SLOW"
 	SQLBackendExecStatusErr  = "backend ERR"
