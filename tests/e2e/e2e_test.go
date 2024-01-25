@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/XiaoMi/Gaea/tests/e2e/function"
 	"github.com/XiaoMi/Gaea/tests/e2e/util"
 
+	_ "github.com/XiaoMi/Gaea/tests/e2e/dml"
+	_ "github.com/XiaoMi/Gaea/tests/e2e/function"
 	_ "github.com/XiaoMi/Gaea/tests/e2e/shard"
 	_ "github.com/XiaoMi/Gaea/tests/e2e/unshard"
 	"github.com/onsi/ginkgo/v2"

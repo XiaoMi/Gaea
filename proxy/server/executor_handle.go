@@ -316,7 +316,7 @@ func (se *SessionExecutor) preBuildUnshardPlan(reqCtx *util.RequestContext, db s
 
 func (se *SessionExecutor) handleSet(reqCtx *util.RequestContext, sql string, stmt *ast.SetStmt) (*mysql.Result, error) {
 	for _, v := range stmt.Variables {
-		if err := se.handleSetVariable(v); err != nil {
+		if err := se.handleSetVariable(sql, v); err != nil {
 			return nil, err
 		}
 	}
@@ -324,7 +324,7 @@ func (se *SessionExecutor) handleSet(reqCtx *util.RequestContext, sql string, st
 	return nil, nil
 }
 
-func (se *SessionExecutor) handleSetVariable(v *ast.VariableAssignment) error {
+func (se *SessionExecutor) handleSetVariable(sql string, v *ast.VariableAssignment) error {
 	if v.IsGlobal {
 		return fmt.Errorf("does not support set variable in global scope")
 	}
@@ -410,10 +410,18 @@ func (se *SessionExecutor) handleSetVariable(v *ast.VariableAssignment) error {
 	case "wait_timeout", "interactive_timeout", "net_write_timeout", "net_read_timeout":
 		return nil
 	case "sql_select_limit":
-		return nil
-		// unsupported
+		value := getVariableExprResult(v.Value)
+		return se.setIntSessionVariable(mysql.SQLSelectLimit, value)
 	case "transaction":
 		return fmt.Errorf("does not support set transaction in gaea")
+	case "tx_read_only":
+		//set session transaction read only; set session transaction read write ...
+		value := getVariableExprResult(v.Value)
+		onOffValue, err := getOnOffVariable(value)
+		if err != nil {
+			return mysql.NewDefaultError(mysql.ErrWrongValueForVar, name, value)
+		}
+		return se.setIntSessionVariable(mysql.TxReadOnly, onOffValue)
 	case gaeaGeneralLogVariable:
 		value := getVariableExprResult(v.Value)
 		onOffValue, err := getOnOffVariable(value)
@@ -422,6 +430,11 @@ func (se *SessionExecutor) handleSetVariable(v *ast.VariableAssignment) error {
 		}
 		return se.setGeneralLogVariable(onOffValue)
 	default:
+		// unsupported variables will be ignored and logged to avoid user confusion
+		// TODO: refactor sql exec time log
+		se.manager.statistics.generalLogger.Warn("%s -0ms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d, r=0|%v. err:%s",
+			SQLExecStatusIgnore, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
+			se.backendConnectionId, sql, fmt.Sprintf("variable(%s) not supported", name))
 		return nil
 	}
 }
