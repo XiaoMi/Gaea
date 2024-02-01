@@ -74,8 +74,7 @@ func (se *SessionExecutor) handleQuery(sql string) (r *mysql.Result, err error) 
 	// TODO: 统一使用 token 处理
 	stmtType := parser.Preview(sql)
 	reqCtx.Set(util.StmtType, stmtType)
-
-	if ns.supportMultiQuery {
+	if ns.supportMultiQuery && se.session.c.capability&mysql.ClientMultiStatements != 0 {
 		r, err = se.doMultiStmts(reqCtx, sql)
 	} else {
 		r, err = se.doQuery(reqCtx, sql)
@@ -100,9 +99,6 @@ func (se *SessionExecutor) doMultiStmts(reqCtx *util.RequestContext, sql string)
 	stmtsNum := len(piecesSql)
 	if stmtsNum == 1 { //single statements
 		return se.doQuery(reqCtx, sql)
-	} else if stmtsNum > 1 && se.session.c.capability&mysql.ClientMultiStatements == 0 {
-		errRet = fmt.Errorf("client's Capabilities not support multi statements,but proxy receive multi statements:[%s]", sql)
-		return nil, errRet
 	}
 
 	//multi-query
