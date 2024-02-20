@@ -14,6 +14,8 @@ before_script:
   - export GO111MODULE=on;
 
 stages:
+  - test
+  - scan
   - check
   - unittest
   - build
@@ -26,6 +28,39 @@ stages:
     name: cr.d.xiaomi.net/container/xiaomi_alpine_fusion_cli
   before_script:
     - fusion-cli config --access-key ${CD_AK} --secret-key ${CD_SK}
+
+go_test:
+  stage: test
+  image: cr.d.xiaomi.net/miflow/golang:1.17-centos7.3 # 对应build镜像
+  only:
+    refs:
+      - master # 对应线上分支
+      - /^test.*$/
+      - /^release.*$/
+  script:
+    - go test -v ./... -coverprofile=coverage.out -short || true
+  artifacts:
+    paths:
+      - coverage.out
+
+sonar_scan:
+  stage: scan
+  only:
+    refs:
+      - master # 对应线上分支
+      - /^test.*$/
+      - /^release.*$/
+  dependencies:
+    - go_test
+  <<: *fusion-cli
+  script:
+    - fusion-cli sonar config --token $CI_SONAR_TOKEN
+    - fusion-cli sonar scan --key=$CI_PROJECT_ID-$CI_PROJECT_NAME --ignore-quality-gate --sources . --report --
+      -Dsonar.exclusions='**/vendor/**','**/*_test.go'
+      -Dsonar.test.exclusions='**/vendor/**','**/*_test.go'
+      -Dsonar.go.coverage.reportPaths='coverage.out'
+      -Dsonar.branch.name=$CI_COMMIT_REF_NAME
+      -Dsonar.verbose
 
 code_check:
   stage: check
