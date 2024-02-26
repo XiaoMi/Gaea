@@ -85,7 +85,7 @@ func TestTokenize(t *testing.T) {
 		},
 		{
 			name: "test simple with tab",
-			sql: "select a	b from A.t",
+			sql:  "select a	b from A.t",
 			want: []string{"select", "a", "b", "from", "A.t"},
 		},
 		{
@@ -227,5 +227,82 @@ func TestGetInsertDBTable(t *testing.T) {
 			assert.Equalf(t, tt.wantDB, gotDB, "GetInsertDBTable(%v)", tt.token)
 			assert.Equalf(t, tt.wantTable, gotTable, "GetInsertDBTable(%v)", tt.token)
 		})
+	}
+}
+
+func TestPreview(t *testing.T) {
+	testcases := []struct {
+		sql  string
+		want int
+	}{
+		{"select ...", StmtSelect},
+		{"    select ...", StmtSelect},
+		{"(select ...", StmtSelect},
+		{"( select ...", StmtSelect},
+		{"insert ...", StmtInsert},
+		{"replace ....", StmtReplace},
+		{"   update ...", StmtUpdate},
+		{"Update", StmtUpdate},
+		{"UPDATE ...", StmtUpdate},
+		{"\n\t    delete ...", StmtDelete},
+		{"", StmtUnknown},
+		{" ", StmtUnknown},
+		{"begin", StmtBegin},
+		{" begin", StmtBegin},
+		{" begin ", StmtBegin},
+		{"\n\t begin ", StmtBegin},
+		{"... begin ", StmtUnknown},
+		{"begin ...", StmtUnknown},
+		{"begin /* ... */", StmtBegin},
+		{"begin /* ... *//*test*/", StmtBegin},
+		{"begin;", StmtBegin},
+		{"begin ;", StmtBegin},
+		{"begin; /*...*/", StmtBegin},
+		{"start transaction", StmtBegin},
+		{"commit", StmtCommit},
+		{"commit /*...*/", StmtCommit},
+		{"rollback", StmtRollback},
+		{"rollback /*...*/", StmtRollback},
+		{"rollback to point", StmeSRollback},
+		{"rollback to point /*...*/", StmeSRollback},
+		{"savepoint point", StmtSavepoint},
+		{"release savepoint point", StmtRelease},
+		{"release savepoint point /*...*/", StmtRelease},
+		{"lock tables", StmtLockTables},
+		{"lock table t1 read, t2 write", StmtLockTables},
+		{"unlock tables", StmtUnlockTables},
+		{"flush", StmtFlush},
+		{"create", StmtDDL},
+		{"alter", StmtDDL},
+		{"rename", StmtDDL},
+		{"drop", StmtDDL},
+		{"set", StmtSet},
+		{"show", StmtShow},
+		{"use", StmtUse},
+		{"repair", StmtOther},
+		{"optimize", StmtOther},
+		{"truncate", StmtDDL},
+		{"explain ", StmtExplain},
+		{"unknown", StmtUnknown},
+
+		{"/* leading comment */ select ...", StmtSelect},
+		{"/* leading comment */ (select ...", StmtSelect},
+		{"/* leading comment */ /* leading comment 2 */ select ...", StmtSelect},
+		{"/*! MySQL-specific comment */", StmtComment},
+		{"/*!50708 MySQL-version comment */", StmtComment},
+		{"-- leading single line comment \n select ...", StmtSelect},
+		{"-- leading single line comment \n -- leading single line comment 2\n select ...", StmtSelect},
+
+		{"/* leading comment no end select ...", StmtUnknown},
+		{"-- leading single line comment no end select ...", StmtUnknown},
+		{"/*!40000 ALTER TABLE `t1` DISABLE KEYS */", StmtComment}}
+
+	for _, tt := range testcases {
+		t.Run(tt.sql, func(t *testing.T) {
+			if got := Preview(tt.sql); got != tt.want {
+				t.Errorf("Preview(%s): %v, want %v", tt.sql, got, tt.want)
+			}
+		})
+
 	}
 }

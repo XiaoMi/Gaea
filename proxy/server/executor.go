@@ -665,14 +665,15 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 }
 
 func canHandleWithoutPlan(stmtType int) bool {
-
 	return stmtType == parser.StmtShow ||
 		stmtType == parser.StmtSet ||
 		stmtType == parser.StmtBegin ||
 		stmtType == parser.StmtCommit ||
 		stmtType == parser.StmtRollback ||
 		stmtType == parser.StmtSavepoint ||
-		stmtType == parser.StmtUse
+		stmtType == parser.StmtUse ||
+		stmtType == parser.StmtRelease ||
+		stmtType == parser.StmeSRollback
 }
 
 const variableRestoreFlag = format.RestoreKeyWordLowercase | format.RestoreNameLowercase
@@ -923,6 +924,7 @@ func (se *SessionExecutor) handleCommit() (err error) {
 
 }
 
+// handleRollback handle rollback and rollback to savepoint
 func (se *SessionExecutor) handleRollback(stmt *ast.RollbackStmt) (err error) {
 	if stmt == nil || stmt.Savepoint == "" {
 		return se.rollback()
@@ -976,6 +978,7 @@ func (se *SessionExecutor) rollbackSavepoint(savepoint string) (err error) {
 	return
 }
 
+// handleSavepoint handle savepoint and release savepoint
 func (se *SessionExecutor) handleSavepoint(stmt *ast.SavepointStmt) (err error) {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
