@@ -44,6 +44,21 @@ const (
 	StmtUnknown
 	StmtComment
 	StmtSavepoint
+	StmtPriv
+	StmtExplain
+	StmeSRollback
+	StmtRelease
+	StmtLockTables
+	StmtUnlockTables
+	StmtFlush
+	StmtCallProc
+	StmtRevert
+	StmtShowMigrationLogs
+	StmtCommentOnly
+	StmtPrepare
+	StmtExecute
+	StmtDeallocate
+	StmtKill
 )
 const (
 	eofChar = 0x100
@@ -54,11 +69,16 @@ const (
 func Preview(sql string) int {
 	trimmed := StripLeadingComments(sql)
 
-	firstWord := trimmed
-	if end := strings.IndexFunc(trimmed, unicode.IsSpace); end != -1 {
-		firstWord = trimmed[:end]
+	if strings.Index(trimmed, "/*!") == 0 {
+		return StmtComment
 	}
-	firstWord = strings.TrimLeftFunc(firstWord, func(r rune) bool { return !unicode.IsLetter(r) })
+
+	isNotLetter := func(r rune) bool { return !unicode.IsLetter(r) }
+	firstWord := strings.TrimLeftFunc(trimmed, isNotLetter)
+
+	if end := strings.IndexFunc(firstWord, unicode.IsSpace); end != -1 {
+		firstWord = firstWord[:end]
+	}
 	// Comparison is done in order of priority.
 	loweredFirstWord := strings.ToLower(firstWord)
 	switch loweredFirstWord {
@@ -74,6 +94,12 @@ func Preview(sql string) int {
 		return StmtUpdate
 	case "delete":
 		return StmtDelete
+	case "savepoint":
+		return StmtSavepoint
+	case "lock":
+		return StmtLockTables
+	case "unlock":
+		return StmtUnlockTables
 	}
 	// For the following statements it is not sufficient to rely
 	// on loweredFirstWord. This is because they are not statements
@@ -84,31 +110,34 @@ func Preview(sql string) int {
 	switch strings.ToLower(trimmedNoComments) {
 	case "begin", "start transaction":
 		return StmtBegin
+	case "commit":
+		return StmtCommit
+	case "rollback":
+		return StmtRollback
 	}
 	switch loweredFirstWord {
-	case "create", "alter", "rename", "drop", "truncate", "flush":
+	case "create", "alter", "rename", "drop", "truncate":
 		return StmtDDL
+	case "flush":
+		return StmtFlush
 	case "set":
 		return StmtSet
 	case "show":
 		return StmtShow
 	case "use":
 		return StmtUse
-	case "analyze", "describe", "desc", "explain", "repair", "optimize":
+	case "explain":
+		return StmtExplain
+	case "analyze", "describe", "desc", "repair", "optimize":
 		return StmtOther
-	case "commit":
-		return StmtCommit
+	case "release":
+		return StmtRelease
 	case "rollback":
-		return StmtRollback
-	case "savepoint":
-		return StmtSavepoint
+		return StmeSRollback
+	case "kill":
+		return StmtKill
 	}
-	if strings.Index(trimmedNoComments, "release savepoint") == 0 {
-		return StmtSavepoint
-	}
-	if strings.Index(trimmed, "/*!") == 0 {
-		return StmtComment
-	}
+
 	return StmtUnknown
 }
 
