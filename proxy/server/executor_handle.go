@@ -213,6 +213,12 @@ func (se *SessionExecutor) handleQueryWithoutPlan(reqCtx *util.RequestContext, s
 		return nil, se.handleBegin()
 	case *ast.CommitStmt:
 		return nil, se.handleCommit()
+	case *ast.LockTablesStmt:
+		// TODO: handle lock tables
+		// TODO: unify sql exec time
+		se.manager.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d, r=%d|%v. err:%s",
+			SQLExecStatusIgnore, 0, se.namespace, se.user, se.clientAddr, "", se.db, 0, 0, sql, "ignore lock tables")
+		return nil, nil
 	case *ast.RollbackStmt:
 		return nil, se.handleRollback(stmt)
 	case *ast.SavepointStmt:
