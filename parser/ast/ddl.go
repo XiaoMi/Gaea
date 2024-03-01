@@ -441,10 +441,12 @@ func (n *ColumnOption) Accept(v Visitor) (Node, bool) {
 }
 
 // IndexOption is the index options.
-//    KEY_BLOCK_SIZE [=] value
-//  | index_type
-//  | WITH PARSER parser_name
-//  | COMMENT 'string'
+//
+//	  KEY_BLOCK_SIZE [=] value
+//	| index_type
+//	| WITH PARSER parser_name
+//	| COMMENT 'string'
+//
 // See http://dev.mysql.com/doc/refman/5.7/en/create-table.html
 type IndexOption struct {
 	node
@@ -1148,6 +1150,68 @@ func (n *DropIndexStmt) Accept(v Visitor) (Node, bool) {
 	}
 	n.Table = node.(*TableName)
 	return v.Leave(n)
+}
+
+// LockTablesStmt is a statement to lock tables.
+type LockTablesStmt struct {
+	ddlNode
+
+	TableLocks []TableLock
+}
+
+// TableLock contains the table name and lock type.
+type TableLock struct {
+	Table *TableName
+	Type  model.TableLockType
+}
+
+// Accept implements Node Accept interface.
+func (n *LockTablesStmt) Accept(v Visitor) (Node, bool) {
+	newNode, skipChildren := v.Enter(n)
+	if skipChildren {
+		return v.Leave(newNode)
+	}
+	n = newNode.(*LockTablesStmt)
+	for i := range n.TableLocks {
+		node, ok := n.TableLocks[i].Table.Accept(v)
+		if !ok {
+			return n, false
+		}
+		n.TableLocks[i].Table = node.(*TableName)
+	}
+	return v.Leave(n)
+}
+
+// Restore implements Node interface.
+func (n *LockTablesStmt) Restore(ctx *format.RestoreCtx) error {
+	ctx.WriteKeyWord("LOCK TABLES ")
+	for i, tl := range n.TableLocks {
+		if i != 0 {
+			ctx.WritePlain(", ")
+		}
+		if err := tl.Table.Restore(ctx); err != nil {
+			return errors.Annotate(err, "An error occurred while add index")
+		}
+		ctx.WriteKeyWord(" " + tl.Type.String())
+	}
+	return nil
+}
+
+// UnlockTablesStmt is a statement to unlock tables.
+type UnlockTablesStmt struct {
+	ddlNode
+}
+
+// Accept implements Node Accept interface.
+func (n *UnlockTablesStmt) Accept(v Visitor) (Node, bool) {
+	_, _ = v.Enter(n)
+	return v.Leave(n)
+}
+
+// Restore implements Node interface.
+func (n *UnlockTablesStmt) Restore(ctx *format.RestoreCtx) error {
+	ctx.WriteKeyWord("UNLOCK TABLES")
+	return nil
 }
 
 // TableOptionType is the type for TableOption

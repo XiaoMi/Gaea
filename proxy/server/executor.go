@@ -673,7 +673,8 @@ func canHandleWithoutPlan(stmtType int) bool {
 		stmtType == parser.StmtSavepoint ||
 		stmtType == parser.StmtUse ||
 		stmtType == parser.StmtRelease ||
-		stmtType == parser.StmeSRollback
+		stmtType == parser.StmeSRollback ||
+		stmtType == parser.StmtLockTables
 }
 
 const variableRestoreFlag = format.RestoreKeyWordLowercase | format.RestoreNameLowercase

@@ -2325,21 +2325,25 @@ func TestLikeEscape(t *testing.T) {
 	RunTest(t, table, false)
 }
 
-func TestMysqlDump(t *testing.T) {
-	// Statements used by mysqldump.
+func TestLockUnlockTables(t *testing.T) {
 	table := []testCase{
-		{`UNLOCK TABLES;`, true, ""},
-		{`LOCK TABLES t1 READ;`, true, ""},
-		{`show table status like 't'`, true, "SHOW TABLE STATUS LIKE 't'"},
-		{`LOCK TABLES t2 WRITE`, true, ""},
+		{`UNLOCK TABLES;`, true, "UNLOCK TABLES"},
+		{`LOCK TABLES t1 READ;`, true, "LOCK TABLES `t1` READ"},
+		{`LOCK TABLES t1 READ LOCAL;`, true, "LOCK TABLES `t1` READ LOCAL"},
+		{`LOCK TABLES t2 WRITE`, true, "LOCK TABLES `t2` WRITE"},
+		{`LOCK TABLES t2 WRITE LOCAL;`, true, "LOCK TABLES `t2` WRITE LOCAL"},
+		{`LOCK TABLES t1 WRITE, t2 READ;`, true, "LOCK TABLES `t1` WRITE, `t2` READ"},
+		{`LOCK TABLES t1 WRITE LOCAL, t2 READ LOCAL;`, true, "LOCK TABLES `t1` WRITE LOCAL, `t2` READ LOCAL"},
 
 		// for unlock table and lock table
-		{`UNLOCK TABLE;`, true, ""},
-		{`LOCK TABLE t1 READ;`, true, ""},
-		{`show table status like 't'`, true, "SHOW TABLE STATUS LIKE 't'"},
-		{`LOCK TABLE t2 WRITE`, true, ""},
-		{`LOCK TABLE t1 WRITE, t3 READ`, true, ""},
+		{`UNLOCK TABLE;`, true, "UNLOCK TABLES"},
+		{`LOCK TABLE t1 READ;`, true, "LOCK TABLES `t1` READ"},
+		{`LOCK TABLE t1 READ LOCAL;`, true, "LOCK TABLES `t1` READ LOCAL"},
+		{`LOCK TABLE t2 WRITE`, true, "LOCK TABLES `t2` WRITE"},
+		{`LOCK TABLE t2 WRITE LOCAL;`, true, "LOCK TABLES `t2` WRITE LOCAL"},
+		{`LOCK TABLE t1 WRITE, t2 READ;`, true, "LOCK TABLES `t1` WRITE, `t2` READ"},
 	}
+
 	RunTest(t, table, false)
 }
 

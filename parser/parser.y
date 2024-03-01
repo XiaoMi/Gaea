@@ -815,6 +815,7 @@ import (
 	TableRefs 			"table references"
 	TableToTable 			"rename table to table"
 	TableToTableList 		"rename table to table by list"
+	LockType			"Table locks type"
 
 	TransactionChar		"Transaction characteristic"
 	TransactionChars	"Transaction characteristic list"
@@ -937,7 +938,6 @@ import (
 	NationalOpt		"National option"
 	CharsetKw		"charset or charater set"
 	CommaOpt		"optional comma"
-	LockType		"Table locks type"
 	logAnd			"logical and operator"
 	logOr			"logical or operator"
 	FieldsOrColumns 	"Fields or columns"
@@ -8100,11 +8100,18 @@ LinesTerminated:
  *********************************************************************/
 
 UnlockTablesStmt:
-	"UNLOCK" TablesTerminalSym {}
+	"UNLOCK" TablesTerminalSym
+    {
+        $$ = &ast.UnlockTablesStmt{}
+    }
 
 LockTablesStmt:
 	"LOCK" TablesTerminalSym TableLockList
-	{}
+    {
+        $$ = &ast.LockTablesStmt{
+            TableLocks: $3.([]ast.TableLock),
+        }
+    }
 
 TablesTerminalSym:
 	"TABLES"
@@ -8112,15 +8119,40 @@ TablesTerminalSym:
 
 TableLock:
 	TableName LockType
+	{
+        $$ = ast.TableLock{
+            Table: $1.(*ast.TableName),
+            Type:  $2.(model.TableLockType),
+        }
+    }
 
 LockType:
 	"READ"
+	{
+    		$$ = model.TableLockRead
+    }
 |	"READ" "LOCAL"
+    {
+		$$ = model.TableLockReadLocal
+    }
 |	"WRITE"
+    {
+       $$ = model.TableLockWrite
+    }
+|	"WRITE" "LOCAL"
+    {
+        $$ = model.TableLockWriteLocal
+    }
 
 TableLockList:
 	TableLock
+    {
+        $$ = []ast.TableLock{$1.(ast.TableLock)}
+    }
 |	TableLockList ',' TableLock
+	{
+		$$ = append($1.([]ast.TableLock), $3.(ast.TableLock))
+	}
 
 
 /********************************************************************
