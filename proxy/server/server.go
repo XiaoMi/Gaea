@@ -135,23 +135,6 @@ func (s *Server) onConn(c net.Conn) {
 		return
 	}
 
-	// must invoke after handshake
-	if allowConnect := cc.IsAllowConnect(); allowConnect == false {
-		err := mysql.NewError(mysql.ErrAccessDenied, "ip address access denied by gaea")
-		cc.c.writeErrorPacket(err)
-		return
-	}
-
-	// check connection has reach the limit, must invote after handshake like ip white list
-	if reachLimit, connectionNum := cc.clientConnectionReachLimit(); reachLimit {
-		err := mysql.NewError(mysql.ErrAccessDenied, fmt.Sprintf("Too many connections, current: %d, max: %d",
-			connectionNum, cc.getNamespace().maxClientConnections))
-		log.Warn("ns=%s, %s@%s/%s, too many connections, current:%d, max:%d",
-			cc.executor.namespace, cc.executor.user, cc.executor.clientAddr, cc.executor.db, connectionNum, cc.getNamespace().maxClientConnections)
-		cc.c.writeErrorPacket(err)
-		return
-	}
-
 	// added into time wheel
 	s.tw.Add(s.sessionTimeout, cc, cc.Close)
 	_ = s.manager.statistics.generalLogger.Notice("Connected - conn_id=%d, ns=%s, %s@%s/%s, capability: %d",

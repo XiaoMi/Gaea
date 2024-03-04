@@ -156,6 +156,22 @@ func (cc *Session) Handshake() (*HandshakeResponseInfo, error) {
 		return &info, err
 	}
 
+	// check if client ip allow to connect
+	if allowConnect := cc.IsAllowConnect(); allowConnect == false {
+		errMsg := fmt.Sprintf("[ns:%s, %s@%s/%s] ip not allowed to connect.",
+			cc.namespace, cc.executor.user, cc.executor.clientAddr, cc.executor.db)
+		log.Warn(errMsg)
+		return &info, mysql.NewError(mysql.ErrAccessDenied, errMsg)
+	}
+
+	// check connection has reach the limit, must invote after handshake like ip white list
+	if reachLimit, connectionNum := cc.clientConnectionReachLimit(); reachLimit {
+		errMsg := fmt.Sprintf("[ns:%s, %s@%s/%s] too many connections, current:%d, max:%d",
+			cc.namespace, cc.executor.user, cc.executor.clientAddr, cc.executor.db, connectionNum, cc.getNamespace().maxClientConnections)
+		log.Warn(errMsg)
+		return &info, mysql.NewError(mysql.ErrConCount, errMsg)
+	}
+
 	if err := cc.c.writeOK(cc.executor.GetStatus()); err != nil {
 		log.Warn("[server] Session readHandshakeResponse error, connId %d, msg: %s, error: %s",
 			cc.c.GetConnectionID(), "write ok fail", err.Error())
