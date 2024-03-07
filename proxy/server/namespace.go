@@ -121,7 +121,7 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 	ctx, namespace.CloseCancel = context.WithCancel(context.TODO())
 
 	// init SupportMultiQuery default true
-	namespace.supportMultiQuery = true
+	namespace.supportMultiQuery = false
 	if namespaceConfig.SupportMultiQuery {
 		namespace.supportMultiQuery = namespaceConfig.SupportMultiQuery
 	}
