@@ -591,7 +591,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			r, err := pc.Execute(v, se.manager.GetNamespace(se.namespace).GetMaxResultSize())
 			se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, sliceName, v, pc.GetAddr(), startTime, err)
 			if err != nil {
-				rs[i] = err
+				rs[i] = mysql.NewError(mysql.ErrMySQLBackend, err.Error())
 			} else {
 				rs[i] = r
 			}
