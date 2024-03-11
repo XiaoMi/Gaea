@@ -880,7 +880,7 @@ func (s *StatisticManager) Init(cfg *models.Proxy) error {
 		"gaea proxy flow counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelFlowDirection})
 	s.sessionCounts = stats.NewGaugesWithMultiLabels("SessionCounts",
 		"gaea proxy session counts", []string{statsLabelCluster, statsLabelNamespace})
-	s.CPUBusy = stats.NewGaugesWithMultiLabels("CPUBusy", "gaea proxy CPU busy", []string{statsLabelCluster})
+	s.CPUBusy = stats.NewGaugesWithMultiLabels("CPUBusyByCore", "gaea proxy CPU busy by core", []string{statsLabelCluster})
 
 	s.backendSQLTimings = stats.NewMultiTimings("BackendSqlTimings",
 		"gaea proxy backend sql sqlTimings", []string{statsLabelCluster, statsLabelNamespace, statsLabelOperation})
