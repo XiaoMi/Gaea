@@ -229,37 +229,29 @@ func (p *XFileLog) clean(keepDays int, logKeepCounts int) (err error) {
 	return
 }
 
-func (p *XFileLog) rename(shuffix string) (err error) {
+func (p *XFileLog) rename(suffix string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	defer p.ReOpen()
 	if p.file == nil {
 		return
 	}
-	var fileInfo os.FileInfo
 	normalLog := p.path + "/" + p.filename + ".log"
 	warnLog := normalLog + ".wf"
-	newLog := fmt.Sprintf("%s/%s.log-%s.log", p.path, p.filename, shuffix)
-	newWarnLog := fmt.Sprintf("%s/%s.log.wf-%s.log.wf", p.path, p.filename, shuffix)
-	if fileInfo, err = os.Stat(normalLog); err == nil && fileInfo.Size() == 0 {
-		return
+	newLog := fmt.Sprintf("%s/%s.log-%s.log", p.path, p.filename, suffix)
+	newWarnLog := fmt.Sprintf("%s/%s.log.wf-%s.log.wf", p.path, p.filename, suffix)
+	_ = removeFile(normalLog, newLog)
+	_ = removeFile(warnLog, newWarnLog)
+}
+
+func removeFile(oldFile string, newFile string) (err error) {
+	if fileInfo, err := os.Stat(oldFile); err == nil && fileInfo.Size() == 0 {
+		return nil
 	}
-	if _, err = os.Stat(newLog); err == nil {
-		return
+	if _, err = os.Stat(newFile); err == nil {
+		return nil
 	}
-	if err = os.Rename(normalLog, newLog); err != nil {
-		return
-	}
-	if fileInfo, err = os.Stat(warnLog); err == nil && fileInfo.Size() == 0 {
-		return
-	}
-	if _, err = os.Stat(newWarnLog); err == nil {
-		return
-	}
-	if err = os.Rename(warnLog, newWarnLog); err != nil {
-		return
-	}
-	return
+	return os.Rename(oldFile, newFile)
 }
 
 // ReOpen implements XLogger
