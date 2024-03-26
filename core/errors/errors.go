@@ -99,4 +99,5 @@ var (
 
 	ErrTimeLimitExceeded = errors.New("sql execute time exceeded")
 	ErrRowsLimitExceeded = errors.New("sql result set size exceeded")
+	ErrInvalidPacket     = errors.New("invalid packet format")
 )

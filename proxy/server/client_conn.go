@@ -473,7 +473,7 @@ func (cc *ClientConn) WriteAuthSwitchRequest(authMethod string) error {
 	l := 1 + len(authMethod) + 1 + len(cc.salt) + 1
 	data := cc.StartEphemeralPacket(l)
 	pos := 0
-	pos = mysql.WriteByte(data, pos, mysql.AuthSwitchHeader)
+	pos = mysql.WriteByte(data, pos, mysql.EOFHeader)
 	pos = mysql.WriteNullString(data, pos, authMethod)
 	pos = mysql.WriteBytes(data, pos, cc.salt)
 	mysql.WriteByte(data, pos, 0)

@@ -124,6 +124,35 @@ func CalcCachingSha2Password(salt []byte, password string) []byte {
 	return message1
 }
 
+// CalcPasswordSHA1 根据一次sha1加密半成品生成最终加密串
+func CalcPasswordSHA1(scramble, passwordSHA1 []byte) []byte {
+	if len(passwordSHA1) == 0 {
+		return nil
+	}
+
+	// stage1 = SHA1(password)
+	stage1, _ := hex.DecodeString(string(passwordSHA1))
+
+	// scrambleHash = SHA1(scramble + SHA1(stage1Hash))
+	// inner Hash
+	crypt := sha1.New()
+	crypt.Reset()
+	crypt.Write(stage1)
+	hash := crypt.Sum(nil)
+
+	// outer Hash
+	crypt.Reset()
+	crypt.Write(scramble)
+	crypt.Write(hash)
+	scramble = crypt.Sum(nil)
+
+	// token = scrambleHash XOR stage1Hash
+	for i := range scramble {
+		scramble[i] ^= stage1[i]
+	}
+	return scramble
+}
+
 // RandomBuf return random salt, seed must be in the range of ascii
 func RandomBuf(size int) ([]byte, error) {
 	buf := make([]byte, size)

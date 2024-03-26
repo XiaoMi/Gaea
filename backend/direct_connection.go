@@ -16,7 +16,12 @@ package backend
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha1"
+	"crypto/x509"
 	"encoding/binary"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net"
@@ -114,20 +119,20 @@ func (dc *DirectConnection) connect() error {
 	// step2: write handshake response
 	if err := dc.writeHandshakeResponse41(); err != nil {
 		dc.conn.Close()
-
 		return err
 	}
 
-	response, err := dc.readPacket()
+	var cipher []byte
+	var newPlugin string
+	cipher, newPlugin, err = dc.readAuth()
 	if err != nil {
 		dc.conn.Close()
 		return err
 	}
 
-	switch response[0] {
-	case mysql.OKHeader:
-	default:
-		return errors.New("dc connection handshake failed with mysql")
+	if err := dc.authResponse(cipher, newPlugin); err != nil {
+		dc.conn.Close()
+		return err
 	}
 
 	// we must always use autocommit
@@ -260,6 +265,156 @@ func (dc *DirectConnection) readInitialHandshake() error {
 	return nil
 }
 
+func (dc *DirectConnection) readAuth() ([]byte, string, error) {
+	data, err := dc.readPacket()
+	if err != nil {
+		return nil, "", err
+	}
+	switch data[0] {
+	case mysql.OKHeader, mysql.ErrHeader:
+		return nil, "", nil
+	case mysql.AuthMoreDataHeader:
+		return data[1:], "", nil
+	case mysql.EOFHeader:
+		// AuthSwitch: https://dev.mysql.com/doc/internals/en/authentication-method-mismatch.html
+		if len(data) == 1 {
+			return nil, mysql.MysqlNativePassword, nil
+		}
+		pluginEndIndex := bytes.IndexByte(data, 0x00)
+		if pluginEndIndex < 0 {
+			return nil, "", sqlerr.ErrInvalidPacket
+		}
+		plugin := string(data[1:pluginEndIndex])
+		cipher := data[pluginEndIndex+1:]
+		return cipher, plugin, nil
+	default:
+		return nil, "", sqlerr.ErrInvalidPacket
+	}
+}
+
+func (dc *DirectConnection) authResponse(cipher []byte, newPlugin string) error {
+	if newPlugin == "" {
+		return nil
+	}
+
+	// handle auth plugin switch, if requested
+	var adjustCipher, scrPasswd []byte
+	if len(cipher) >= 20 {
+		// old_password's len(cipher) == 0
+		adjustCipher = cipher[:20]
+	} else {
+		adjustCipher = cipher
+	}
+
+	switch newPlugin {
+	case mysql.CachingSHA2Password:
+		scrPasswd = mysql.CalcCachingSha2Password(adjustCipher, dc.password)
+	case mysql.Sha256Password:
+		// request public key from server
+		scrPasswd = []byte{1}
+	case mysql.MysqlNativePassword:
+		if strings.HasPrefix(dc.password, "**") && len(dc.password) == 42 {
+			scrPasswd = mysql.CalcPasswordSHA1(adjustCipher, []byte(dc.password)[2:])
+		} else {
+			scrPasswd = mysql.CalcPassword(adjustCipher, []byte(dc.password))
+		}
+	default:
+		return fmt.Errorf("not support plugin: %s", newPlugin)
+	}
+	if err := dc.writeAuthSwitchPacket(scrPasswd); err != nil {
+		return fmt.Errorf("writeAuthSwitchPacket error: %s", err)
+	}
+
+	// Read Result Packet
+	authData, plugin, err := dc.readAuth()
+	if err != nil {
+		return err
+	}
+	if plugin != "" {
+		return fmt.Errorf("not allow to change the auth plugin more than once")
+	}
+
+	switch newPlugin {
+	// https://insidemysql.com/preparing-your-community-connector-for-mysql-8-part-2-sha256/
+	case mysql.CachingSHA2Password:
+		switch len(authData) {
+		case 0:
+			return nil // auth successful
+		case 1:
+			switch authData[0] {
+			case mysql.CachingSha2PasswordFastAuthSuccess:
+				_, _, err := dc.readAuth()
+				if err != nil {
+					return err
+				}
+			case mysql.CachingSha2PasswordPerformFullAuthentication:
+				// request public key
+				data := make([]byte, 1)
+				data[0] = byte(mysql.CachingSha2PasswordRequestPublicKey)
+				err = dc.writePacket(data)
+				if err != nil {
+					return err
+				}
+				authData, _, err := dc.readAuth()
+				if err != nil {
+					return err
+				}
+
+				if err = dc.writePublicKeyAuthPacketSha256(authData, adjustCipher); err != nil {
+					return err
+				}
+
+				_, _, err = dc.readAuth()
+				if err != nil {
+					return err
+				}
+			}
+		}
+	case mysql.Sha256Password:
+		switch len(authData) {
+		case 0:
+			return nil // auth successful
+		default:
+			if err = dc.writePublicKeyAuthPacketSha256(authData, adjustCipher); err != nil {
+				return err
+			}
+			_, _, err := dc.readAuth()
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// http://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::AuthSwitchResponse
+func (dc *DirectConnection) writeAuthSwitchPacket(scrPasswd []byte) error {
+	data := make([]byte, len(scrPasswd))
+	copy(data, scrPasswd)
+	return dc.writePacket(data)
+}
+
+// Caching sha2 authentication. Public key request and send encrypted password
+func (dc *DirectConnection) writePublicKeyAuthPacketSha256(authData []byte, scramble []byte) error {
+	block, _ := pem.Decode(authData)
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return err
+	}
+
+	plain := make([]byte, len(dc.password)+1)
+	copy(plain, dc.password)
+	for i := range plain {
+		j := i % len(scramble)
+		plain[i] ^= scramble[j]
+	}
+	sha1 := sha1.New()
+	enc, _ := rsa.EncryptOAEP(sha1, rand.Reader, pub.(*rsa.PublicKey), plain, nil)
+	data := make([]byte, len(enc))
+	copy(data, enc)
+	return dc.writePacket(data)
+}
+
 // writeHandshakeResponse41 writes the handshake response.
 func (dc *DirectConnection) writeHandshakeResponse41() error {
 	// Adjust client capability flags based on server support
@@ -273,6 +428,7 @@ func (dc *DirectConnection) writeHandshakeResponse41() error {
 	}
 
 	capability &= dc.capability
+	capability |= mysql.ClientPluginAuth
 
 	//we only support secure connection
 	auth := mysql.CalcPassword(dc.salt, []byte(dc.password))
