@@ -33,6 +33,7 @@ const (
 	ServerVersion string = "5.6.20-gaea"
 	// MysqlNativePassword uses a salt and transmits a hash on the wire.
 	MysqlNativePassword = "mysql_native_password"
+	Sha256Password      = "sha256_password"
 	CachingSHA2Password = "caching_sha2_password"
 	// ProtocolVersion is the current version of the protocol.
 	// Always 10.
@@ -49,11 +50,11 @@ const (
 
 // Header information.
 const (
-	OKHeader          byte = 0x00
-	ErrHeader         byte = 0xff
-	EOFHeader         byte = 0xfe
-	LocalInFileHeader byte = 0xfb
-	AuthSwitchHeader  byte = 0xfe
+	OKHeader           byte = 0x00
+	AuthMoreDataHeader byte = 0x01
+	ErrHeader          byte = 0xff
+	EOFHeader          byte = 0xfe
+	LocalInFileHeader  byte = 0xfb
 )
 
 // Server information.
@@ -70,6 +71,12 @@ const (
 	ServerStatusMetadataChanged    uint16 = 0x0400
 	ServerStatusWasSlow            uint16 = 0x0800
 	ServerPSOutParams              uint16 = 0x1000
+)
+
+const (
+	CachingSha2PasswordRequestPublicKey          = 2
+	CachingSha2PasswordFastAuthSuccess           = 3
+	CachingSha2PasswordPerformFullAuthentication = 4
 )
 
 // ErrTextLength error text length limit.
