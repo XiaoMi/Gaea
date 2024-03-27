@@ -335,6 +335,7 @@ import (
 	jsonType	"JSON"
 	keyBlockSize	"KEY_BLOCK_SIZE"
 	local		"LOCAL"
+	locked      "LOCKED"
 	last		"LAST"
 	less		"LESS"
 	level		"LEVEL"
@@ -393,7 +394,9 @@ import (
 	session		"SESSION"
 	share		"SHARE"
 	shared		"SHARED"
+	nowait      "NOWAIT"
 	signed		"SIGNED"
+	skip        "SKIP"
 	slave		"SLAVE"
 	slow		"SLOW"
 	snapshot	"SNAPSHOT"
@@ -3110,7 +3113,7 @@ UnReservedKeyword:
 | "NONE" | "NULLS" | "SUPER" | "EXCLUSIVE" | "STATS_PERSISTENT" | "ROW_COUNT" | "COALESCE" | "MONTH" | "PROCESS" | "PROFILES"
 | "MICROSECOND" | "MINUTE" | "PLUGINS" | "PRECEDING" | "QUERY" | "QUERIES" | "SECOND" | "SEPARATOR" | "SHARE" | "SHARED" | "SLOW" | "MAX_CONNECTIONS_PER_HOUR" | "MAX_QUERIES_PER_HOUR" | "MAX_UPDATES_PER_HOUR"
 | "MAX_USER_CONNECTIONS" | "REPLICATION" | "CLIENT" | "SLAVE" | "RELOAD" | "TEMPORARY" | "ROUTINE" | "EVENT" | "ALGORITHM" | "DEFINER" | "INVOKER" | "MERGE" | "TEMPTABLE" | "UNDEFINED" | "SECURITY" | "CASCADED" | "RECOVER"
-| "ROLLUP"
+| "ROLLUP" | "NOWAIT" | "SKIP" | "LOCKED"
 
 
 
@@ -5494,9 +5497,29 @@ SelectLockOpt:
 		$$ = ast.SelectLockNone
 	}
 |	"FOR" "UPDATE"
-	{
-		$$ = ast.SelectLockForUpdate
-	}
+    {
+        $$ = ast.SelectLockForUpdate
+    }
+|	"FOR" "SHARE"
+    {
+        $$ = ast.SelectLockForShare
+    }
+|	"FOR" "UPDATE" "NOWAIT"
+    {
+        $$ = ast.SelectLockForUpdateNoWait
+    }
+|	"FOR" "SHARE" "NOWAIT"
+    {
+        $$ = ast.SelectLockForShareNoWait
+    }
+|	"FOR" "UPDATE" "SKIP" "LOCKED"
+ {
+     $$ = ast.SelectLockForUpdateSkipLocked
+ }
+|	"FOR" "SHARE" "SKIP" "LOCKED"
+ {
+     $$ = ast.SelectLockForShareSkipLocked
+ }
 |	"LOCK" "IN" "SHARE" "MODE"
 	{
 		$$ = ast.SelectLockInShareMode

@@ -433,7 +433,14 @@ func TestDMLStmt(t *testing.T) {
 
 		// select for update
 		{"SELECT * from t for update", true, "SELECT * FROM `t` FOR UPDATE"},
-		{"SELECT * from t lock in share mode", true, "SELECT * FROM `t` LOCK IN SHARE MODE"},
+		{"select * from t for share", true, "SELECT * FROM `t` FOR SHARE"},
+		{"select * from t for update nowait", true, "SELECT * FROM `t` FOR UPDATE NOWAIT"},
+		{"select * from t for share nowait", true, "SELECT * FROM `t` FOR SHARE NOWAIT"},
+		{"select * from t for update skip locked", true, "SELECT * FROM `t` FOR UPDATE SKIP LOCKED"},
+		{"select * from t for share skip locked", true, "SELECT * FROM `t` FOR SHARE SKIP LOCKED"},
+		{"select * from t lock in share mode", true, "SELECT * FROM `t` LOCK IN SHARE MODE"},
+		{"select * from t lock in share mode nowait", false, ""},
+		{"select * from t lock in share mode skip locked", false, ""},
 
 		// from join
 		{"SELECT * from t1, t2, t3", true, "SELECT * FROM ((`t1`) JOIN `t2`) JOIN `t3`"},
