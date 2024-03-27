@@ -723,12 +723,19 @@ func checkExecuteFromSlave(reqCtx *util.RequestContext, c *SessionExecutor, sql 
 		return true
 	}
 
-	// handle sql `select ... for update` or `select ... in share mode` to master
+	// send sql `select ... for update [nowait/skip locked]`
+	// or `select ... in share mode [nowait/skip locked]` to master
 	if c.GetNamespace().CheckSelectLock {
-		if strings.ToLower(tokens[tokensLen-1]) == "update" && strings.ToLower(tokens[tokensLen-2]) == "for" {
-			return false
+		if len(tokens) < 2 {
+			return true
 		}
-		if strings.ToLower(tokens[tokensLen-1]) == "mode" && strings.ToLower(tokens[tokensLen-2]) == "share" {
+		lastFirstWord := strings.ToLower(tokens[tokensLen-1])
+		lastSecondWord := strings.ToLower(tokens[tokensLen-2])
+		if (lastFirstWord == "update" && lastSecondWord == "for") ||
+			(lastFirstWord == "mode" && lastSecondWord == "share") ||
+			(lastFirstWord == "share" && lastSecondWord == "for") ||
+			(lastFirstWord == "nowait" && (lastSecondWord == "share" || lastSecondWord == "update")) ||
+			(lastFirstWord == "locked" && lastSecondWord == "skip") {
 			return false
 		}
 	}

@@ -545,6 +545,9 @@ var tokenMap = map[string]int{
 	"WORK":                     work,
 	"CHAIN":                    chain,
 	"RELEASE":                  release,
+	"NOWAIT":                   nowait,
+	"SKIP":                     skip,
+	"LOCKED":                   locked,
 }
 
 // See https://dev.mysql.com/doc/refman/5.7/en/function-resolution.html for details

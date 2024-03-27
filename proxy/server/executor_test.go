@@ -602,6 +602,36 @@ func TestCanExecuteFromSlave(t *testing.T) {
 			expectFromSlaves: []bool{false, false, true},
 		},
 		{
+			name:             "test select for share",
+			sql:              "select * from t where id=1 for share",
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{false, false, true},
+		},
+		{
+			name:             "test select for share",
+			sql:              "select * from t where id=1 for share nowait",
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{false, false, true},
+		},
+		{
+			name:             "test select for share",
+			sql:              "select * from t where id=1 for share skip locked",
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{false, false, true},
+		},
+		{
+			name:             "test select for share",
+			sql:              "select * from t where id=1 for update nowait",
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{false, false, true},
+		},
+		{
+			name:             "test select for share",
+			sql:              "select * from t where id=1 for update skip locked",
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{false, false, true},
+		},
+		{
 			name:             "test update",
 			sql:              "update t set col1='a' where id=1",
 			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
