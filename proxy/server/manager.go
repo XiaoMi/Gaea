@@ -289,6 +289,12 @@ func (m *Manager) CheckPassword(user string, salt, auth []byte) (bool, string) {
 	return m.users[current].CheckPassword(user, salt, auth)
 }
 
+// CheckHashPassword check if right password with specific user
+func (m *Manager) CheckHashPassword(user string, salt, auth []byte) (bool, string) {
+	current, _, _ := m.switchIndex.Get()
+	return m.users[current].CheckHashPassword(user, salt, auth)
+}
+
 // CheckPassword check if right password with specific user
 func (m *Manager) CheckSha2Password(user string, salt, auth []byte) (bool, string) {
 	current, _, _ := m.switchIndex.Get()
@@ -666,6 +672,18 @@ func (u *UserManager) CheckPassword(user string, salt, auth []byte) (bool, strin
 		checkAuth := mysql.CalcPassword(salt, []byte(password))
 		if bytes.Equal(auth, checkAuth) {
 			return true, password
+		}
+	}
+	return false, ""
+}
+
+// CheckHashPassword check encrypt password with specific user
+func (u *UserManager) CheckHashPassword(user string, salt, auth []byte) (bool, string) {
+	for _, password := range u.users[user] {
+		if strings.HasPrefix(password, "*") && len(password) == 41 {
+			if mysql.CheckHashPassword(auth, salt, []byte(password)[1:]) {
+				return true, password
+			}
 		}
 	}
 	return false, ""

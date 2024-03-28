@@ -196,7 +196,10 @@ func (cc *Session) handleHandshakeResponse(info HandshakeResponseInfo) error {
 		if len(info.AuthResponse) == 32 {
 			succ, password = cc.manager.CheckSha2Password(user, info.Salt, info.AuthResponse)
 		} else {
-			succ, password = cc.manager.CheckPassword(user, info.Salt, info.AuthResponse)
+			succ, password = cc.manager.CheckHashPassword(user, info.Salt, info.AuthResponse)
+			if !succ {
+				succ, password = cc.manager.CheckPassword(user, info.Salt, info.AuthResponse)
+			}
 		}
 	} else if info.AuthPlugin == mysql.CachingSHA2Password {
 		succ, password = cc.manager.CheckSha2Password(user, info.Salt, info.AuthResponse)
