@@ -29,8 +29,10 @@
 package mysql
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"crypto/sha256"
+	"encoding/hex"
 	"math/rand"
 	"time"
 	"unicode/utf8"
@@ -69,6 +71,32 @@ func CalcPassword(scramble, password []byte) []byte {
 		scramble[i] ^= stage1[i]
 	}
 	return scramble
+}
+
+// CheckHashPassword 以密文密码模式验证客户端密码
+func CheckHashPassword(clientResp, scramble, encryptPassword []byte) bool {
+	// Client
+	// SHA1('password') XOR SHA1("20-bytes rnd"+SHA1(SHA1('password')))
+	// Server
+	// SHA1(client-response XOR SHA1("20-bytes rnd"+mysql.user.password))
+	if len(encryptPassword) == 0 {
+		return false
+	}
+	hashBytes, _ := hex.DecodeString(string(encryptPassword))
+	crypt := sha1.New()
+	crypt.Write(scramble)
+	crypt.Write(hashBytes)
+	hash := crypt.Sum(nil)
+
+	for i := range clientResp {
+		clientResp[i] ^= hash[i]
+	}
+
+	crypt.Reset()
+	crypt.Write(clientResp)
+	hash = crypt.Sum(nil)
+
+	return bytes.Equal(hashBytes, hash)
 }
 
 func CalcCachingSha2Password(salt []byte, password string) []byte {
