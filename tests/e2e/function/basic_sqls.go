@@ -3,6 +3,7 @@ package function
 import (
 	"database/sql"
 	"fmt"
+	"github.com/go-sql-driver/mysql"
 	"reflect"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 // It sets up a test environment and then performs a series of SQL commands such as SELECT, DELETE, UPDATE, and INSERT.
 // The test checks if these operations yield the expected results, using a custom function checkFunc to validate the outcomes.
 // This approach ensures the database system accurately processes and reflects changes made by standard SQL queries, highlighting its capability to handle essential database operations reliably.
-var _ = ginkgo.Describe("Simple SQL Queries", func() {
+var _ = ginkgo.Describe("simple sql test", func() {
 	e2eMgr := config.NewE2eManager()
 	db := config.DefaultE2eDatabase
 	slice := e2eMgr.NsSlices[config.SliceDualSlave]
@@ -36,8 +37,8 @@ var _ = ginkgo.Describe("Simple SQL Queries", func() {
 		time.Sleep(500 * time.Millisecond)
 	})
 
-	ginkgo.Context("When executing basic SQL operations", func() {
-		ginkgo.It("should handle SELECT operations correctly", func() {
+	ginkgo.Context("test basic sqls", func() {
+		ginkgo.It("should handle basic sqls orrectly", func() {
 			gaeaConn, err := e2eMgr.GetWriteGaeaUserConn()
 			util.ExpectNoError(err)
 			mysqlConn, err := slice.GetMasterAdminConn(0)
@@ -50,6 +51,7 @@ var _ = ginkgo.Describe("Simple SQL Queries", func() {
 				MasterConn *sql.DB
 				CheckSQL   string
 				ExpectRes  [][]string
+				ExpectErr  error
 			}{
 				{
 					GaeaConn:   gaeaConn,
@@ -85,11 +87,24 @@ var _ = ginkgo.Describe("Simple SQL Queries", func() {
 						"11", "Alex",
 					}},
 				},
+				{
+					GaeaConn:   gaeaConn,
+					GaeaSQL:    fmt.Sprintf("INSERT INTO %s.%s (id,name) VALUES (9,'Alex')", db, table),
+					MasterConn: mysqlConn,
+					ExpectErr: &mysql.MySQLError{
+						Number:  1062,
+						Message: "Duplicate entry '9' for key 'PRIMARY'",
+					},
+				},
 			}
 
 			// 执行 SQL 测试用例
 			for _, sqlCase := range sqlCases {
 				_, err := sqlCase.GaeaConn.Exec(sqlCase.GaeaSQL)
+				if sqlCase.ExpectErr != nil {
+					util.ExpectEqual(err.Error(), sqlCase.ExpectErr.Error())
+					continue
+				}
 				util.ExpectNoError(err)
 				err = checkFunc(sqlCase.MasterConn, sqlCase.CheckSQL, sqlCase.ExpectRes)
 				util.ExpectNoError(err)

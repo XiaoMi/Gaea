@@ -1108,7 +1108,7 @@ func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sq
 
 	rs, err := se.executeInSlice(reqCtx, pc, phyDB, sql)
 	if err != nil {
-		return nil, fmt.Errorf("executeInSlice failed: %v", err)
+		return nil, err
 	}
 
 	if pc.MoreRowsExist() || pc.MoreResultsExist() {
