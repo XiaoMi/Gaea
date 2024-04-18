@@ -16,6 +16,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util/sync2"
@@ -249,11 +250,82 @@ func (cc *ClientConn) writeOK(status uint16) error {
 	return nil
 }
 
-func (cc *ClientConn) writeOKResult(status uint16, r *mysql.Result) error {
+func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, continueConn backend.PooledConnect, maxRows int, isBinary bool) error {
+	if rs == nil {
+		return cc.writeOK(status)
+	}
+	if rs.Status&mysql.ServerMoreResultsExists > 0 {
+		status |= mysql.ServerMoreResultsExists
+	} else {
+		status = status &^ (1 << 3)
+	}
+	if isBinary {
+		if err := rs.BuildBinaryResultSet(); err != nil {
+			return err
+		}
+	}
+	err := cc.writeOKResult(status, continueConn.MoreRowsExist(), rs)
+	if err != nil {
+		return err
+	}
+
+	if continueConn.MoreRowsExist() {
+		for {
+			result := &mysql.Result{
+				Status:       0,
+				InsertID:     0,
+				AffectedRows: 0,
+				Warnings:     0,
+				Resultset:    &mysql.Resultset{},
+			}
+			err = continueConn.FetchMoreRows(result, maxRows)
+			if isBinary {
+				if err := result.BuildBinaryResultSet(); err != nil {
+					return err
+				}
+			}
+			for _, v := range result.RowDatas {
+				if err = cc.writeRow(v); err != nil {
+					return err
+				}
+				if err = cc.Flush(); err != nil {
+					return nil
+				}
+			}
+
+			if !continueConn.MoreRowsExist() {
+				status = status &^ (1 << 3)
+				err = cc.writeEOFPacket(status)
+				return err
+			}
+		}
+	}
+	// handle multi rs
+	for continueConn.MoreResultsExist() {
+		rs, err := continueConn.ReadMoreResult(maxRows)
+		if err != nil {
+			return fmt.Errorf("readMoreresult error: %v", err)
+		}
+
+		if isBinary {
+			if err := rs.BuildBinaryResultSet(); err != nil {
+				return err
+			}
+		}
+		// TODO: multi statement may have large result
+		err = cc.writeOKResult(rs.Status, false, rs)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (cc *ClientConn) writeOKResult(status uint16, moreRows bool, r *mysql.Result) error {
 	if r.Resultset == nil {
 		return cc.WriteOKPacket(r.AffectedRows, r.InsertID, status, 0, r.Info)
 	}
-	return cc.writeResultset(status, r.Resultset)
+	return cc.writeResultset(status, moreRows, r.Resultset)
 }
 
 func (cc *ClientConn) writeEOFPacket(status uint16) error {
@@ -286,8 +358,44 @@ func (cc *ClientConn) writeRow(row []byte) error {
 	return cc.WriteEphemeralPacket()
 }
 
+func (cc *ClientConn) writeFields(status uint16, r *mysql.Resultset) error {
+	var err error
+	cc.StartWriterBuffering()
+
+	// write column count
+	columnCount := uint64(len(r.Fields))
+	err = cc.writeColumnCount(columnCount)
+	if err != nil {
+		return err
+	}
+
+	// write columns
+	err = cc.writeFieldList(status, r.Fields)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cc *ClientConn) writeRows(r *mysql.Resultset) error {
+	for _, v := range r.RowDatas {
+		if err := cc.writeRow(v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (cc *ClientConn) writeEndResult(status uint16) error {
+	err := cc.writeEOFPacket(status)
+	if err != nil {
+		return err
+	}
+	return cc.Flush()
+}
+
 // https://dev.mysql.com/doc/internals/en/com-query-response.html#packet-ProtocolText::Resultset
-func (cc *ClientConn) writeResultset(status uint16, r *mysql.Resultset) error {
+func (cc *ClientConn) writeResultset(status uint16, moreRows bool, r *mysql.Resultset) error {
 	var err error
 	cc.StartWriterBuffering()
 
@@ -312,10 +420,12 @@ func (cc *ClientConn) writeResultset(status uint16, r *mysql.Resultset) error {
 			return err
 		}
 	}
-
-	err = cc.writeEOFPacket(status)
-	if err != nil {
-		return err
+	// if moreRows exists, will not send EOF packet
+	if !moreRows {
+		err = cc.writeEOFPacket(status)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = cc.Flush()

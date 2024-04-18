@@ -26,6 +26,8 @@ type pooledConnectImpl struct {
 	directConnection *DirectConnection
 	pool             *connectionPoolImpl
 	returnTime       time.Time
+	moreRowsExist    bool
+	moreResultsExist bool
 }
 
 // Recycle return PooledConnect to the pool
@@ -86,11 +88,50 @@ func (pc *pooledConnectImpl) PingWithTimeout(timeout time.Duration) error {
 
 // Execute wrapper of direct connection, execute sql
 func (pc *pooledConnectImpl) Execute(sql string, maxRows int) (*mysql.Result, error) {
-	return pc.directConnection.Execute(sql, maxRows)
+	rs, err := pc.directConnection.Execute(sql, maxRows)
+	pc.moreRowsExist = pc.directConnection.moreRowExists
+	if err != nil {
+		return nil, err
+	}
+	if rs != nil {
+		if rs.Status&mysql.ServerMoreResultsExists > 0 {
+			pc.moreResultsExist = true
+		} else {
+			pc.moreResultsExist = false
+		}
+	}
+	return rs, err
+}
+
+func (pc *pooledConnectImpl) FetchMoreRows(result *mysql.Result, maxRows int) error {
+	err := pc.directConnection.readResultRows(result, false, maxRows)
+	pc.moreRowsExist = pc.directConnection.moreRowExists
+	return err
+}
+
+func (pc *pooledConnectImpl) ReadMoreResult(maxRows int) (*mysql.Result, error) {
+	// set default to false
+	pc.moreResultsExist = false
+	rs, err := pc.directConnection.readResult(false, maxRows)
+	if err != nil {
+		return nil, err
+	}
+	if rs != nil && rs.Status&mysql.ServerMoreResultsExists > 0 {
+		pc.moreResultsExist = true
+	}
+	return rs, err
 }
 
 func (pc *pooledConnectImpl) ExecuteWithTimeout(sql string, maxRows int, timeout time.Duration) (*mysql.Result, error) {
 	return pc.directConnection.ExecuteWithTimeout(sql, maxRows, timeout)
+}
+
+func (pc *pooledConnectImpl) MoreRowsExist() bool {
+	return pc.moreRowsExist
+}
+
+func (pc *pooledConnectImpl) MoreResultsExist() bool {
+	return pc.moreResultsExist
 }
 
 // SetAutoCommit wrapper of direct connection, set autocommit

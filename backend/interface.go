@@ -28,6 +28,10 @@ type PooledConnect interface {
 	WriteSetStatement() error
 	GetConnectionID() int64
 	GetReturnTime() time.Time
+	MoreRowsExist() bool
+	MoreResultsExist() bool
+	FetchMoreRows(result *mysql.Result, maxRows int) error
+	ReadMoreResult(maxRows int) (*mysql.Result, error)
 }
 
 type ConnectionPool interface {

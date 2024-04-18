@@ -281,6 +281,18 @@ type Result struct {
 	*Resultset
 }
 
+// BuildBinaryResultSet build binary result set
+func (r *Result) BuildBinaryResultSet() error {
+	if r != nil && r.Resultset != nil {
+		resultSet, err := BuildBinaryResultset(r.Fields, r.Values)
+		if err != nil {
+			return err
+		}
+		r.Resultset = resultSet
+	}
+	return nil
+}
+
 // Resultset means mysql results of sql execution, included split table sql
 type Resultset struct {
 	Fields     []*Field        // columns information

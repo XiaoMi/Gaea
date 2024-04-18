@@ -83,23 +83,39 @@ func (m *MockPooledConnect) Execute(arg0 string, arg1 int) (*mysql.Result, error
 	return ret0, ret1
 }
 
-func (m *MockPooledConnect) ExecuteWithTimeout(arg0 string, arg1 int,time time.Duration) (*mysql.Result, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ExecuteWithTimeout", arg0, arg1)
-	ret0, _ := ret[0].(*mysql.Result)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
 // Execute indicates an expected call of Execute
 func (mr *MockPooledConnectMockRecorder) Execute(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Execute", reflect.TypeOf((*MockPooledConnect)(nil).Execute), arg0, arg1)
 }
 
-func (mr *MockPooledConnectMockRecorder) ExecuteWithTimeout(arg0, arg1 interface{},arg2 interface{}) *gomock.Call {
+// ExecuteWithTimeout mocks base method
+func (m *MockPooledConnect) ExecuteWithTimeout(arg0 string, arg1 int, arg2 time.Duration) (*mysql.Result, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ExecuteWithTimeout", arg0, arg1, arg2)
+	ret0, _ := ret[0].(*mysql.Result)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ExecuteWithTimeout indicates an expected call of ExecuteWithTimeout
+func (mr *MockPooledConnectMockRecorder) ExecuteWithTimeout(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteWithTimeout", reflect.TypeOf((*MockPooledConnect)(nil).recorder.ExecuteWithTimeout), arg0, arg1,arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ExecuteWithTimeout", reflect.TypeOf((*MockPooledConnect)(nil).ExecuteWithTimeout), arg0, arg1, arg2)
+}
+
+// FetchMoreRows mocks base method
+func (m *MockPooledConnect) FetchMoreRows(arg0 *mysql.Result, arg1 int) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FetchMoreRows", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// FetchMoreRows indicates an expected call of FetchMoreRows
+func (mr *MockPooledConnectMockRecorder) FetchMoreRows(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FetchMoreRows", reflect.TypeOf((*MockPooledConnect)(nil).FetchMoreRows), arg0, arg1)
 }
 
 // FieldList mocks base method
@@ -173,6 +189,34 @@ func (mr *MockPooledConnectMockRecorder) IsClosed() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsClosed", reflect.TypeOf((*MockPooledConnect)(nil).IsClosed))
 }
 
+// MoreResultsExist mocks base method
+func (m *MockPooledConnect) MoreResultsExist() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MoreResultsExist")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// MoreResultsExist indicates an expected call of MoreResultsExist
+func (mr *MockPooledConnectMockRecorder) MoreResultsExist() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MoreResultsExist", reflect.TypeOf((*MockPooledConnect)(nil).MoreResultsExist))
+}
+
+// MoreRowsExist mocks base method
+func (m *MockPooledConnect) MoreRowsExist() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "MoreRowsExist")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// MoreRowsExist indicates an expected call of MoreRowsExist
+func (mr *MockPooledConnectMockRecorder) MoreRowsExist() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MoreRowsExist", reflect.TypeOf((*MockPooledConnect)(nil).MoreRowsExist))
+}
+
 // Ping mocks base method
 func (m *MockPooledConnect) Ping() error {
 	m.ctrl.T.Helper()
@@ -199,6 +243,21 @@ func (m *MockPooledConnect) PingWithTimeout(arg0 time.Duration) error {
 func (mr *MockPooledConnectMockRecorder) PingWithTimeout(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PingWithTimeout", reflect.TypeOf((*MockPooledConnect)(nil).PingWithTimeout), arg0)
+}
+
+// ReadMoreResult mocks base method
+func (m *MockPooledConnect) ReadMoreResult(arg0 int) (*mysql.Result, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReadMoreResult", arg0)
+	ret0, _ := ret[0].(*mysql.Result)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ReadMoreResult indicates an expected call of ReadMoreResult
+func (mr *MockPooledConnectMockRecorder) ReadMoreResult(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReadMoreResult", reflect.TypeOf((*MockPooledConnect)(nil).ReadMoreResult), arg0)
 }
 
 // Reconnect mocks base method

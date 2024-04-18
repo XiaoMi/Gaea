@@ -97,6 +97,7 @@ type Response struct {
 	RespType int
 	Status   uint16
 	Data     interface{}
+	IsBinary bool
 }
 
 const (
@@ -125,11 +126,12 @@ func CreateOKResponse(status uint16) Response {
 }
 
 // CreateResultResponse create result response
-func CreateResultResponse(status uint16, result *mysql.Result) Response {
+func CreateResultResponse(status uint16, result *mysql.Result, isBinary bool) Response {
 	return Response{
 		RespType: RespResult,
 		Status:   status,
 		Data:     result,
+		IsBinary: isBinary,
 	}
 }
 
@@ -308,7 +310,7 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		if err != nil {
 			return CreateErrorResponse(se.status, err)
 		}
-		return CreateResultResponse(se.status, r)
+		return CreateResultResponse(se.status, r, false)
 	case mysql.ComPing:
 		return CreateOKResponse(se.status)
 	case mysql.ComInitDB:
@@ -339,7 +341,7 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		if err != nil {
 			return CreateErrorResponse(se.status, err)
 		}
-		return CreateResultResponse(se.status, r)
+		return CreateResultResponse(se.status, r, true)
 	case mysql.ComStmtClose: // no response
 		if err := se.handleStmtClose(data); err != nil {
 			return CreateErrorResponse(se.status, err)
@@ -479,6 +481,11 @@ func (se *SessionExecutor) getTransactionConn(sliceName string, phyDb string) (p
 
 func (se *SessionExecutor) recycleBackendConn(pc backend.PooledConnect, rollback bool) {
 	if pc == nil {
+		return
+	}
+
+	// if continueConn set to pc,maybe moreRowsExist or moreResultsExist
+	if se.session.continueConn != nil && (pc.MoreRowsExist() || pc.MoreResultsExist()) {
 		return
 	}
 
@@ -671,6 +678,48 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 		}
 	}
 	return r, err
+}
+
+func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backend.PooledConnect, phyDb, sql string) (*mysql.Result, error) {
+	var ctx = context.Background()
+	var cancel context.CancelFunc
+	maxExecuteTime := se.manager.GetNamespace(se.namespace).GetMaxExecuteTime()
+	if maxExecuteTime > 0 {
+		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(maxExecuteTime)*time.Millisecond)
+		defer cancel()
+	}
+
+	// Control go routine execution
+	done := make(chan struct{})
+	defer close(done)
+
+	var rs *mysql.Result
+	var err error
+	go func() {
+		if pc == nil {
+			err = fmt.Errorf("no backend connection")
+			done <- struct{}{}
+			return
+		}
+		err = initBackendConn(pc, phyDb, se.GetCharset(), se.GetCollationID(), se.GetVariables())
+		if err != nil {
+			done <- struct{}{}
+			return
+		}
+		startTime := time.Now()
+		rs, err = pc.Execute(sql, se.manager.GetNamespace(se.namespace).GetMaxResultSize())
+
+		se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, "slice0", sql, pc.GetAddr(), startTime, err)
+		done <- struct{}{}
+	}()
+
+	select {
+	case <-ctx.Done():
+		log.Warn("exec sql: %s, error: %s", sql, errors.ErrTimeLimitExceeded.Error())
+		return nil, fmt.Errorf("%v %dms", errors.ErrTimeLimitExceeded, maxExecuteTime)
+	case <-done:
+		return rs, err
+	}
 }
 
 func canHandleWithoutPlan(stmtType int) bool {
@@ -1046,22 +1095,26 @@ func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sq
 	dbSQLs[phyDB] = []string{sql}
 	sqls[slice] = dbSQLs
 
-	pcs, err := se.getBackendConns(sqls, getFromSlave(reqCtx))
-	defer se.recycleBackendConns(pcs, false)
+	pc, err := se.getBackendConn(slice, phyDB, getFromSlave(reqCtx))
+	defer se.recycleBackendConn(pc, false)
+
 	if err != nil {
-		log.Warn("getBackendConns failed: %v", err)
-		return nil, fmt.Errorf("getBackendConns failed: %v", err)
+		log.Warn("[ns:%s]getBackendConn failed: %v", se.GetNamespace().name, err)
+		return nil, fmt.Errorf("getBackendConn failed: %v", err)
 	}
 
-	rs, err := se.executeInMultiSlices(reqCtx, pcs, sqls)
+	se.backendAddr = pc.GetAddr()
+	se.backendConnectionId = pc.GetConnectionID()
+
+	rs, err := se.executeInSlice(reqCtx, pc, phyDB, sql)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("executeInSlice failed: %v", err)
 	}
 
-	if len(rs) == 0 {
-		return nil, mysql.NewError(mysql.ErrUnknown, "result is empty")
+	if pc.MoreRowsExist() || pc.MoreResultsExist() {
+		se.session.continueConn = pc
 	}
-	return rs[0], nil
+	return rs, nil
 }
 
 // ExecuteSQLs len(sqls) must not be 0, or return error

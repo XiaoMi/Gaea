@@ -7,7 +7,7 @@ go install github.com/onsi/ginkgo/v2/ginkgo@v2.3.1
 
 # prepare etcd env
 # shellcheck disable=SC2069
-etcd 2>&1 1>>etcd.log &
+etcd --data-dir bin/etcd 2>&1 1>>bin/etcd.log &
 
 
 # Start 2 Mysql Cluster
