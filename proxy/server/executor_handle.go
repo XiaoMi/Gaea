@@ -113,7 +113,7 @@ func (se *SessionExecutor) doMultiStmts(reqCtx *util.RequestContext, sql string)
 
 		if index < stmtsNum-1 {
 			//write result to client
-			response := CreateResultResponse(se.status|mysql.ServerMoreResultsExists, r)
+			response := CreateResultResponse(se.status|mysql.ServerMoreResultsExists, r, false)
 			if err = se.session.writeResponse(response); err != nil {
 				log.Warn("session write response error, error: %v", err)
 				se.session.Close()

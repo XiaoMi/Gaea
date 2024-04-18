@@ -150,6 +150,7 @@ func NewE2eManager() *E2eManager {
 				HealthCheckSql:  "",
 				MaxCapacity:     24,
 				IdleTimeout:     60,
+				Capability:      500357,
 			},
 		},
 		GaeaUsers: GaeaUsers,

@@ -16,6 +16,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/XiaoMi/Gaea/backend"
 	"net"
 	"runtime"
 	"strings"
@@ -58,6 +59,8 @@ type Session struct {
 	executor *SessionExecutor
 
 	closed atomic.Value
+
+	continueConn backend.PooledConnect
 }
 
 // create session between client<->proxy
@@ -311,6 +314,10 @@ func (cc *Session) Run() {
 }
 
 func (cc *Session) writeResponse(r Response) error {
+	defer func() {
+		cc.executor.recycleBackendConn(cc.continueConn, false)
+		cc.continueConn = nil
+	}()
 	switch r.RespType {
 	case RespEOF:
 		return cc.c.writeEOFPacket(r.Status)
@@ -319,7 +326,11 @@ func (cc *Session) writeResponse(r Response) error {
 		if rs == nil {
 			return cc.c.writeOK(r.Status)
 		}
-		return cc.c.writeOKResult(r.Status, r.Data.(*mysql.Result))
+		if cc.continueConn != nil {
+			return cc.c.writeOKResultStream(r.Status, r.Data.(*mysql.Result), cc.continueConn,
+				cc.manager.GetNamespace(cc.namespace).GetMaxResultSize(), r.IsBinary)
+		}
+		return cc.c.writeOKResult(r.Status, false, r.Data.(*mysql.Result))
 	case RespPrepare:
 		stmt := r.Data.(*Stmt)
 		if stmt == nil {

@@ -61,6 +61,7 @@ type DirectConnection struct {
 	pkgErr                   error
 	closed                   sync2.AtomicBool
 	capabilityConnectToMySQL uint32
+	moreRowExists            bool
 }
 
 // NewDirectConnection return direct and authorised connection to mysql with real net connection
@@ -854,7 +855,7 @@ func (dc *DirectConnection) readResultColumns(result *mysql.Result) (err error) 
 // readResultRows read result rows
 func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool, maxRows int) (err error) {
 	var data []byte
-
+	var bufLength int
 	for {
 		data, err = dc.readPacket()
 		if err != nil {
@@ -871,6 +872,8 @@ func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool, 
 			}
 
 			break
+		} else {
+			bufLength += len(data)
 		}
 
 		if data[0] == mysql.ErrHeader {
@@ -883,6 +886,13 @@ func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool, 
 				return fmt.Errorf("%v %d, drain error: %v", sqlerr.ErrRowsLimitExceeded, maxRows, err)
 			}
 			return fmt.Errorf("%v %d", sqlerr.ErrRowsLimitExceeded, maxRows)
+		}
+
+		if bufLength > mysql.MaxPayloadLen {
+			dc.moreRowExists = true
+			break
+		} else {
+			dc.moreRowExists = false
 		}
 	}
 

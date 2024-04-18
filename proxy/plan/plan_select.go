@@ -149,7 +149,7 @@ func (s *SelectPlan) GetSQLs() map[string]map[string][]string {
 	return s.sqls
 }
 
-//执行计划是否仅仅涉及一个分片
+// 执行计划是否仅仅涉及一个分片
 func (s *SelectPlan) isExecOnSingleNode() bool {
 	return len(s.result.indexes) == 1
 }

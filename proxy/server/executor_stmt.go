@@ -202,21 +202,7 @@ func (se *SessionExecutor) handleStmtExecute(data []byte) (*mysql.Result, error)
 	defer s.ResetParams()
 
 	// execute sql using ComQuery
-	r, err := se.handleQuery(executeSQL)
-	if err != nil {
-		return nil, err
-	}
-
-	// build binary result set
-	if r != nil && r.Resultset != nil {
-		resultSet, err := mysql.BuildBinaryResultset(r.Fields, r.Values)
-		if err != nil {
-			return nil, err
-		}
-		r.Resultset = resultSet
-	}
-
-	return r, nil
+	return se.handleQuery(executeSQL)
 }
 
 // long data and generic args are all in s.args
