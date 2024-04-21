@@ -330,6 +330,11 @@ func (cc *Session) writeResponse(r Response) error {
 			return cc.c.writeOKResultStream(r.Status, r.Data.(*mysql.Result), cc.continueConn,
 				cc.manager.GetNamespace(cc.namespace).GetMaxResultSize(), r.IsBinary)
 		}
+		if r.IsBinary {
+			if err := rs.BuildBinaryResultSet(); err != nil {
+				return err
+			}
+		}
 		return cc.c.writeOKResult(r.Status, false, r.Data.(*mysql.Result))
 	case RespPrepare:
 		stmt := r.Data.(*Stmt)
