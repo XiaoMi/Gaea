@@ -78,6 +78,7 @@ func NewDirectConnection(addr string, user string, password string, db string, c
 		closed:                   sync2.NewAtomicBool(false),
 		sessionVariables:         mysql.NewSessionVariables(),
 		capabilityConnectToMySQL: clientCapability,
+		moreRowExists:            false,
 	}
 	err := dc.connect()
 	return dc, err
@@ -856,6 +857,7 @@ func (dc *DirectConnection) readResultColumns(result *mysql.Result) (err error) 
 func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool, maxRows int) (err error) {
 	var data []byte
 	var bufLength int
+	dc.moreRowExists = false
 	for {
 		data, err = dc.readPacket()
 		if err != nil {

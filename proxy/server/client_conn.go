@@ -269,35 +269,22 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 		return err
 	}
 
-	if continueConn.MoreRowsExist() {
-		for {
-			result := &mysql.Result{
-				Status:       0,
-				InsertID:     0,
-				AffectedRows: 0,
-				Warnings:     0,
-				Resultset:    &mysql.Resultset{},
-			}
-			err = continueConn.FetchMoreRows(result, maxRows)
-			if isBinary {
-				if err := result.BuildBinaryResultSet(); err != nil {
-					return err
-				}
-			}
-			for _, v := range result.RowDatas {
-				if err = cc.writeRow(v); err != nil {
-					return err
-				}
-				if err = cc.Flush(); err != nil {
-					return nil
-				}
-			}
-
-			if !continueConn.MoreRowsExist() {
-				status = status &^ (1 << 3)
-				err = cc.writeEOFPacket(status)
+	for continueConn.MoreRowsExist() {
+		result := &mysql.Result{
+			Status:       0,
+			InsertID:     0,
+			AffectedRows: 0,
+			Warnings:     0,
+			Resultset:    &mysql.Resultset{},
+		}
+		err = continueConn.FetchMoreRows(result, maxRows)
+		if isBinary {
+			if err := result.BuildBinaryResultSet(); err != nil {
 				return err
 			}
+		}
+		if err = cc.writeRowsWithEOF(result, continueConn.MoreRowsExist(), status); err != nil {
+			return err
 		}
 	}
 	// handle multi rs
@@ -326,6 +313,26 @@ func (cc *ClientConn) writeOKResult(status uint16, moreRows bool, r *mysql.Resul
 		return cc.WriteOKPacket(r.AffectedRows, r.InsertID, status, 0, r.Info)
 	}
 	return cc.writeResultset(status, moreRows, r.Resultset)
+}
+
+func (cc *ClientConn) writeRowsWithEOF(result *mysql.Result, moreRowsExists bool, status uint16) error {
+	var err error
+	cc.StartWriterBuffering()
+	for _, v := range result.RowDatas {
+		if err = cc.writeRow(v); err != nil {
+			return err
+		}
+	}
+	if !moreRowsExists {
+		status = status &^ (1 << 3)
+		if err = cc.writeEOFPacket(status); err != nil {
+			return err
+		}
+	}
+	if err = cc.Flush(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (cc *ClientConn) writeEOFPacket(status uint16) error {
@@ -373,15 +380,6 @@ func (cc *ClientConn) writeFields(status uint16, r *mysql.Resultset) error {
 	err = cc.writeFieldList(status, r.Fields)
 	if err != nil {
 		return err
-	}
-	return nil
-}
-
-func (cc *ClientConn) writeRows(r *mysql.Resultset) error {
-	for _, v := range r.RowDatas {
-		if err := cc.writeRow(v); err != nil {
-			return err
-		}
 	}
 	return nil
 }
