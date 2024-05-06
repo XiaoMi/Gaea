@@ -192,21 +192,26 @@ func (rp *ResourcePool) get(ctx context.Context, wait bool) (resource Resource, 
 	select {
 	case wrapper, ok = <-rp.resources:
 	default:
+		var newWrapper resourceWrapper
 		if rp.Dynamic {
-			rp.scaleOutResources()
+			newWrapper, ok = rp.scaleOutResources()
 		}
-		if !wait {
-			return nil, nil
-		}
-		startTime := time.Now()
-		select {
-		case wrapper, ok = <-rp.resources:
-		case <-ctx.Done():
-			return nil, ErrTimeout
-		}
-		endTime := time.Now()
-		if startTime.UnixNano()/100000 != endTime.UnixNano()/100000 {
-			rp.recordWait(startTime)
+		if ok {
+			wrapper = newWrapper
+		} else {
+			if !wait {
+				return nil, nil
+			}
+			startTime := time.Now()
+			select {
+			case wrapper, ok = <-rp.resources:
+			case <-ctx.Done():
+				return nil, ErrTimeout
+			}
+			endTime := time.Now()
+			if startTime.UnixNano()/100000 != endTime.UnixNano()/100000 {
+				rp.recordWait(startTime)
+			}
 		}
 	}
 	if !ok {
@@ -226,6 +231,7 @@ func (rp *ResourcePool) get(ctx context.Context, wait bool) (resource Resource, 
 
 		select {
 		case <-ctx.Done():
+			rp.resources <- resourceWrapper{}
 			return nil, ctx.Err()
 		case err1 := <-errChan:
 			if err1 != nil {
@@ -319,13 +325,26 @@ func (rp *ResourcePool) ScaleCapacity(capacity int) error {
 }
 
 // 扩容
-func (rp *ResourcePool) scaleOutResources() {
+func (rp *ResourcePool) scaleOutResources() (resourceWrapper, bool) {
 	rp.lock.Lock()
 	defer rp.lock.Unlock()
 	if rp.capacity.Get() < rp.maxCapacity.Get() {
-		rp.ScaleCapacity(int(rp.capacity.Get()) + 1)
+		wrapper, ok := rp.AddCapacityResource()
 		rp.scaleOutTime = time.Now().Unix()
+		return wrapper, ok
 	}
+	return resourceWrapper{}, false
+}
+
+// 扩容并获取连接, 外层加锁了，所以这边不加锁
+func (rp *ResourcePool) AddCapacityResource() (resourceWrapper, bool) {
+	capacity := int(rp.capacity.Get())
+	if capacity < 0 || capacity >= int(rp.maxCapacity.Get()) {
+		return resourceWrapper{}, false
+	}
+	rp.capacity.Add(1)
+	rp.available.Add(1)
+	return resourceWrapper{}, true
 }
 
 // 缩容
