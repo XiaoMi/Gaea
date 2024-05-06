@@ -19,6 +19,8 @@ package util
 import (
 	"context"
 	"errors"
+	"github.com/stretchr/testify/assert"
+	"sync"
 	"testing"
 	"time"
 
@@ -679,4 +681,30 @@ func TestExpired(t *testing.T) {
 	if err == nil || err.Error() != want {
 		t.Errorf("got %v, want %s", err, want)
 	}
+}
+
+func TestScaleOutResource(t *testing.T) {
+	factory := func() (Resource, error) {
+		time.Sleep(10 * time.Millisecond)
+		return nil, nil
+	}
+	p, _ := NewResourcePool(factory, 1, 1000, time.Second*3600)
+	var wg sync.WaitGroup
+	wg.Add(1000)
+	var errTimeoutCount sync2.AtomicInt64
+	for i := 0; i < 1000; i++ {
+		go func() {
+			defer wg.Done()
+			ctx, _ := context.WithTimeout(context.Background(), 2*time.Second)
+			_, err := p.Get(ctx)
+			if err != nil && err.Error() == "resource pool timed out" {
+				errTimeoutCount.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, 1000, int(p.capacity.Get()))
+	assert.Equal(t, 0, int(errTimeoutCount.Get()))
+	t.Logf("capacity is %d", p.capacity.Get())
+	t.Logf("err timeout count is %d", errTimeoutCount.Get())
 }
