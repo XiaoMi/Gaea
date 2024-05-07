@@ -26,13 +26,14 @@ var _ = ginkgo.Describe("test unshard multi query", func() {
 	)
 	initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
 	util.ExpectNoError(err, "parse namespace template")
-	// mysql prepare
-	masterAdminConn, err := slice.GetMasterAdminConn(0)
-	util.ExpectNoError(err, "get master admin conn")
-	err = util.SetupDatabaseAndInsertData(masterAdminConn, db, table)
-	util.ExpectNoError(err, "setup database and insert data")
 
 	ginkgo.BeforeEach(func() {
+		// mysql prepare
+		masterAdminConn, err := slice.GetMasterAdminConn(0)
+		util.ExpectNoError(err, "get master admin conn")
+		err = util.SetupDatabaseAndInsertData(masterAdminConn, db, table)
+		util.ExpectNoError(err, "setup database and insert data")
+
 		// namespace prepare
 		initNs.SupportMultiQuery = true
 		err = e2eMgr.DeleteNamespace(initNs)
