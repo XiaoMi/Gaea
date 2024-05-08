@@ -275,7 +275,9 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 			InsertID:     0,
 			AffectedRows: 0,
 			Warnings:     0,
-			Resultset:    &mysql.Resultset{},
+			Resultset: &mysql.Resultset{
+				Fields: rs.Fields,
+			},
 		}
 		err = continueConn.FetchMoreRows(result, maxRows)
 		if isBinary {
