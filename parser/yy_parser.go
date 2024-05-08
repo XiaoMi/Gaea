@@ -88,7 +88,7 @@ func New() *Parser {
 	}
 
 	return &Parser{
-		cache: make([]yySymType, 200),
+		cache: make([]yySymType, 10),
 	}
 }
 

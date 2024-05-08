@@ -44,13 +44,15 @@ import (
 )
 
 const (
-	// connBufferSize is how much we buffer for reading and
-	// writing. It is also how much we allocate for ephemeral buffers.
-	connBufferSize = 16 * 1024
-
 	// MaxPacketSize is the maximum payload length of a packet(16MB)
 	// the server supports.
 	MaxPacketSize = (1 << 24) - 1
+)
+
+var (
+	// connBufferSize is how much we buffer for reading and
+	// writing. It is also how much we allocate for ephemeral buffers.
+	connBufferSize = 128
 )
 
 // Constants for how ephemeral buffers were used for reading / writing.
@@ -66,6 +68,17 @@ const (
 	// ephemeralRead means we currently in process of reading into currentEphemeralBuffer
 	ephemeralRead
 )
+
+//InitNetBufferSize should only be set when starting the proxy
+func InitNetBufferSize(buffSize int) {
+	if buffSize < 128 { // min
+		connBufferSize = 128
+	}
+
+	if buffSize > 16*1024 { // max
+		connBufferSize = 16 * 1024
+	}
+}
 
 // Conn is a connection between a client and a server, using the MySQL
 // binary protocol. It is built on top of an existing net.Conn, that

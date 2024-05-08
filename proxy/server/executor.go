@@ -85,7 +85,6 @@ type SessionExecutor struct {
 	stmtID uint32
 	stmts  map[uint32]*Stmt //prepare相关,client端到proxy的stmt
 
-	parser              *parser.Parser
 	session             *Session
 	serverAddr          net.Addr
 	backendAddr         string //记录执行 SQL 后端实例的地址
@@ -183,7 +182,6 @@ func newSessionExecutor(manager *Manager) *SessionExecutor {
 		sessionVariables: mysql.NewSessionVariables(),
 		txConns:          make(map[string]map[string]backend.PooledConnect),
 		stmts:            make(map[uint32]*Stmt),
-		parser:           parser.New(),
 		status:           initClientConnStatus,
 		manager:          manager,
 	}

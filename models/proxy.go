@@ -72,6 +72,7 @@ type Proxy struct {
 	ServerVersion string `ini:"server_version"`
 	AuthPlugin    string `ini:"auth_plugin"`
 	NumCPU        int    `ini:"num_cpu"`
+	NetBufferSize int    `ini:"net_buffer_size"`
 	ConfigFile    string
 }
 
@@ -98,6 +99,10 @@ func ParseProxyConfigFromFile(cfgFile string) (*Proxy, error) {
 	}
 
 	proxyConfig.ConfigFile = cfgFile
+
+	if proxyConfig.NetBufferSize > 0 {
+		mysql.InitNetBufferSize(proxyConfig.NetBufferSize)
+	}
 
 	if err := proxyConfig.Verify(); err != nil {
 		return nil, err

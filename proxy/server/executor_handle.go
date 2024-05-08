@@ -34,7 +34,7 @@ import (
 
 // Parse parse sql
 func (se *SessionExecutor) Parse(sql string) (ast.StmtNode, error) {
-	return se.parser.ParseOneStmt(sql, "", "")
+	return parser.New().ParseOneStmt(sql, "", "")
 }
 
 // 处理query语句
