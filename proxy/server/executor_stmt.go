@@ -212,6 +212,7 @@ func (se *SessionExecutor) bindStmtArgs(s *Stmt, nullBitmap, paramTypes, paramVa
 	pos := 0
 
 	var v []byte
+	n := 0
 	var isNull bool
 
 	for i := 0; i < s.paramCount; i++ {
@@ -306,12 +307,56 @@ func (se *SessionExecutor) bindStmtArgs(s *Stmt, nullBitmap, paramTypes, paramVa
 			pos += 8
 			continue
 
+		case mysql.TypeDate, mysql.TypeNewDate:
+			if len(paramValues) < (pos + 1) {
+				return mysql.ErrMalformPacket
+			}
+
+			n = int(paramValues[pos])
+			pos++
+			tVal, err := mysql.FormatBinaryDate(n, paramValues[pos:pos+n])
+			pos += n
+			if err != nil {
+				return err
+			}
+			args[i] = tVal
+			continue
+
+		case mysql.TypeDuration:
+			if len(paramValues) < (pos + 1) {
+				return mysql.ErrMalformPacket
+			}
+
+			n = int(paramValues[pos])
+			pos++
+			tVal, err := mysql.FormatBinaryTime(n, paramValues[pos:pos+n])
+			pos += n
+			if err != nil {
+				return err
+			}
+			args[i] = tVal
+			continue
+
+		case mysql.TypeTimestamp, mysql.TypeDatetime:
+			if len(paramValues) < (pos + 1) {
+				return mysql.ErrMalformPacket
+			}
+
+			n := int(paramValues[pos])
+			pos++
+			tVal, err := mysql.FormatBinaryDateTime(n, paramValues[pos:pos+n])
+			pos += n
+			if err != nil {
+				return err
+			}
+			args[i] = tVal
+			continue
+
 		case mysql.TypeDecimal, mysql.TypeNewDecimal, mysql.TypeVarchar,
 			mysql.TypeBit, mysql.TypeEnum, mysql.TypeSet, mysql.TypeTinyBlob,
 			mysql.TypeMediumBlob, mysql.TypeLongBlob, mysql.TypeBlob,
 			mysql.TypeVarString, mysql.TypeString, mysql.TypeGeometry,
-			mysql.TypeDate, mysql.TypeNewDate,
-			mysql.TypeTimestamp, mysql.TypeDatetime, mysql.TypeDuration, mysql.TypeJSON:
+			mysql.TypeJSON:
 			if len(paramValues) < (pos + 1) {
 				return mysql.ErrMalformPacket
 			}

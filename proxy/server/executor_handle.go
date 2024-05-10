@@ -450,15 +450,13 @@ func (se *SessionExecutor) handleSetAutoCommit(autocommit bool) (err error) {
 		if se.status&mysql.ServerStatusInTrans > 0 {
 			se.status &= ^mysql.ServerStatusInTrans
 		}
-		for _, pcs := range se.txConns {
-			for _, pc := range pcs {
-				if e := pc.SetAutoCommit(1); e != nil {
-					err = fmt.Errorf("set autocommit error, %v", e)
-				}
-				pc.Recycle()
+		for _, pc := range se.txConns {
+			if e := pc.SetAutoCommit(1); e != nil {
+				err = fmt.Errorf("set autocommit error, %v", e)
 			}
+			pc.Recycle()
 		}
-		se.txConns = make(map[string]map[string]backend.PooledConnect)
+		se.txConns = make(map[string]backend.PooledConnect)
 		return
 	}
 
@@ -510,16 +508,17 @@ func (se *SessionExecutor) handleFieldList(data []byte) ([]*mysql.Field, error) 
 	wildcard := string(data[index+1:])
 
 	sliceName := se.GetNamespace().GetRouter().GetRule(se.GetDatabase(), table).GetSlice(0)
-	phyDB, err := se.GetNamespace().GetDefaultPhyDB(se.GetDatabase())
-	if err != nil {
-		return nil, err
-	}
 
-	pc, err := se.getBackendConn(sliceName, phyDB, se.GetNamespace().IsRWSplit(se.user))
+	pc, err := se.getBackendConn(sliceName, se.GetNamespace().IsRWSplit(se.user))
 	if err != nil {
 		return nil, err
 	}
 	defer se.recycleBackendConn(pc, false)
+
+	phyDB, err := se.GetNamespace().GetDefaultPhyDB(se.GetDatabase())
+	if err != nil {
+		return nil, err
+	}
 
 	if err = initBackendConn(pc, phyDB, se.GetCharset(), se.GetCollationID(), se.GetVariables()); err != nil {
 		return nil, err
