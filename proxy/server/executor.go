@@ -78,7 +78,7 @@ type SessionExecutor struct {
 	charset          string
 	sessionVariables *mysql.SessionVariables
 
-	txConns    map[string]map[string]backend.PooledConnect
+	txConns    map[string]backend.PooledConnect
 	savepoints []string
 	txLock     sync.Mutex
 
@@ -180,7 +180,7 @@ func newSessionExecutor(manager *Manager) *SessionExecutor {
 
 	return &SessionExecutor{
 		sessionVariables: mysql.NewSessionVariables(),
-		txConns:          make(map[string]map[string]backend.PooledConnect),
+		txConns:          make(map[string]backend.PooledConnect),
 		stmts:            make(map[uint32]*Stmt),
 		status:           initClientConnStatus,
 		manager:          manager,
@@ -366,82 +366,44 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 	}
 }
 
-func (se *SessionExecutor) getBackendConns(sqls map[string]map[string][]string, fromSlave bool) (pcs map[string]map[string]backend.PooledConnect, err error) {
-	pcs = make(map[string]map[string]backend.PooledConnect)
-	wg := sync.WaitGroup{}
-	lock := sync.Mutex{}
-	for sliceName, dbSql := range sqls {
-		wg.Add(1)
-		go func(sliceName string, dbSql map[string][]string) {
-			defer wg.Done()
-			dbConns, err := se.getMultiBackendConn(sliceName, fromSlave, dbSql)
-			if err != nil {
-				return
-			}
-			lock.Lock()
-			defer lock.Unlock()
-			pcs[sliceName] = dbConns
-		}(sliceName, dbSql)
-	}
-	wg.Wait()
-	if len(pcs) != len(sqls) {
-		return pcs, errors.ErrConnNotEqual
-	}
-	// will use first backendAddr here,may be it's one of multi backend addrs
-	// TODO: sharding mode using multiBackendAddrMark
-	for _, sPc := range pcs {
-		for _, pc := range sPc {
-			se.backendAddr = pc.GetAddr()
-			se.backendConnectionId = pc.GetConnectionID()
-			break
-		}
-		break
-	}
+func (se *SessionExecutor) getBackendConns(sqls map[string]map[string][]string, fromSlave bool) (pcs map[string]backend.PooledConnect, err error) {
+	pcs = make(map[string]backend.PooledConnect)
+	backendAddr := ""
+	backendConnectionID := int64(0)
 
+	for sliceName := range sqls {
+		var pc backend.PooledConnect
+		pc, err = se.getBackendConn(sliceName, fromSlave)
+		if err != nil {
+			return
+		}
+		pcs[sliceName] = pc
+		backendAddr = pc.GetAddr()
+		backendConnectionID = pc.GetConnectionID()
+	}
+	se.backendAddr = backendAddr
+	se.backendConnectionId = backendConnectionID
+	if len(pcs) > 1 {
+		se.backendAddr = multiBackendAddrMark + backendAddr
+	}
 	return
 }
 
-func (se *SessionExecutor) getBackendConn(sliceName string, phyDb string, fromSlave bool) (pc backend.PooledConnect, err error) {
+func (se *SessionExecutor) getBackendConn(sliceName string, fromSlave bool) (pc backend.PooledConnect, err error) {
 	if !se.isInTransaction() {
 		slice := se.GetNamespace().GetSlice(sliceName)
 		return slice.GetConn(fromSlave, se.GetNamespace().GetUserProperty(se.user), se.GetNamespace().localSlaveReadPriority)
 	}
-	return se.getTransactionConn(sliceName, phyDb)
+	return se.getTransactionConn(sliceName)
 }
 
-func (se *SessionExecutor) getMultiBackendConn(sliceName string, fromSlave bool, dbSql map[string][]string) (pcs map[string]backend.PooledConnect, err error) {
-	dbConns := make(map[string]backend.PooledConnect)
-	lock := sync.Mutex{}
-	wg := sync.WaitGroup{}
-	for phyDb := range dbSql {
-		wg.Add(1)
-		go func(phyDb string) {
-			defer wg.Done()
-			pc, err := se.getBackendConn(sliceName, phyDb, fromSlave)
-			if err != nil {
-				log.Warn("get backend conn failed, ns=%s, sliceName:%s, error: %s", se.namespace, sliceName, err.Error())
-				return
-			}
-			lock.Lock()
-			defer lock.Unlock()
-			dbConns[phyDb] = pc
-		}(phyDb)
-	}
-	wg.Wait()
-	if len(dbConns) != len(dbSql) {
-		return nil, errors.ErrConnNotEqual
-	}
-	return dbConns, err
-}
-
-func (se *SessionExecutor) getTransactionConn(sliceName string, phyDb string) (pc backend.PooledConnect, err error) {
+func (se *SessionExecutor) getTransactionConn(sliceName string) (pc backend.PooledConnect, err error) {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 
-	if pcs, ok := se.txConns[sliceName]; ok {
-		if pc, ok = pcs[phyDb]; ok {
-			return
-		}
+	var ok bool
+	if pc, ok = se.txConns[sliceName]; ok {
+		return
 	}
 
 	slice := se.GetNamespace().GetSlice(sliceName) // returns nil only when the conf is error (fatal) so panic is correct
@@ -465,15 +427,7 @@ func (se *SessionExecutor) getTransactionConn(sliceName string, phyDb string) (p
 	for _, savepoint := range se.savepoints {
 		pc.Execute("savepoint "+savepoint, 0)
 	}
-
-	if _, ok := se.txConns[sliceName]; ok {
-		se.txConns[sliceName][phyDb] = pc
-	} else {
-		se.txConns[sliceName] = map[string]backend.PooledConnect{
-			phyDb: pc,
-		}
-	}
-
+	se.txConns[sliceName] = pc
 	return
 }
 
@@ -498,21 +452,19 @@ func (se *SessionExecutor) recycleBackendConn(pc backend.PooledConnect, rollback
 	pc.Recycle()
 }
 
-func (se *SessionExecutor) recycleBackendConns(pcs map[string]map[string]backend.PooledConnect, rollback bool) {
+func (se *SessionExecutor) recycleBackendConns(pcs map[string]backend.PooledConnect, rollback bool) {
 	if se.isInTransaction() {
 		return
 	}
 
-	for _, sPc := range pcs {
-		for _, pc := range sPc {
-			if pc == nil {
-				continue
-			}
-			if rollback {
-				pc.Rollback()
-			}
-			pc.Recycle()
+	for _, pc := range pcs {
+		if pc == nil {
+			continue
 		}
+		if rollback {
+			pc.Rollback()
+		}
+		pc.Recycle()
 	}
 }
 
@@ -543,25 +495,15 @@ func initBackendConn(pc backend.PooledConnect, phyDB string, charset string, col
 	return nil
 }
 
-func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs map[string]map[string]backend.PooledConnect,
+func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs map[string]backend.PooledConnect,
 	sqls map[string]map[string][]string) ([]*mysql.Result, error) {
-	resultCount := 0
-	parallel := 0
 
-	// check pcs and sqls has same length
-	if len(sqls) != len(pcs) {
+	parallel := len(pcs)
+	if parallel != len(sqls) {
 		log.Warn("Session executeInMultiSlices error, conns: %v, sqls: %v, error: %s", pcs, sqls, errors.ErrConnNotEqual.Error())
 		return nil, errors.ErrConnNotEqual
-	}
-	for sliceName, sqlSlice := range sqls {
-		if len(sqlSlice) != len(pcs[sliceName]) {
-			log.Warn("Session executeInMultiSlices error, conns: %v, sqls: %v, error: %s", pcs, sqls, errors.ErrConnNotEqual.Error())
-			return nil, errors.ErrConnNotEqual
-		}
-		for _, sqlDB := range sqlSlice {
-			parallel += 1
-			resultCount += len(sqlDB)
-		}
+	} else if parallel == 0 {
+		return nil, errors.ErrNoPlan
 	}
 
 	var ctx = context.Background()
@@ -577,39 +519,45 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 	defer close(done)
 
 	// This map is not thread safe.
-	pcsUnCompleted := make(map[string]map[string]backend.PooledConnect, parallel)
-
-	for sliceName, sPc := range pcs {
-		dbConns := make(map[string]backend.PooledConnect)
-		for phyDb, pc := range sPc {
-			dbConns[phyDb] = pc
-		}
-		pcsUnCompleted[sliceName] = dbConns
+	pcsUnCompleted := make(map[string]backend.PooledConnect, parallel)
+	for sliceName, pc := range pcs {
+		pcsUnCompleted[sliceName] = pc
 	}
 
+	resultCount := 0
+	for _, sqlSlice := range sqls {
+		for _, sqlDB := range sqlSlice {
+			resultCount += len(sqlDB)
+		}
+	}
 	rs := make([]interface{}, resultCount)
-	f := func(reqCtx *util.RequestContext, rs []interface{}, i int, sliceName string, phyDb string, execSqls []string, pc backend.PooledConnect) {
-		if pc == nil {
-			rs[i] = fmt.Errorf("no backend connection")
-			done <- sliceName
-			return
+	f := func(reqCtx *util.RequestContext, rs []interface{}, i int, sliceName string, execSqls map[string][]string, pc backend.PooledConnect) {
+		// 对 execSqls 排序后处理
+		dbs := make([]string, 0, len(execSqls))
+		for k := range execSqls {
+			dbs = append(dbs, k)
 		}
-		err := initBackendConn(pc, phyDb, se.GetCharset(), se.GetCollationID(), se.GetVariables())
-		if err != nil {
-			rs[i] = err
-			done <- sliceName
-			return
-		}
-		for _, v := range execSqls {
-			startTime := time.Now()
-			r, err := pc.Execute(v, se.manager.GetNamespace(se.namespace).GetMaxResultSize())
-			se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, sliceName, v, pc.GetAddr(), startTime, err)
+		sort.Slice(dbs, func(i, j int) bool {
+			return dbs[i] < dbs[j]
+		})
+		for _, db := range dbs {
+			err := initBackendConn(pc, db, se.GetCharset(), se.GetCollationID(), se.GetVariables())
 			if err != nil {
 				rs[i] = err
-			} else {
-				rs[i] = r
+				break
 			}
-			i++
+			sqls := execSqls[db]
+			for _, v := range sqls {
+				startTime := time.Now()
+				r, err := pc.Execute(v, se.manager.GetNamespace(se.namespace).GetMaxResultSize())
+				se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, sliceName, v, pc.GetAddr(), startTime, err)
+				if err != nil {
+					rs[i] = err
+				} else {
+					rs[i] = r
+				}
+				i++
+			}
 		}
 		done <- sliceName
 	}
@@ -620,21 +568,14 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 	for k := range pcs {
 		sliceNames = append(sliceNames, k)
 	}
-	sort.Strings(sliceNames)
-
+	sort.Slice(sliceNames, func(i, j int) bool {
+		return sliceNames[i] < sliceNames[j]
+	})
 	for _, sliceName := range sliceNames {
-		dbSqls := sqls[sliceName]
-		// 对 dbSqls 排序后处理
-		phyDbs := make([]string, 0, len(dbSqls))
-		for k := range dbSqls {
-			phyDbs = append(phyDbs, k)
-		}
-		sort.Strings(phyDbs)
-
-		for _, phyDb := range phyDbs {
-			execSqls := dbSqls[phyDb]
-			go f(reqCtx, rs, offset, sliceName, phyDb, execSqls, pcs[sliceName][phyDb])
-			offset += len(execSqls)
+		s := sqls[sliceName] //map[string][]string
+		go f(reqCtx, rs, offset, sliceName, s, pcs[sliceName])
+		for _, sqlDB := range sqls[sliceName] {
+			offset += len(sqlDB)
 		}
 	}
 
@@ -643,20 +584,17 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 		case sliceName := <-done:
 			delete(pcsUnCompleted, sliceName)
 		case <-ctx.Done():
-			for sliceName, sPc := range pcsUnCompleted {
-				for _, pc := range sPc {
-					connID := pc.GetConnectionID()
-					dc, err := se.manager.GetNamespace(se.namespace).GetSlice(sliceName).GetDirectConn(pc.GetAddr())
-					if err != nil {
-						log.Warn("kill thread id: %d failed, get connection err: %v", connID, err.Error())
-						continue
-					}
-					if _, err = dc.Execute(fmt.Sprintf("KILL QUERY %d", connID), 0); err != nil {
-						log.Warn("kill thread id: %d failed, err: %v", connID, err.Error())
-					}
-					dc.Close()
+			for sliceName, pc := range pcsUnCompleted {
+				connID := pc.GetConnectionID()
+				dc, err := se.manager.GetNamespace(se.namespace).GetSlice(sliceName).GetDirectConn(pc.GetAddr())
+				if err != nil {
+					log.Warn("kill thread id: %d failed, get connection err: %v", connID, err.Error())
+					continue
 				}
-
+				if _, err = dc.Execute(fmt.Sprintf("KILL QUERY %d", connID), 0); err != nil {
+					log.Warn("kill thread id: %d failed, err: %v", connID, err.Error())
+				}
+				dc.Close()
 			}
 			for j := 0; j < len(pcsUnCompleted); j++ {
 				<-done
@@ -664,6 +602,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			return nil, fmt.Errorf("%v %dms", errors.ErrTimeLimitExceeded, maxExecuteTime)
 		}
 	}
+
 	var err error
 	r := make([]*mysql.Result, resultCount)
 	for i, v := range rs {
@@ -970,11 +909,9 @@ func (se *SessionExecutor) handleBegin() error {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 
-	for _, pcs := range se.txConns {
-		for _, pc := range pcs {
-			if err := pc.Begin(); err != nil {
-				return err
-			}
+	for _, co := range se.txConns {
+		if err := co.Begin(); err != nil {
+			return err
 		}
 	}
 	se.status |= mysql.ServerStatusInTrans
@@ -1005,16 +942,14 @@ func (se *SessionExecutor) commit() (err error) {
 
 	se.status &= ^mysql.ServerStatusInTrans
 
-	for _, pcs := range se.txConns {
-		for _, pc := range pcs {
-			if e := pc.Commit(); e != nil {
-				err = e
-			}
-			pc.Recycle()
+	for _, pc := range se.txConns {
+		if e := pc.Commit(); e != nil {
+			err = e
 		}
+		pc.Recycle()
 	}
 
-	se.txConns = make(map[string]map[string]backend.PooledConnect)
+	se.txConns = make(map[string]backend.PooledConnect)
 	se.savepoints = []string{}
 	return
 }
@@ -1023,13 +958,11 @@ func (se *SessionExecutor) rollback() (err error) {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 	se.status &= ^mysql.ServerStatusInTrans
-	for _, pcs := range se.txConns {
-		for _, pc := range pcs {
-			err = pc.Rollback()
-			pc.Recycle()
-		}
+	for _, pc := range se.txConns {
+		err = pc.Rollback()
+		pc.Recycle()
 	}
-	se.txConns = make(map[string]map[string]backend.PooledConnect)
+	se.txConns = make(map[string]backend.PooledConnect)
 	se.savepoints = []string{}
 	return
 }
@@ -1037,10 +970,8 @@ func (se *SessionExecutor) rollback() (err error) {
 func (se *SessionExecutor) rollbackSavepoint(savepoint string) (err error) {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
-	for _, pcs := range se.txConns {
-		for _, pc := range pcs {
-			_, err = pc.Execute("rollback to "+savepoint, 0)
-		}
+	for _, pc := range se.txConns {
+		_, err = pc.Execute("rollback to "+savepoint, 0)
 	}
 	if err == nil && se.isInTransaction() {
 		if index := util.ArrayFindIndex(se.savepoints, savepoint); index > -1 {
@@ -1055,10 +986,8 @@ func (se *SessionExecutor) handleSavepoint(stmt *ast.SavepointStmt) (err error) 
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 	if stmt.Release {
-		for _, pcs := range se.txConns {
-			for _, pc := range pcs {
-				_, err = pc.Execute("release savepoint "+stmt.Savepoint, 0)
-			}
+		for _, pc := range se.txConns {
+			_, err = pc.Execute("release savepoint "+stmt.Savepoint, 0)
 		}
 		if err == nil && se.isInTransaction() {
 			if index := util.ArrayFindIndex(se.savepoints, stmt.Savepoint); index > -1 {
@@ -1066,10 +995,8 @@ func (se *SessionExecutor) handleSavepoint(stmt *ast.SavepointStmt) (err error) 
 			}
 		}
 	} else {
-		for _, pcs := range se.txConns {
-			for _, pc := range pcs {
-				_, err = pc.Execute("savepoint "+stmt.Savepoint, 0)
-			}
+		for _, pc := range se.txConns {
+			_, err = pc.Execute("savepoint "+stmt.Savepoint, 0)
 		}
 		if err == nil && se.isInTransaction() {
 			if util.ArrayFindIndex(se.savepoints, stmt.Savepoint) > -1 {
@@ -1093,7 +1020,7 @@ func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sq
 	dbSQLs[phyDB] = []string{sql}
 	sqls[slice] = dbSQLs
 
-	pc, err := se.getBackendConn(slice, phyDB, getFromSlave(reqCtx))
+	pc, err := se.getBackendConn(slice, getFromSlave(reqCtx))
 	defer se.recycleBackendConn(pc, false)
 
 	if err != nil {
