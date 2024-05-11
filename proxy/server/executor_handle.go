@@ -403,6 +403,10 @@ func (se *SessionExecutor) handleSetVariable(sql string, v *ast.VariableAssignme
 		}
 		return se.setIntSessionVariable(mysql.SQLSafeUpdates, onOffValue)
 	case "time_zone":
+		if se.session.getNamespace().ignoreSessionTimezone {
+			log.Notice("set session time zone is ignored: %s", sql)
+			return nil
+		}
 		value := getVariableExprResult(v.Value)
 		return se.setStringSessionVariable(mysql.TimeZone, value)
 	case "max_allowed_packet":
