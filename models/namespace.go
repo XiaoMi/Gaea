@@ -54,6 +54,7 @@ type Namespace struct {
 	CheckSelectLock        bool              `json:"check_select_lock"`         // 是否将 select for update 语句打到主库
 	SupportMultiQuery      bool              `json:"support_multi_query"`       //是否支持多语句
 	LocalSlaveReadPriority int               `json:"local_slave_read_priority"` //是否可以跨机房访问从库
+	IgnoreSessionTimezone  bool              `json:"ignore_session_timezone"`   // 是否忽略 session 级别的时区设置
 }
 
 // Encode encode json

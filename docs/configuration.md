@@ -78,28 +78,29 @@ net_buffer_size=128
 
 namespace的配置格式为json，包含分表、非分表、实例等配置信息，都可在运行时改变。namespace的配置可以直接通过web平台进行操作，使用方不需要关心json里的内容，如果有兴趣参与到gaea的开发中，可以关注下字段含义，具体解释如下,格式为字段名称、类型、内容含义。
 
-| 字段名称                  | 字段类型    | 字段含义                                                                                                                                                 |
-|-----------------------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------|
-| name                  | string  | namespace名称                                                                                                                                          |
-| online                | bool    | 是否在线，逻辑上下线使用                                                                                                                                         |
-| read_only             | bool    | 是否只读，namespace级别                                                                                                                                     |
-| allowed_dbs           | map     | 数据库集合                                                                                                                                                |
-| default_phy_dbs       | map     | 默认数据库名, 与allowed_dbs一一对应                                                                                                                             |
-| slow_sql_time         | string  | 慢sql时间，单位ms                                                                                                                                          |
-| black_sql             | string数组 | 黑名单sql                                                                                                                                               |
-| allowed_ip            | string数组 | 白名单IP                                                                                                                                                |
-| slices                | map数组   | 一主多从的物理实例，slice里map的具体字段可参照slice配置                                                                                                                   |
-| shard_rules           | map数组   | 分库、分表、特殊表的配置内容，具体字段可参照shard配置                                                                                                                        |
-| users                 | map数组   | 应用端连接gaea所需要的用户配置，具体字段可参照users配置                                                                                                                     |
-| global_sequences      | map     | 生成全局唯一序列号的配置, 具体字段可参考全局序列号配置                                                                                                                         |
-| default_slice         | string  | show语句默认的执行分片                                                                                                                                        |
-| open_general_log      | bool    | 是否开启审计日志, [如何开启](https://github.com/XiaoMi/Gaea/issues/109)                                                                                          |                              |
-| max_sql_execute_time  | int     | 应用端查询最大执行时间, 超时后会被自动kill, 为0默认不开启此功能                                                                                                                 |
-| max_sql_result_size   | int     | gaea从后端mysql接收结果集的最大值, 限制单分片查询行数, 默认值10000, -1表示不开启                                                                                                  |
-| down_after_no_alive   | int     | 探测MySQL服务offline超过该时间后标记mysql为下线                                                                                                                     |
-| seconds_behind_master | uint64  | MySQL slave延迟超过该值将slave标记为down, 默认值为0，即无限大                                                                                                           |
-| check_select_lock     | bool    | 是否检查 `select ... for update` or `select ... in share mode` 语句，当设置为true时，会优先将语句发给主库（需要配置的权限支持）。 默认值为true, 则默认发到主库。                                    |
-| local_slave_read_priority| int     | 优先访问本机房从库配置，设置为 0 时，关闭该功能；设置为 1 时，优先访问本机房从库，当无本机房从库或本机房从库均宕机时，会跨机房访问从库；当设置为 2 时，会强制访问本机房从库，当本机房无从库时，会访问主库。默认值为 0，当无法获取实例的 datacenter 时，会默认与 Proxy 想同 |                                                                                                          |                                                                                                                |
+| 字段名称                      | 字段类型  | 字段含义                                                                                                                                                 |
+|---------------------------|-------|------------------------------------------------------------------------------------------------------------------------------------------------------|
+| name                      | string | namespace名称                                                                                                                                          |
+| online                    | bool  | 是否在线，逻辑上下线使用                                                                                                                                         |
+| read_only                 | bool  | 是否只读，namespace级别                                                                                                                                     |
+| allowed_dbs               | map   | 数据库集合                                                                                                                                                |
+| default_phy_dbs           | map   | 默认数据库名, 与allowed_dbs一一对应                                                                                                                             |
+| slow_sql_time             | string | 慢sql时间，单位ms                                                                                                                                          |
+| black_sql                 | string数组 | 黑名单sql                                                                                                                                               |
+| allowed_ip                | string数组 | 白名单IP                                                                                                                                                |
+| slices                    | map数组 | 一主多从的物理实例，slice里map的具体字段可参照slice配置                                                                                                                   |
+| shard_rules               | map数组 | 分库、分表、特殊表的配置内容，具体字段可参照shard配置                                                                                                                        |
+| users                     | map数组 | 应用端连接gaea所需要的用户配置，具体字段可参照users配置                                                                                                                     |
+| global_sequences          | map   | 生成全局唯一序列号的配置, 具体字段可参考全局序列号配置                                                                                                                         |
+| default_slice             | string | show语句默认的执行分片                                                                                                                                        |
+| open_general_log          | bool  | 是否开启审计日志, [如何开启](https://github.com/XiaoMi/Gaea/issues/109)                                                                                          |                              |
+| max_sql_execute_time      | int   | 应用端查询最大执行时间, 超时后会被自动kill, 为0默认不开启此功能                                                                                                                 |
+| max_sql_result_size       | int   | gaea从后端mysql接收结果集的最大值, 限制单分片查询行数, 默认值10000, -1表示不开启                                                                                                  |
+| down_after_no_alive       | int   | 探测MySQL服务offline超过该时间后标记mysql为下线                                                                                                                     |
+| seconds_behind_master     | uint64 | MySQL slave延迟超过该值将slave标记为down, 默认值为0，即无限大                                                                                                           |
+| check_select_lock         | bool  | 是否检查 `select ... for update` or `select ... in share mode` 语句，当设置为true时，会优先将语句发给主库（需要配置的权限支持）。 默认值为true, 则默认发到主库。                                    |
+| local_slave_read_priority | int   | 优先访问本机房从库配置，设置为 0 时，关闭该功能；设置为 1 时，优先访问本机房从库，当无本机房从库或本机房从库均宕机时，会跨机房访问从库；当设置为 2 时，会强制访问本机房从库，当本机房无从库时，会访问主库。默认值为 0，当无法获取实例的 datacenter 时，会默认与 Proxy 相同 |                                                                                                          |                                                                                                                |
+| ignore_session_timezone   | bool  | 是否忽略 session 级别的 timezone 设置，默认不忽略                                                                                                                   |
 
 ### slice配置
 
