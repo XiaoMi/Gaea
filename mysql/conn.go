@@ -192,6 +192,12 @@ func (c *Conn) readHeaderFrom(r io.Reader) (int, error) {
 		return 0, fmt.Errorf("io.ReadFull(header size) failed: %v", err)
 	}
 
+	length := int(uint32(header[0]) | uint32(header[1])<<8 | uint32(header[2])<<16)
+	if length == 0 {
+		c.sequence++
+		return 0, nil
+	}
+
 	sequence := uint8(header[3])
 	if sequence != c.sequence {
 		return 0, fmt.Errorf("invalid sequence, expected %v got %v", c.sequence, sequence)
@@ -199,7 +205,7 @@ func (c *Conn) readHeaderFrom(r io.Reader) (int, error) {
 
 	c.sequence++
 
-	return int(uint32(header[0]) | uint32(header[1])<<8 | uint32(header[2])<<16), nil
+	return length, nil
 }
 
 // ReadEphemeralPacket attempts to read a packet into buffer from sync.Pool.  Do
@@ -225,7 +231,7 @@ func (c *Conn) ReadEphemeralPacket() ([]byte, error) {
 	if length == 0 {
 		// This can be caused by the packet after a packet of
 		// exactly size MaxPacketSize.
-		return nil, nil
+		return []byte{}, nil
 	}
 
 	// Use the bufPool.
