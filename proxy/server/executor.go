@@ -241,6 +241,10 @@ func (se *SessionExecutor) SetLastInsertID(id uint64) {
 	se.lastInsertID = id
 }
 
+func (se *SessionExecutor) HandleSet(reqCtx *util.RequestContext, sql string, stmt *ast.SetStmt) (*mysql.Result, error) {
+	return se.handleSet(reqCtx, sql, stmt)
+}
+
 // GetStatus return session status
 func (se *SessionExecutor) GetStatus() uint16 {
 	return se.status
@@ -810,6 +814,9 @@ func preRewriteSQL(sql string, version string) string {
 }
 
 func modifyResultStatus(r *mysql.Result, cc *SessionExecutor) {
+	if r == nil {
+		return
+	}
 	r.Status = r.Status | cc.GetStatus()
 }
 

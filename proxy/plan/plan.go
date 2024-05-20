@@ -36,6 +36,7 @@ var _ Plan = &DeletePlan{}
 var _ Plan = &UpdatePlan{}
 var _ Plan = &InsertPlan{}
 var _ Plan = &SelectLastInsertIDPlan{}
+var _ Plan = &SetPlan{}
 
 // Plan is a interface for select/insert etc.
 type Plan interface {
@@ -58,6 +59,8 @@ type Executor interface {
 	SetLastInsertID(uint64)
 
 	GetLastInsertID() uint64
+
+	HandleSet(*util.RequestContext, string, *ast.SetStmt) (*mysql.Result, error)
 }
 
 // Checker 用于检查SelectStmt是不是分表的Visitor, 以及是否包含DB信息
@@ -173,6 +176,10 @@ type TableAliasStmtInfo struct {
 func BuildPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string, router *router.Router, seq *sequence.SequenceManager, hintPlan Plan) (Plan, error) {
 	if IsSelectLastInsertIDStmt(stmt) {
 		return CreateSelectLastInsertIDPlan(), nil
+	}
+
+	if IsSetStmt(stmt) {
+		return CreateSetPlan(sql, stmt), nil
 	}
 
 	if estmt, ok := stmt.(*ast.ExplainStmt); ok {

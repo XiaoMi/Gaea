@@ -45,6 +45,12 @@ type SelectLastInsertIDPlan struct {
 	basePlan
 }
 
+type SetPlan struct {
+	basePlan
+	sql  string
+	stmt ast.StmtNode
+}
+
 // IsSelectLastInsertIDStmt check if the statement is SELECT LAST_INSERT_ID()
 func IsSelectLastInsertIDStmt(stmt ast.StmtNode) bool {
 	s, ok := stmt.(*ast.SelectStmt)
@@ -66,6 +72,16 @@ func IsSelectLastInsertIDStmt(stmt ast.StmtNode) bool {
 	}
 
 	return f.FnName.L == "last_insert_id"
+}
+
+// IsSetStmt check if the statement is set comment
+func IsSetStmt(stmt ast.StmtNode) bool {
+	_, ok := stmt.(*ast.SetStmt)
+	if !ok {
+		return false
+	}
+
+	return true
 }
 
 // CreateUnshardPlan constructor of UnshardPlan
@@ -122,6 +138,12 @@ func CreateSelectLastInsertIDPlan() *SelectLastInsertIDPlan {
 	return &SelectLastInsertIDPlan{}
 }
 
+// CreateSetPlan constructor of SetPlan
+func CreateSetPlan(sql string, stmt ast.StmtNode) *SetPlan {
+	return &SetPlan{sql: sql,
+		stmt: stmt}
+}
+
 // ExecuteIn implement Plan
 func (p *UnshardPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysql.Result, error) {
 	r, err := se.ExecuteSQL(reqCtx, reqCtx.Get(util.DefaultSlice).(string), p.db, p.sql)
@@ -143,6 +165,15 @@ func (p *UnshardPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysq
 func (p *SelectLastInsertIDPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysql.Result, error) {
 	r := createLastInsertIDResult(se.GetLastInsertID())
 	return r, nil
+}
+
+// ExecuteIn implement Plan
+func (p *SetPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysql.Result, error) {
+	if stmt, ok := p.stmt.(*ast.SetStmt); ok {
+		se.HandleSet(reqCtx, p.sql, stmt)
+	}
+
+	return nil, nil
 }
 
 func createLastInsertIDResult(lastInsertID uint64) *mysql.Result {

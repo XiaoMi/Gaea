@@ -1,6 +1,7 @@
 package dml
 
 import (
+	"database/sql"
 	"fmt"
 	"github.com/XiaoMi/Gaea/tests/e2e/config"
 	"github.com/XiaoMi/Gaea/tests/e2e/util"
@@ -18,6 +19,10 @@ var _ = ginkgo.Describe("test dml set variables", func() {
 		initNs.Name = "test_dml_variables"
 		for i := 0; i < len(initNs.Users); i++ {
 			initNs.Users[i].Namespace = initNs.Name
+		}
+		for i := 0; i < len(initNs.Slices); i++ {
+			initNs.Slices[i].Capacity = 1
+			initNs.Slices[i].MaxCapacity = 3
 		}
 
 		err = e2eMgr.ModifyNamespace(initNs)
@@ -200,8 +205,86 @@ var _ = ginkgo.Describe("test dml set variables", func() {
 			}
 		})
 
+		ginkgo.It("set session timezone in different session, maybe use same backend connection", func() {
+			sqlCases := []struct {
+				GaeaSQL    string
+				CheckSQL   string
+				CheckTimes int
+				ExpectRes  string
+			}{
+				{
+					GaeaSQL:    `/*!40103 SET TIME_ZONE='+00:00' */`,
+					CheckSQL:   `show variables like "time_zone"`,
+					CheckTimes: 5,
+					ExpectRes:  "+00:00",
+				},
+				{
+					GaeaSQL:    `/*!40103 SET TIME_ZONE='+01:00' */`,
+					CheckSQL:   `show variables like "time_zone"`,
+					CheckTimes: 5,
+					ExpectRes:  "+01:00",
+				},
+				{
+					GaeaSQL:    `/*!40103 SET TIME_ZONE='+02:00' */`,
+					CheckSQL:   `show variables like "time_zone"`,
+					CheckTimes: 5,
+					ExpectRes:  "+02:00",
+				},
+				{
+					GaeaSQL:    `/*!40103 SET TIME_ZONE='+03:00' */`,
+					CheckSQL:   `show variables like "time_zone"`,
+					CheckTimes: 5,
+					ExpectRes:  "+03:00",
+				},
+				{
+					GaeaSQL:    `/*!40103 SET TIME_ZONE='+04:00' */`,
+					CheckSQL:   `show variables like "time_zone"`,
+					CheckTimes: 5,
+					ExpectRes:  "+04:00",
+				},
+			}
+
+			for _, sqlCase := range sqlCases {
+				gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
+				util.ExpectNoError(err)
+				_, err = gaeaConn.Exec(sqlCase.GaeaSQL)
+				util.ExpectNoError(err)
+				err = checkFunc(gaeaConn, sqlCase.CheckSQL, sqlCase.ExpectRes)
+				util.ExpectNoError(err)
+				for i := 0; i < sqlCase.CheckTimes; i++ {
+					newGaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
+					util.ExpectNoError(err)
+					err = checkFunc(newGaeaConn, sqlCase.CheckSQL, "SYSTEM")
+					util.ExpectNoError(err)
+				}
+			}
+		})
+
 	})
 	ginkgo.AfterEach(func() {
 		e2eMgr.Clean()
 	})
 })
+
+func checkFunc(db *sql.DB, sqlStr string, value string) error {
+	rows, err := db.Query(sqlStr)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil
+		}
+		return fmt.Errorf("db Exec Error %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var variableName string
+		var variableValue string
+		err = rows.Scan(&variableName, &variableValue)
+		if value == variableValue {
+			return nil
+		}
+		return fmt.Errorf("mismatch. Actual: %v, Expect: %v", variableValue, value)
+	}
+
+	return nil
+}

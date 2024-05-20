@@ -998,13 +998,6 @@ func TestUnshardPlan(t *testing.T) {
 				expectDB:          defaltDb,
 				expectSql:         "SELECT 5 DIV 2, -5 DIV 2, 5 DIV -2, -5 DIV -2;",
 			},
-			{
-				name:              "test only comment",
-				sql:               "/*!40100 SET @@SQL_MODE='' */",
-				expectUnshardPlan: true,
-				expectDB:          defaltDb,
-				expectSql:         "SET @@SESSION.`sql_mode`=''",
-			},
 		}
 	)
 	for _, tt := range testCases {
