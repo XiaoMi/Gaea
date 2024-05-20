@@ -274,6 +274,11 @@ func (se *SessionExecutor) preBuildUnshardPlan(reqCtx *util.RequestContext, db s
 	// to be used to check master hint
 	reqCtx.Set(util.Tokens, tokens)
 
+	// StmtComment not in UnshardPlan
+	if reqCtx.Get(util.StmtType) == parser.StmtComment {
+		return nil, false
+	}
+
 	// preCheck unshard sql
 	// 1. no shard rules return unshard plan directly
 	if len(rt.GetAllRules()) == 0 {
