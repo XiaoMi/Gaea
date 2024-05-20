@@ -483,6 +483,9 @@ func mergeMultiResultSet(rs []*mysql.Result) *mysql.Result {
 
 	// 列信息认为相同, 因此只合并结果
 	for i := 1; i < len(rs); i++ {
+		if len(rs[i].Fields) < len(rs[0].Fields) {
+			rs[0].Fields = rs[i].Fields
+		}
 		rs[0].Status |= rs[i].Status
 		rs[0].Values = append(rs[0].Values, rs[i].Values...)
 		rs[0].RowDatas = append(rs[0].RowDatas, rs[i].RowDatas...)

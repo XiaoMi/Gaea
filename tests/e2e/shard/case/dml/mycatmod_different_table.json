@@ -1,0 +1,121 @@
+{
+    "execCases": [
+      {
+        "description": "Test Mycat MOD With Different Table",
+        "setUp": [
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_mod_0"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_mod_1"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "CREATE DATABASE db_mycat_mod_0"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "CREATE DATABASE db_mycat_mod_1"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "USE db_mycat_mod_0"
+          },
+          {
+            "slice": "slice-0",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),col2 VARCHAR(256) default 'test',PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "USE db_mycat_mod_1"
+          },
+          {
+            "slice": "slice-0",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),col2 VARCHAR(256) default 'test',PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+          },
+          {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_mod_2"
+          },
+          {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_mod_3"
+          },
+          {
+            "slice": "slice-1",
+            "sql": "CREATE DATABASE db_mycat_mod_2"
+          },
+          {
+            "slice": "slice-1",
+            "sql": "CREATE DATABASE db_mycat_mod_3"
+          },
+          {
+            "slice": "slice-1",
+            "sql": "USE db_mycat_mod_2"
+          },
+          {
+            "slice": "slice-1",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+          },
+          {
+            "slice": "slice-1",
+            "sql": "USE db_mycat_mod_3"
+          },
+          {
+            "slice": "slice-1",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+          }
+        ],
+        "gaeaActions": [
+          {
+            "sql":"USE db_mycat_mod",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat (id ,col1) VALUES (1,'test1') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat (id ,col1) VALUES (2,'test2') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat  (id ,col1) VALUES (3,'test3') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat  (id ,col1) VALUES (4,'test4') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat  (id ,col1) VALUES (5,'test5') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "SELECT * FROM tbl_mycat",
+            "execType": "Default"
+          }
+        ],
+        "tearDown": [
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_mod_0"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_mod_1"
+          },
+          {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_mod_2"
+          },
+          {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_mod_3"
+          }
+        ]
+      }
+    ]
+  }
