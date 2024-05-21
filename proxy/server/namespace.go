@@ -82,7 +82,6 @@ type Namespace struct {
 	maxClientConnections   int
 	CheckSelectLock        bool
 	localSlaveReadPriority int
-	ignoreSessionTimezone  bool
 
 	slowSQLCache         *cache.LRUCache
 	errorSQLCache        *cache.LRUCache
@@ -227,9 +226,6 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 	if namespace.downAfterNoAlive > 0 {
 		namespace.CheckSliceStatus(ctx)
 	}
-
-	// set if ignore current namespace timezone
-	namespace.ignoreSessionTimezone = namespaceConfig.IgnoreSessionTimezone
 
 	// init router
 	namespace.router, err = router.NewRouter(namespaceConfig)
