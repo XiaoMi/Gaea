@@ -112,6 +112,49 @@ var _ = ginkgo.Describe("simple sql test", func() {
 			}
 		})
 	})
+
+	ginkgo.Context("test select last_insert_id sql", func() {
+		ginkgo.It("should return last insert id correctly", func() {
+			gaeaConn, err := e2eMgr.GetWriteGaeaUserConn()
+			util.ExpectNoError(err)
+
+			sqlCases := []struct {
+				GaeaSQL   string
+				CheckSQL  string
+				ExpectRes [][]string
+			}{
+				{
+					GaeaSQL:  fmt.Sprintf("INSERT INTO %s.%s (id, name) VALUES (10001, 'Alex')", db, table),
+					CheckSQL: "select last_insert_id()",
+					ExpectRes: [][]string{
+						{"10001"},
+					},
+				},
+				{
+					GaeaSQL:  fmt.Sprintf("INSERT INTO %s.%s (id, name) VALUES (10002, 'Alex')", db, table),
+					CheckSQL: "SELECT LAST_INSERT_ID()",
+					ExpectRes: [][]string{
+						{"10002"},
+					},
+				},
+				{
+					GaeaSQL:  fmt.Sprintf("INSERT INTO %s.%s (id, name) VALUES (10003, 'Alex')", db, table),
+					CheckSQL: "SELECT LAST_INSERT_ID ()",
+					ExpectRes: [][]string{
+						{"10003"},
+					},
+				},
+			}
+
+			for _, sqlCase := range sqlCases {
+				_, err := gaeaConn.Exec(sqlCase.GaeaSQL)
+				util.ExpectNoError(err)
+				err = checkFunc(gaeaConn, sqlCase.CheckSQL, sqlCase.ExpectRes)
+				util.ExpectNoError(err)
+			}
+		})
+	})
+
 	ginkgo.AfterEach(func() {
 		e2eMgr.Clean()
 	})

@@ -60,6 +60,9 @@ const (
 
 	// multiBackendAddrMark marks the backend addr is one of multi backend addrs
 	multiBackendAddrMark = ">"
+
+	// select last_insert_id()
+	lastInsetIdMark = "SELECTLAST_INSERT_ID()"
 )
 
 // SessionExecutor is bound to a session, so requests are serializable
