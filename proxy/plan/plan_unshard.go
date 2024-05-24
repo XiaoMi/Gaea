@@ -152,10 +152,8 @@ func (p *UnshardPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysq
 	}
 
 	// set last insert id to session
-	if _, ok := p.stmt.(*ast.InsertStmt); ok {
-		if r.InsertID != 0 {
-			se.SetLastInsertID(r.InsertID)
-		}
+	if r.InsertID != 0 {
+		se.SetLastInsertID(r.InsertID)
 	}
 
 	return r, nil

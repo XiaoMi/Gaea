@@ -279,6 +279,11 @@ func (se *SessionExecutor) preBuildUnshardPlan(reqCtx *util.RequestContext, db s
 		return nil, false
 	}
 
+	// select last_insert_id() not in UnshardPlan
+	if len(strings.Join(tokens, "")) == len(lastInsetIdMark) && strings.ToUpper(strings.Join(tokens, "")) == lastInsetIdMark {
+		return nil, false
+	}
+
 	// preCheck unshard sql
 	// 1. no shard rules return unshard plan directly
 	if len(rt.GetAllRules()) == 0 {
