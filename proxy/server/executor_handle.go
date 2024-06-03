@@ -482,12 +482,13 @@ func (se *SessionExecutor) handleStmtPrepare(sql string) (*Stmt, error) {
 	sql = strings.TrimRight(sql, ";")
 	stmt.sql = sql
 
-	paramCount, offsets, err := calcParams(stmt.sql)
+	paramCount, offsets, sqlItems, err := CalcParams(stmt.sql)
 	if err != nil {
 		log.Warn("prepare calc params failed, namespace: %s, sql: %s", se.GetNamespace().GetName(), sql)
 		return nil, err
 	}
 
+	stmt.sqlItems = sqlItems
 	stmt.paramCount = paramCount
 	stmt.offsets = offsets
 	stmt.id = se.stmtID

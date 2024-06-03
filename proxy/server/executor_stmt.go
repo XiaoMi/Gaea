@@ -29,24 +29,24 @@
 package server
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"math"
-	"strconv"
-
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util"
+	"math"
+	"strconv"
 )
 
 var p = &mysql.Field{Name: []byte("?")}
 var c = &mysql.Field{}
 
-func calcParams(sql string) (paramCount int, offsets []int, err error) {
-	count := 0
+func CalcParams(sql string) (count int, offsets []int, sqlItems []string, err error) {
 	quoteChar := ""
-	paramCount = 0
 	offsets = make([]int, 0)
+	sqlItems = make([]string, 0)
+	subBeginIndex := 0
 
 	for i, elem := range []byte(sql) {
 		if elem == '\\' {
@@ -60,15 +60,21 @@ func calcParams(sql string) (paramCount int, offsets []int, err error) {
 		} else if quoteChar == "" && elem == '?' {
 			count++
 			offsets = append(offsets, i)
+			sqlItems = append(sqlItems, sql[subBeginIndex:i], "?")
+			subBeginIndex = i + 1
 		}
-
 	}
+
+	// sub string behind the last "?", eg: select * from t where id = ? limit 1
+	if subBeginIndex != len(sql) {
+		sqlItems = append(sqlItems, sql[subBeginIndex:])
+	}
+
+	// quote char not match
 	if quoteChar != "" {
 		err = fmt.Errorf("fatal situation")
 		return
 	}
-
-	paramCount = count
 
 	return
 }
@@ -93,6 +99,7 @@ type Stmt struct {
 	paramCount  int
 	paramTypes  []byte
 	offsets     []int
+	sqlItems    []string
 }
 
 // ResetParams reset args
@@ -110,24 +117,24 @@ func (s *Stmt) GetParamTypes() []byte {
 
 // GetRewriteSQL get rewrite sql
 func (s *Stmt) GetRewriteSQL() (string, error) {
-	sql := s.sql
-	var tmp = ""
-	var pos = 0
-	var offset = 0
-	var quote = false
-	for i := 0; i < s.paramCount; i++ {
-		quote, tmp = util.ItoString(s.args[i])
-		tmp = escapeSQL(tmp)
-		pos = s.offsets[i]
-		if quote {
-			sql = util.Concat(sql[:pos+offset], "'", tmp, "'", sql[pos+offset+1:])
-			offset = offset + len(tmp) - 1 + 2
+	var buffer bytes.Buffer
+	index := 0
+
+	for i := 0; i < len(s.sqlItems); i++ {
+		if s.sqlItems[i] == "?" {
+			quote, tmp := util.ItoString(s.args[index])
+			index++
+			tmp = escapeSQL(tmp)
+			if quote {
+				tmp = "'" + tmp + "'"
+			}
+			buffer.WriteString(tmp)
 		} else {
-			sql = util.Concat(sql[:pos+offset], tmp, sql[pos+offset+1:])
-			offset = offset + len(tmp) - 1
+			buffer.WriteString(s.sqlItems[i])
 		}
 	}
-	return sql, nil
+
+	return buffer.String(), nil
 }
 
 func (se *SessionExecutor) handleStmtExecute(data []byte) (*mysql.Result, error) {
