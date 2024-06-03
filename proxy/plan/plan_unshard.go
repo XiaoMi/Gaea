@@ -177,15 +177,12 @@ func (p *SetPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysql.Re
 func createLastInsertIDResult(lastInsertID uint64) *mysql.Result {
 	name := "last_insert_id()"
 	var column = 1
-	var rows [][]string
+	var rows [][]uint64
 	var names = []string{
 		name,
 	}
 
-	var t = fmt.Sprintf("%d", lastInsertID)
-	rows = append(rows, []string{t})
-
-	r := new(mysql.Resultset)
+	rows = append(rows, []uint64{lastInsertID})
 
 	var values = make([][]interface{}, len(rows))
 	for i := range rows {
@@ -195,7 +192,7 @@ func createLastInsertIDResult(lastInsertID uint64) *mysql.Result {
 		}
 	}
 
-	r, _ = mysql.BuildResultset(nil, names, values)
+	r, _ := mysql.BuildResultset(nil, names, values)
 	ret := &mysql.Result{
 		Resultset: r,
 	}
