@@ -80,40 +80,28 @@ func buildExplainPlan(stmt *ast.ExplainStmt, phyDBs map[string]string, db, sql s
 
 // ExecuteIn implement Plan
 func (p *ExplainPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysql.Result, error) {
-	if p.shardType == ShardTypeUnshard {
-		for slice, sqls := range p.sqls {
-			if len(sqls) > 1 {
-				return nil, fmt.Errorf("get multi or empty sqls in explain,sql:%s", sqls)
-			}
-			for db, sql := range sqls {
-				// 需要重新加 explain 前缀
-				r, err := se.ExecuteSQL(reqCtx, slice, db, ExplainKey+" "+sql[0])
+	var rows [][]interface{}
+	var names = []string{"shard_type", "slice", "db", "sql", "select_type", "table", "partitions", "type",
+		"possible_keys", "key", "key_len", "ref", "rows", "filtered", "Extra"}
+
+	for slice, dbSQLs := range p.sqls {
+		for db, tableSQLs := range dbSQLs {
+			for _, sql := range tableSQLs {
+				s, err := se.ExecuteSQL(reqCtx, slice, db, ExplainKey+" "+sql)
 				if err != nil {
 					return nil, err
 				}
-				return r, nil
-			}
 
-		}
-		return nil, fmt.Errorf("get empty sqls in explain")
-	}
-	return createExplainResult(p.shardType, p.sqls), nil
-}
-
-// Size implement Plan
-func (p *ExplainPlan) Size() int {
-	return 1
-}
-
-func createExplainResult(shardType string, sqls map[string]map[string][]string) *mysql.Result {
-	var rows [][]interface{}
-	var names = []string{"type", "slice", "db", "sql"}
-
-	for slice, dbSQLs := range sqls {
-		for db, tableSQLs := range dbSQLs {
-			for _, sql := range tableSQLs {
-				row := []interface{}{shardType, slice, db, sql}
-				rows = append(rows, row)
+				for i := 0; i < len(s.Resultset.Values); i++ {
+					row := []interface{}{p.shardType, slice, db, sql}
+					for j := 1; j < len(s.Resultset.Values[i]); j++ {
+						if s.Resultset.Values[i][j] == nil {
+							s.Resultset.Values[i][j] = "NULL"
+						}
+						row = append(row, s.Resultset.Values[i][j])
+					}
+					rows = append(rows, row)
+				}
 			}
 		}
 	}
@@ -123,5 +111,10 @@ func createExplainResult(shardType string, sqls map[string]map[string][]string) 
 		Resultset: r,
 	}
 
-	return ret
+	return ret, nil
+}
+
+// Size implement Plan
+func (p *ExplainPlan) Size() int {
+	return 1
 }
