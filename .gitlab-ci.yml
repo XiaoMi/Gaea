@@ -37,6 +37,7 @@ go_test:
       - master # 对应线上分支
       - /^test.*$/
       - /^release.*$/
+      - feat/test_sonar
   script:
     - go test -v ./... -coverprofile=coverage.out -short || true
   artifacts:
@@ -50,16 +51,18 @@ sonar_scan:
       - master # 对应线上分支
       - /^test.*$/
       - /^release.*$/
+      - feat/test_sonar
   dependencies:
     - go_test
   <<: *fusion-cli
   script:
     - fusion-cli sonar config --token $CI_SONAR_TOKEN
     - fusion-cli sonar scan --key=$CI_PROJECT_ID-$CI_PROJECT_NAME --ignore-quality-gate --sources . --report --
-      -Dsonar.exclusions='**/vendor/**','**/*_test.go'
-      -Dsonar.test.exclusions='**/vendor/**','**/*_test.go'
+      -Dsonar.exclusions='**/vendor/**','**/*_test.go','**/tests/**'
+      -Dsonar.test.exclusions='**/vendor/**','**/*_test.go','**/tests/**'
       -Dsonar.go.coverage.reportPaths='coverage.out'
       -Dsonar.branch.name=$CI_COMMIT_REF_NAME
+      -Dsonar.projectVersion=$CI_COMMIT_SHORT_SHA
       -Dsonar.verbose
 
 code_check:
