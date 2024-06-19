@@ -635,11 +635,11 @@ func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backen
 
 	// Control go routine execution
 	done := make(chan struct{})
-	defer close(done)
 
 	var rs *mysql.Result
 	var err error
 	go func() {
+		defer close(done)
 		if pc == nil {
 			err = fmt.Errorf("no backend connection")
 			done <- struct{}{}
