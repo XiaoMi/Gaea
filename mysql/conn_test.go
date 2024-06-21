@@ -35,3 +35,15 @@ func TestMariadbConnWithoutDB(t *testing.T) {
 		require.Equal(t, msg1[0], correct)
 	})
 }
+
+func TestInitNetBufferSize(t *testing.T) {
+	connBufferSize = 128
+	InitNetBufferSize(0)
+	require.Equal(t, connBufferSize, 128)
+	InitNetBufferSize(128)
+	require.Equal(t, connBufferSize, 128)
+	InitNetBufferSize(512)
+	require.Equal(t, connBufferSize, 512)
+	InitNetBufferSize(16*1024 + 1)
+	require.Equal(t, connBufferSize, 16*1024)
+}

@@ -72,12 +72,14 @@ const (
 //InitNetBufferSize should only be set when starting the proxy
 func InitNetBufferSize(buffSize int) {
 	if buffSize < 128 { // min
-		connBufferSize = 128
+		buffSize = 128
 	}
 
 	if buffSize > 16*1024 { // max
-		connBufferSize = 16 * 1024
+		buffSize = 16 * 1024
 	}
+	// 全局变量
+	connBufferSize = buffSize
 }
 
 // Conn is a connection between a client and a server, using the MySQL
