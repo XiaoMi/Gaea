@@ -100,6 +100,7 @@ namespace的配置格式为json，包含分表、非分表、实例等配置信�
 | seconds_behind_master | uint64  | MySQL slave延迟超过该值将slave标记为down, 默认值为0，即无限大                                                                                                           |
 | check_select_lock     | bool    | 是否检查 `select ... for update` or `select ... in share mode` 语句，当设置为true时，会优先将语句发给主库（需要配置的权限支持）。 默认值为true, 则默认发到主库。                                    |
 | local_slave_read_priority| int     | 优先访问本机房从库配置，设置为 0 时，关闭该功能；设置为 1 时，优先访问本机房从库，当无本机房从库或本机房从库均宕机时，会跨机房访问从库；当设置为 2 时，会强制访问本机房从库，当本机房无从库时，会访问主库。默认值为 0，当无法获取实例的 datacenter 时，会默认与 Proxy 想同 |                                                                                                          |                                                                                                                |
+| support_multi_query      | bool    | 是否支持多语句，默认为 false，即不支持                                                                                                                              |
 
 ### slice配置
 
