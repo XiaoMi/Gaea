@@ -1164,33 +1164,31 @@ func (s *StatisticManager) CalcAvgSQLTimes() {
 			case <-time.After(time.Millisecond):
 				quit = true
 			}
-
-			sort.Slice(sqlTimesMicro, func(i, j int) bool { return sqlTimesMicro[i] < sqlTimesMicro[j] })
-
-			sum := int64(0)
-			p99sum := int64(0)
-			p95sum := int64(0)
-			if len(sqlTimesMicro) != 0 {
-				s.SQLResponsePercentile[ns].response99Max[backendAddr] = sqlTimesMicro[(len(sqlTimesMicro)-1)*99/100]
-				s.SQLResponsePercentile[ns].response95Max[backendAddr] = sqlTimesMicro[(len(sqlTimesMicro)-1)*95/100]
-			}
-			for k := range sqlTimesMicro {
-				sum += sqlTimesMicro[k]
-				if k < len(sqlTimesMicro)*95/100 {
-					p95sum += sqlTimesMicro[k]
-				}
-				if k < len(sqlTimesMicro)*99/100 {
-					p99sum += sqlTimesMicro[k]
-				}
-			}
-			if len(sqlTimesMicro)*99/100 > 0 {
-				s.SQLResponsePercentile[ns].response99Avg[backendAddr] = p99sum / int64(len(sqlTimesMicro)*99/100)
-			}
-			if len(sqlTimesMicro)*95/100 > 0 {
-				s.SQLResponsePercentile[ns].response95Avg[backendAddr] = p95sum / int64(len(sqlTimesMicro)*95/100)
-			}
-			s.SQLResponsePercentile[ns].sqlExecTimeRecordSwitch = true
 		}
+		sort.Slice(sqlTimesMicro, func(i, j int) bool { return sqlTimesMicro[i] < sqlTimesMicro[j] })
+		sum := int64(0)
+		p99sum := int64(0)
+		p95sum := int64(0)
+		if len(sqlTimesMicro) != 0 {
+			s.SQLResponsePercentile[ns].response99Max[backendAddr] = sqlTimesMicro[(len(sqlTimesMicro)-1)*99/100]
+			s.SQLResponsePercentile[ns].response95Max[backendAddr] = sqlTimesMicro[(len(sqlTimesMicro)-1)*95/100]
+		}
+		for k := range sqlTimesMicro {
+			sum += sqlTimesMicro[k]
+			if k < len(sqlTimesMicro)*95/100 {
+				p95sum += sqlTimesMicro[k]
+			}
+			if k < len(sqlTimesMicro)*99/100 {
+				p99sum += sqlTimesMicro[k]
+			}
+		}
+		if len(sqlTimesMicro)*99/100 > 0 {
+			s.SQLResponsePercentile[ns].response99Avg[backendAddr] = p99sum / int64(len(sqlTimesMicro)*99/100)
+		}
+		if len(sqlTimesMicro)*95/100 > 0 {
+			s.SQLResponsePercentile[ns].response95Avg[backendAddr] = p95sum / int64(len(sqlTimesMicro)*95/100)
+		}
+		s.SQLResponsePercentile[ns].sqlExecTimeRecordSwitch = true
 	}
 }
 
