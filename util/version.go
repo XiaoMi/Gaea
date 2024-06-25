@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	LessThanMySQLVersion80 = "< 8.0"
+	LessThanMySQLVersion80  = "< 8.0"
+	LessThanMySQLVersion803 = "< 8.0.3"
 )
 
 // CompactServerVersion CompactVersion get compact version from origin string
@@ -28,7 +29,10 @@ func CompactServerVersion(sv string) string {
 func CheckMySQLVersion(curVersion string, constraintVersion string) bool {
 	if strings.HasSuffix(curVersion, "-gaea") {
 		curVersion = curVersion[:len(curVersion)-5]
+	} else {
+		curVersion = strings.Split(curVersion, "-")[0]
 	}
+
 	cur, err := version.NewVersion(curVersion)
 	if err != nil {
 		return false

@@ -426,14 +426,20 @@ func (se *SessionExecutor) handleSetVariable(sql string, v *ast.VariableAssignme
 		return se.setIntSessionVariable(mysql.SQLSelectLimit, value)
 	case "transaction":
 		return fmt.Errorf("does not support set transaction in gaea")
-	case "tx_read_only":
+	case "tx_read_only", "transaction_read_only":
 		//set session transaction read only; set session transaction read write ...
 		value := getVariableExprResult(v.Value)
 		onOffValue, err := getOnOffVariable(value)
 		if err != nil {
 			return mysql.NewDefaultError(mysql.ErrWrongValueForVar, name, value)
 		}
-		return se.setIntSessionVariable(mysql.TxReadOnly, onOffValue)
+
+		// mysql 8.0.3 not support tx_read_only
+		if name == "tx_read_only" && !util.CheckMySQLVersion(se.session.proxy.ServerVersion, util.LessThanMySQLVersion803) {
+			return se.setIntSessionVariable("transaction_read_only", onOffValue)
+		}
+
+		return se.setIntSessionVariable(name, onOffValue)
 	case gaeaGeneralLogVariable:
 		value := getVariableExprResult(v.Value)
 		onOffValue, err := getOnOffVariable(value)

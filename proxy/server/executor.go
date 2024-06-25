@@ -911,6 +911,7 @@ func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string) (
 	if err != nil {
 		return nil, fmt.Errorf("execute sql error, sql: %s, err: %v", sql, err)
 	}
+
 	modifyResultStatus(r, se)
 	return r, nil
 }

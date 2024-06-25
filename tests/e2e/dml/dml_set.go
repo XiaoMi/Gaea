@@ -260,6 +260,44 @@ var _ = ginkgo.Describe("test dml set variables", func() {
 			}
 		})
 
+		ginkgo.It("set session tx_read_only and transaction_read_only", func() {
+			sqlCases := []struct {
+				GaeaSQL   string
+				CheckSQL  string
+				ExpectRes string
+			}{
+				{
+					GaeaSQL:   `set @@tx_read_only=off`,
+					CheckSQL:  `show variables like "tx_read_only"`,
+					ExpectRes: "OFF",
+				},
+				{
+					GaeaSQL:   `set @@tx_read_only=on`,
+					CheckSQL:  `show variables like "tx_read_only"`,
+					ExpectRes: "ON",
+				},
+				{
+					GaeaSQL:   `set @@transaction_read_only=off`,
+					CheckSQL:  `show variables like "transaction_read_only"`,
+					ExpectRes: "OFF",
+				},
+				{
+					GaeaSQL:   `set @@transaction_read_only=on`,
+					CheckSQL:  `show variables like "transaction_read_only"`,
+					ExpectRes: "ON",
+				},
+			}
+
+			for _, sqlCase := range sqlCases {
+				gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
+				util.ExpectNoError(err)
+				_, err = gaeaConn.Exec(sqlCase.GaeaSQL)
+				util.ExpectNoError(err)
+				err = checkFunc(gaeaConn, sqlCase.CheckSQL, sqlCase.ExpectRes)
+				util.ExpectNoError(err)
+			}
+		})
+
 	})
 	ginkgo.AfterEach(func() {
 		e2eMgr.Clean()
