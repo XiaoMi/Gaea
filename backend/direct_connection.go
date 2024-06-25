@@ -24,6 +24,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/XiaoMi/Gaea/util"
 	"net"
 	"strings"
 	"time"
@@ -44,6 +45,7 @@ type DirectConnection struct {
 	user     string
 	password string
 	db       string
+	version  string
 
 	capability uint32
 
@@ -222,9 +224,13 @@ func (dc *DirectConnection) readInitialHandshake() error {
 		return fmt.Errorf("invalid protocol version %d, must >= 10", data[0])
 	}
 
-	//skip mysql version
 	//mysql version end with 0x00
-	pos := 1 + bytes.IndexByte(data[1:], 0x00) + 1
+	version, pos, ok := mysql.ReadNullString(data, 1)
+	if !ok {
+		return fmt.Errorf("readInitialHandshake error: can't read version")
+	}
+
+	dc.version = version
 
 	// get connection id
 	dc.conn.ConnectionID = binary.LittleEndian.Uint32(data[pos : pos+4])
@@ -724,6 +730,10 @@ func (dc *DirectConnection) WriteSetStatement() error {
 	appendSetCharset(&setVariableSQL, dc.charset, collation)
 
 	for _, v := range dc.sessionVariables.GetAll() {
+		if v.Name() == mysql.TxReadOnly && !util.CheckMySQLVersion(dc.version, util.LessThanMySQLVersion803) {
+			appendSetVariable(&setVariableSQL, mysql.TransactionReadOnly, v.Get())
+			continue
+		}
 		appendSetVariable(&setVariableSQL, v.Name(), v.Get())
 	}
 

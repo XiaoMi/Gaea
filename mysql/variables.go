@@ -26,11 +26,12 @@ type verifyFunc func(interface{}) error
 
 // allowed session variables
 const (
-	SQLModeStr     = "sql_mode"
-	SQLSafeUpdates = "sql_safe_updates"
-	TimeZone       = "time_zone"
-	SQLSelectLimit = "sql_select_limit"
-	TxReadOnly     = "tx_read_only"
+	SQLModeStr          = "sql_mode"
+	SQLSafeUpdates      = "sql_safe_updates"
+	TimeZone            = "time_zone"
+	SQLSelectLimit      = "sql_select_limit"
+	TxReadOnly          = "tx_read_only"
+	TransactionReadOnly = "transaction_read_only"
 )
 
 // not allowed session variables
@@ -39,11 +40,12 @@ const (
 )
 
 var variableVerifyFuncMap = map[string]verifyFunc{
-	SQLModeStr:     verifySQLMode,
-	SQLSafeUpdates: verifyOnOffInteger,
-	TimeZone:       verifyTimeZone,
-	SQLSelectLimit: verifyInteger,
-	TxReadOnly:     verifyOnOffInteger,
+	SQLModeStr:          verifySQLMode,
+	SQLSafeUpdates:      verifyOnOffInteger,
+	TimeZone:            verifyTimeZone,
+	SQLSelectLimit:      verifyInteger,
+	TxReadOnly:          verifyOnOffInteger,
+	TransactionReadOnly: verifyOnOffInteger,
 }
 
 // SessionVariables variables in session
