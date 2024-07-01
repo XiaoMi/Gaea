@@ -32,6 +32,7 @@ package mysql
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -46,13 +47,15 @@ import (
 const (
 	// MaxPacketSize is the maximum payload length of a packet(16MB)
 	// the server supports.
-	MaxPacketSize = (1 << 24) - 1
+	MinPacketSize   = 128
+	MaxPacketSize   = (1 << 24) - 1
+	WritePacketSize = 16 * 1024
 )
 
 var (
 	// connBufferSize is how much we buffer for reading and
 	// writing. It is also how much we allocate for ephemeral buffers.
-	connBufferSize = 128
+	connBufferSize = 16 * 1024
 )
 
 // Constants for how ephemeral buffers were used for reading / writing.
@@ -120,10 +123,10 @@ type Conn struct {
 }
 
 // bufPool is used to allocate and free buffers in an efficient way.
-var bufPool = bucketpool.New(connBufferSize, MaxPacketSize)
+var bufPool = bucketpool.New(MinPacketSize, MaxPacketSize)
 
 // writersPool is used for pooling bufio.Writer objects.
-var writersPool = sync.Pool{New: func() interface{} { return bufio.NewWriterSize(nil, connBufferSize) }}
+var writersPool = sync.Pool{New: func() interface{} { return bufio.NewWriterSize(nil, WritePacketSize) }}
 
 // NewConn is an internal method to create a Conn. Used by client and server
 // side for common creation code.
@@ -409,27 +412,21 @@ func (c *Conn) WritePacket(data []byte) error {
 		}
 
 		// Compute and write the header.
-		var header [4]byte
+		header := make([]byte, 4)
 		header[0] = byte(packetLength)
 		header[1] = byte(packetLength >> 8)
 		header[2] = byte(packetLength >> 16)
 		header[3] = c.sequence
-		if n, err := w.Write(header[:]); err != nil {
-			if strings.Contains(err.Error(), ErrResetConn.Error()) {
-				return ErrResetConn
-			}
-			return fmt.Errorf("Conn %v:Write(header) failed: %v", c.GetConnectionID(), err)
-		} else if n != 4 {
-			return fmt.Errorf("Write(header) returned a short write: %v < 4", n)
-		}
 
-		// Write the body.
-		if n, err := w.Write(data[index : index+packetLength]); err != nil {
+		// 这边合并写入，旧版本分开写入，会多一个 tcp PSH 包和一个 tcp ACK 包
+		buf := bytes.NewBuffer(header)
+		buf.Write(data[index : index+packetLength])
+		if n, err := w.Write(buf.Bytes()); err != nil {
 			if strings.Contains(err.Error(), ErrResetConn.Error()) {
 				return ErrResetConn
 			}
 			return fmt.Errorf("Conn %v:Write(packet) failed: %v", c.GetConnectionID(), err)
-		} else if n != packetLength {
+		} else if n != packetLength+4 {
 			return fmt.Errorf("Write(packet) returned a short write: %v < %v", n, packetLength)
 		}
 
