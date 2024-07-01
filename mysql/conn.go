@@ -72,7 +72,7 @@ const (
 	ephemeralRead
 )
 
-//InitNetBufferSize should only be set when starting the proxy
+// InitNetBufferSize should only be set when starting the proxy
 func InitNetBufferSize(buffSize int) {
 	if buffSize < 128 { // min
 		buffSize = 128
@@ -194,7 +194,9 @@ func (c *Conn) readHeaderFrom(r io.Reader) (int, error) {
 		if strings.HasSuffix(err.Error(), "read: connection reset by peer") {
 			return 0, ErrResetConn
 		}
-		return 0, fmt.Errorf("io.ReadFull(header size) failed: %v", err)
+
+		// For example, the backend MySQL execution time exceeds the limit and was killed
+		return 0, ErrBadConn
 	}
 
 	length := int(uint32(header[0]) | uint32(header[1])<<8 | uint32(header[2])<<16)
@@ -637,7 +639,7 @@ func (c *Conn) WriteErrorPacketFromError(err error) error {
 		return c.WriteErrorPacket(se.SQLCode(), se.SQLState(), "%v", se.Message)
 	}
 
-	return c.WriteErrorPacket(ErrUnknown, DefaultMySQLState, "unknown error: %v", err)
+	return c.WriteErrorPacket(ErrUnknown, DefaultMySQLState, "%v", err)
 }
 
 // WriteEOFPacket writes an EOF packet, through the buffer, and

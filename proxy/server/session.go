@@ -301,7 +301,7 @@ func (cc *Session) Run() {
 		if err = cc.writeResponse(rs); err != nil {
 			log.Warn("Session write response error, connId: %d, err: %v", cc.c.GetConnectionID(), err)
 			if err == mysql.ErrBadConn {
-				log.Notice("Aborted - conn_id=%s, %s", cc.c.GetConnectionID(), cc.c.RemoteAddr())
+				log.Notice("Aborted - conn_id=%d, namespace=%s, clientAddr=%s, remoteAddr=%s", cc.c.GetConnectionID(), cc.namespace, cc.executor.clientAddr, cc.c.RemoteAddr())
 			}
 			cc.Close()
 			return
