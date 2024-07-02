@@ -102,6 +102,7 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig, cluster 
 		wg.Add(1)
 		go func(v *models.ProxyMonitorMetric) {
 			defer wg.Done()
+			var err error
 			for i := 0; i < PREPARE_RETRY_TIMES; i++ {
 				if err = proxy.PrepareConfig(v.IP+":"+v.AdminPort, namespace.Name, cfg); err == nil {
 					break
@@ -129,8 +130,9 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig, cluster 
 		wg.Add(1)
 		go func(v *models.ProxyMonitorMetric) {
 			defer wg.Done()
+			var err error
 			for i := 0; i < COMMIT_RETRY_TIMES; i++ {
-				if err := proxy.CommitConfig(v.IP+":"+v.AdminPort, namespace.Name, cfg); err == nil {
+				if err = proxy.CommitConfig(v.IP+":"+v.AdminPort, namespace.Name, cfg); err == nil {
 					break
 				}
 				log.Warn("namespace %s, proxy prepare retry %d", namespace.Name, i)
