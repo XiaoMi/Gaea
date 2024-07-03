@@ -398,7 +398,7 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace
 	}
 
 	// record sql timing
-	m.statistics.recordBackendSQLTiming(namespace, operation, sliceName, backendAddr, startTime)
+	go m.statistics.recordBackendSQLTiming(namespace, operation, sliceName, backendAddr, startTime)
 
 	// record backend slow sql
 	duration := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
