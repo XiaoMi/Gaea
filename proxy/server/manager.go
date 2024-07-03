@@ -1165,14 +1165,20 @@ func (s *StatisticManager) CalcAvgSQLTimes() {
 				quit = true
 			}
 		}
+		if len(sqlTimesMicro) == 0 {
+			s.SQLResponsePercentile[ns].response99Max[backendAddr] = 0
+			s.SQLResponsePercentile[ns].response95Max[backendAddr] = 0
+			s.SQLResponsePercentile[ns].response99Avg[backendAddr] = 0
+			s.SQLResponsePercentile[ns].response95Avg[backendAddr] = 0
+			s.SQLResponsePercentile[ns].sqlExecTimeRecordSwitch = true
+			continue
+		}
 		sort.Slice(sqlTimesMicro, func(i, j int) bool { return sqlTimesMicro[i] < sqlTimesMicro[j] })
 		sum := int64(0)
 		p99sum := int64(0)
 		p95sum := int64(0)
-		if len(sqlTimesMicro) != 0 {
-			s.SQLResponsePercentile[ns].response99Max[backendAddr] = sqlTimesMicro[(len(sqlTimesMicro)-1)*99/100]
-			s.SQLResponsePercentile[ns].response95Max[backendAddr] = sqlTimesMicro[(len(sqlTimesMicro)-1)*95/100]
-		}
+		s.SQLResponsePercentile[ns].response99Max[backendAddr] = sqlTimesMicro[(len(sqlTimesMicro)-1)*99/100]
+		s.SQLResponsePercentile[ns].response95Max[backendAddr] = sqlTimesMicro[(len(sqlTimesMicro)-1)*95/100]
 		for k := range sqlTimesMicro {
 			sum += sqlTimesMicro[k]
 			if k < len(sqlTimesMicro)*95/100 {
