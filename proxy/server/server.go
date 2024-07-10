@@ -137,6 +137,12 @@ func (s *Server) onConn(c net.Conn) {
 		return
 	}
 
+	// set keep session flag
+	cc.executor.keepSession = cc.getNamespace().setForKeepSession
+
+	// set user privileges flag
+	cc.executor.userPriv = cc.getNamespace().userProperties[cc.executor.user].RWFlag
+
 	// added into time wheel
 	s.tw.Add(s.sessionTimeout, cc, cc.Close)
 	_ = s.manager.statistics.generalLogger.Notice("Connected - conn_id=%d, ns=%s, %s@%s/%s, capability: %d",

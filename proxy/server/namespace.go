@@ -82,6 +82,7 @@ type Namespace struct {
 	maxClientConnections   int
 	CheckSelectLock        bool
 	localSlaveReadPriority int
+	setForKeepSession      bool
 
 	slowSQLCache         *cache.LRUCache
 	errorSQLCache        *cache.LRUCache
@@ -89,6 +90,7 @@ type Namespace struct {
 	backendErrorSQLCache *cache.LRUCache
 	planCache            *cache.LRUCache
 	CloseCancel          context.CancelFunc
+	namespaceChanged     bool
 }
 
 // DumpToJSON  means easy encode json
@@ -246,6 +248,9 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 		sequences.SetSequence(v.DB, v.Table, seq)
 	}
 	namespace.sequences = sequences
+
+	// init global keepSession in namespace
+	namespace.setForKeepSession = namespaceConfig.SetForKeepSession
 
 	return namespace, nil
 }
@@ -507,6 +512,9 @@ func (n *Namespace) Close(delay bool) {
 	var err error
 	// close check alive
 	n.CloseCancel()
+
+	// change namespaceChanged flag
+	n.namespaceChanged = true
 
 	// delay close time
 	if delay {
