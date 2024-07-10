@@ -51,7 +51,7 @@ var _ = ginkgo.Describe("Test client connection limit", func() {
 				index := i
 				go func() {
 					time.Sleep(time.Duration(index) * 10 * time.Millisecond)
-					_, err := gaeaReadWriteConn.Query("select sleep(0.1)")
+					_, err := gaeaReadWriteConn.Query("select sleep(1)")
 					errChan <- err
 				}()
 			}

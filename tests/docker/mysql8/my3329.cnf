@@ -31,7 +31,7 @@ datadir                         = /data/mysql/data3329
 innodb_log_group_home_dir       = /data/mysql/data3329
 
 server-id                       = 38166124
-sql_mode = "STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION"
+sql_mode = ""
 log-slave-updates
 log-bin                         = /data/mysql/data3329/mysql-bin
 relay-log                       = /data/mysql/data3329/mysql-relay-bin
@@ -42,5 +42,6 @@ skip_slave_start
 general-log                     = 0
 general_log_file                = /data/mysql/data3329/general.log
 
-log_warnings
 log_error                       = /data/mysql/data3329/log_error.err
+max_connections = 4096
+max_user_connections = 4096

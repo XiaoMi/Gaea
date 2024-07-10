@@ -1,0 +1,47 @@
+[client]
+port                            = 3349
+socket                          = /data/tmp/mysql3349.sock
+
+[mysqld]
+default_password_lifetime       = 0
+lower_case_table_names          = 1
+character-set-server            = utf8
+tmpdir                          = /data/tmp
+port                            = 3349
+socket                          = /data/tmp/mysql3349.sock
+pid_file                        = /data/mysql/data3349/mysql3349.pid
+
+#gtid
+gtid-mode = ON
+enforce-gtid-consistency = ON
+
+relay_log_info_repository = TABLE
+relay_log_purge = 1
+relay_log_recovery = 1
+
+datadir                         = /data/mysql/data3349
+#memlock
+
+#innodb_file_per_table
+#innodb_buffer_pool_size         = 100M
+#innodb_change_buffering         = all
+#innodb_data_file_path           = ibdata1:12M:autoextend
+#innodb_temp_data_file_path      = ibtmp1:12M:autoextend:max:100G
+
+innodb_log_group_home_dir       = /data/mysql/data3349
+
+server-id                       = 38166144
+sql_mode = ""
+log-slave-updates
+log-bin                         = /data/mysql/data3349/mysql-bin
+relay-log                       = /data/mysql/data3349/mysql-relay-bin
+binlog_format                   = row
+log_bin_trust_function_creators = 1
+skip_slave_start
+
+general-log                     = 0
+general_log_file                = /data/mysql/data3349/general.log
+
+log_error                       = /data/mysql/data3349/log_error.err
+max_connections = 4096
+max_user_connections = 4096

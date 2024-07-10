@@ -18,9 +18,10 @@ stages:
   - scan
   - check
   - unittest
-  - build
   - e2e-test
+  - e2e-test-mysql8
   - pre-release
+  - build
   - release
 
 .fusion-cli: &fusion-cli
@@ -85,12 +86,21 @@ build_branch:
   stage: build
   script:
     - make build
+  only:
+    - staging
+    - tags
 
 e2e_test:
   stage: e2e-test
-  image: micr.cloud.mioffice.cn/devdba/centos-mysql-golang:v1.0.2
+  image: micr.cloud.mioffice.cn/devdba/centos-mysql-golang:v1.0.3
   script:
     - make e2e-test
+
+e2e_test_mysql8:
+  stage: e2e-test-mysql8
+  image: micr.cloud.mioffice.cn/devdba/centos-mysql8-golang:v1.0.1
+  script:
+    - make e2e-test-mysql8
 
 upload_fds:
   stage: pre-release

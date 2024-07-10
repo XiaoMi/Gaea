@@ -149,6 +149,7 @@ var _ = ginkgo.Describe("Read-Write Splitting", func() {
 				},
 			}
 			for index, sqlCase := range sqlCases {
+				e2eMgr.ClearSqlLog()
 				currentTime := time.Now()
 				_, err := sqlCase.GaeaConn.Exec(sqlCase.GaeaSQL)
 				if !sqlCase.IsSuccess {

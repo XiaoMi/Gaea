@@ -24,23 +24,26 @@ function check_mysql_dir() {
 }
 
 if [ $(check_pid "etcd") -eq 0 ];then
-    etcd --data-dir bin/etcd 2>&1 1>>bin/etcd.log &
+    etcd --data-dir bin/etcd 2>&1 &>>bin/etcd.log &
 fi
 
 # Start 2 Mysql Cluster
 # Cluster-1: 3319(master), 3329(slave), 3339(slave)
 # Prepare Cluster-1 for master
 if [ $(check_mysql_dir "3319") -eq 0 ];then
-    cp ./tests/docker/my3319.cnf /data/etc/my3319.cnf
+    cp ./tests/docker/mysql8/my3319.cnf /data/etc/my3319.cnf
     mysqld --defaults-file=/data/etc/my3319.cnf --user=work --initialize-insecure
     mysqld --defaults-file=/data/etc/my3319.cnf --user=work &
     sleep 3
     mysql -h127.0.0.1 -P3319 -uroot -S/data/tmp/mysql3319.sock <<EOF
     reset master;
-    GRANT REPLICATION SLAVE, REPLICATION CLIENT on *.* to 'mysqlsync'@'%' IDENTIFIED BY 'mysqlsync';
-    GRANT ALL ON *.* TO 'superroot'@'%' IDENTIFIED BY 'superroot' WITH GRANT OPTION;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON *.* TO 'gaea_backend_user'@'%' IDENTIFIED BY 'gaea_backend_pass';
-    GRANT  REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'gaea_backend_user'@'%' IDENTIFIED BY 'gaea_backend_pass';
+    CREATE USER 'mysqlsync'@'%' IDENTIFIED with mysql_native_password BY 'mysqlsync';
+    GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'mysqlsync'@'%';
+    CREATE USER 'superroot'@'%' IDENTIFIED with mysql_native_password BY 'superroot';
+    GRANT ALL PRIVILEGES ON *.* TO 'superroot'@'%' WITH GRANT OPTION;
+    CREATE USER 'gaea_backend_user'@'%' IDENTIFIED with mysql_native_password BY 'gaea_backend_pass';
+    GRANT SELECT, INSERT, UPDATE, DELETE ON *.* TO 'gaea_backend_user'@'%';
+    GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'gaea_backend_user'@'%';
 EOF
 else
     if [ $(check_pid "my3319") -eq 0 ];then
@@ -50,7 +53,7 @@ fi
 
 # Prepare Cluster-1 slave 1
 if [ $(check_mysql_dir "3329") -eq 0 ];then
-    cp ./tests/docker/my3329.cnf   /data/etc/my3329.cnf
+    cp ./tests/docker/mysql8/my3329.cnf   /data/etc/my3329.cnf
     mysqld --defaults-file=/data/etc/my3329.cnf --user=work --initialize-insecure
     mysqld --defaults-file=/data/etc/my3329.cnf --user=work &
     sleep 3
@@ -67,7 +70,7 @@ fi
 
 # Prepare Cluster-1 slave 2
 if [ $(check_mysql_dir "3339") -eq 0 ];then
-    cp ./tests/docker/my3339.cnf   /data/etc/my3339.cnf
+    cp ./tests/docker/mysql8/my3339.cnf   /data/etc/my3339.cnf
     mysqld --defaults-file=/data/etc/my3339.cnf --user=work --initialize-insecure
     mysqld --defaults-file=/data/etc/my3339.cnf --user=work &
     sleep 3
@@ -84,16 +87,19 @@ fi
 
 # Cluster-2: 3379(master)
 if [ $(check_mysql_dir "3379") -eq 0 ];then
-    cp ./tests/docker/my3379.cnf /data/etc/my3379.cnf
+    cp ./tests/docker/mysql8/my3379.cnf /data/etc/my3379.cnf
     mysqld --defaults-file=/data/etc/my3379.cnf --user=work --initialize-insecure
     mysqld --defaults-file=/data/etc/my3379.cnf --user=work &
     sleep 3
     mysql -h127.0.0.1 -P3379 -uroot -S/data/tmp/mysql3379.sock <<EOF
     reset master;
-    GRANT REPLICATION SLAVE, REPLICATION CLIENT on *.* to 'mysqlsync'@'%' IDENTIFIED BY 'mysqlsync';
-    GRANT ALL ON *.* TO 'superroot'@'%' IDENTIFIED BY 'superroot' WITH GRANT OPTION;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON *.* TO 'gaea_backend_user'@'%' IDENTIFIED BY 'gaea_backend_pass';
-    GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'gaea_backend_user'@'%' IDENTIFIED BY 'gaea_backend_pass';
+    CREATE USER 'mysqlsync'@'%' IDENTIFIED with mysql_native_password BY 'mysqlsync';
+    GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'mysqlsync'@'%';
+    CREATE USER 'superroot'@'%' IDENTIFIED with mysql_native_password BY 'superroot';
+    GRANT ALL PRIVILEGES ON *.* TO 'superroot'@'%' WITH GRANT OPTION;
+    CREATE USER 'gaea_backend_user'@'%' IDENTIFIED with mysql_native_password BY 'gaea_backend_pass';
+    GRANT SELECT, INSERT, UPDATE, DELETE ON *.* TO 'gaea_backend_user'@'%';
+    GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'gaea_backend_user'@'%';
 EOF
 else
     if [ $(check_pid "my3379") -eq 0 ];then
@@ -103,16 +109,19 @@ fi
 
 # Cluster-3: 3349(master)
 if [ $(check_mysql_dir "3349") -eq 0 ];then
-cp ./tests/docker/my3349.cnf /data/etc/my3349.cnf
+    cp ./tests/docker/mysql8/my3349.cnf /data/etc/my3349.cnf
     mysqld --defaults-file=/data/etc/my3349.cnf --user=work --initialize-insecure
     mysqld --defaults-file=/data/etc/my3349.cnf --user=work &
     sleep 3
     mysql -h127.0.0.1 -P3349 -uroot -S/data/tmp/mysql3349.sock <<EOF
     reset master;
-    GRANT REPLICATION SLAVE, REPLICATION CLIENT on *.* to 'mysqlsync'@'%' IDENTIFIED BY 'mysqlsync';
-    GRANT ALL ON *.* TO 'superroot'@'%' IDENTIFIED BY 'superroot' WITH GRANT OPTION;
-    GRANT SELECT, INSERT, UPDATE, DELETE ON *.* TO 'gaea_backend_user'@'%' IDENTIFIED BY 'gaea_backend_pass';
-    GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'gaea_backend_user'@'%' IDENTIFIED BY 'gaea_backend_pass';
+    CREATE USER 'mysqlsync'@'%' IDENTIFIED with mysql_native_password BY 'mysqlsync';
+    GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'mysqlsync'@'%';
+    CREATE USER 'superroot'@'%' IDENTIFIED with mysql_native_password BY 'superroot';
+    GRANT ALL PRIVILEGES ON *.* TO 'superroot'@'%' WITH GRANT OPTION;
+    CREATE USER 'gaea_backend_user'@'%' IDENTIFIED with mysql_native_password BY 'gaea_backend_pass';
+    GRANT SELECT, INSERT, UPDATE, DELETE ON *.* TO 'gaea_backend_user'@'%';
+    GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'gaea_backend_user'@'%';
 EOF
 else
     if [ $(check_pid "my3349") -eq 0 ];then

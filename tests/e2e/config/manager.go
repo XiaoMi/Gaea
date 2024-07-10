@@ -440,3 +440,20 @@ func (e *E2eManager) SearchSqlLog(searchString string, currentTime time.Time) ([
 	}
 	return allEntries, nil
 }
+func (e *E2eManager) ClearSqlLog() error {
+	err := filepath.Walk(e.GCluster.LogDirectory, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && strings.HasPrefix(info.Name(), "gaea_sql.log") {
+			file, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0644)
+			if err != nil {
+				return fmt.Errorf("open file:%s error %v", path, err)
+			}
+			defer file.Close()
+			file.Truncate(0)
+		}
+		return nil
+	})
+	return err
+}

@@ -102,6 +102,7 @@ func (cc *Session) clientConnectionReachLimit() (bool, int) {
 		return false, 0
 	}
 
+	// 并发情况下，这边判断有问题，会检测不准，修改成原子操作，对建立连接性能有影响，暂不处理
 	var v = int(current.(*uber_atomic.Int32).Load())
 	if v >= cc.getNamespace().maxClientConnections {
 		return true, v

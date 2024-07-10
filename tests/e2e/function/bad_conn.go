@@ -52,7 +52,7 @@ var _ = ginkgo.Describe("mysql bad connection test", func() {
 				util.ExpectNoError(err)
 				go killMySQLProcess(sqlCase.TestSQL, masterAdminConn)
 				_, err = gaeaConn.Exec(sqlCase.TestSQL)
-				time.Sleep(2 * time.Second)
+				time.Sleep(500 * time.Millisecond)
 				util.ExpectEqual(err.Error(), sqlCase.ExpectErr)
 			}
 		})
