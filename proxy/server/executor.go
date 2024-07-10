@@ -17,6 +17,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"github.com/XiaoMi/Gaea/models"
 	"net"
 	"sort"
 	"strconv"
@@ -81,7 +82,11 @@ type SessionExecutor struct {
 	charset          string
 	sessionVariables *mysql.SessionVariables
 
+	keepSession bool
+	userPriv    int
+
 	txConns    map[string]backend.PooledConnect
+	ksConns    map[string]backend.PooledConnect // keep session connections
 	savepoints []string
 	txLock     sync.Mutex
 
@@ -185,6 +190,7 @@ func newSessionExecutor(manager *Manager) *SessionExecutor {
 	return &SessionExecutor{
 		sessionVariables: mysql.NewSessionVariables(),
 		txConns:          make(map[string]backend.PooledConnect),
+		ksConns:          make(map[string]backend.PooledConnect),
 		stmts:            make(map[uint32]*Stmt),
 		status:           initClientConnStatus,
 		manager:          manager,
@@ -308,6 +314,11 @@ func (se *SessionExecutor) GetDatabase() string {
 	return se.db
 }
 
+// IsKeepSession return keepSession flag
+func (se *SessionExecutor) IsKeepSession() bool {
+	return se.keepSession
+}
+
 // ExecuteCommand execute command
 func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 	switch cmd {
@@ -327,6 +338,11 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		}
 		return CreateResultResponse(se.status, r, false)
 	case mysql.ComPing:
+		if se.IsKeepSession() {
+			if err := se.handleKeepSessionPing(); err != nil {
+				return CreateErrorResponse(se.status, err)
+			}
+		}
 		return CreateOKResponse(se.status)
 	case mysql.ComInitDB:
 		db := string(data)
@@ -407,11 +423,35 @@ func (se *SessionExecutor) getBackendConns(sqls map[string]map[string][]string, 
 }
 
 func (se *SessionExecutor) getBackendConn(sliceName string, fromSlave bool) (pc backend.PooledConnect, err error) {
+	if se.IsKeepSession() {
+		return se.getBackendKsConn(sliceName)
+	}
+	return se.getBackendNoKsConn(sliceName, fromSlave)
+}
+
+func (se *SessionExecutor) getBackendNoKsConn(sliceName string, fromSlave bool) (pc backend.PooledConnect, err error) {
 	if !se.isInTransaction() {
 		slice := se.GetNamespace().GetSlice(sliceName)
 		return slice.GetConn(fromSlave, se.GetNamespace().GetUserProperty(se.user), se.GetNamespace().localSlaveReadPriority)
 	}
 	return se.getTransactionConn(sliceName)
+}
+
+func (se *SessionExecutor) getBackendKsConn(sliceName string) (pc backend.PooledConnect, err error) {
+	pc, ok := se.ksConns[sliceName]
+	if ok {
+		return pc, nil
+	}
+
+	slice := se.GetNamespace().GetSlice(sliceName)
+	pc, err = slice.GetConn(se.userPriv == models.ReadOnly, se.GetNamespace().GetUserProperty(se.user), se.GetNamespace().localSlaveReadPriority)
+	if err != nil {
+		log.Warn("get connection from backend failed, error: %s", err.Error())
+		return
+	}
+
+	se.ksConns[sliceName] = pc
+	return
 }
 
 func (se *SessionExecutor) getTransactionConn(sliceName string) (pc backend.PooledConnect, err error) {
@@ -464,7 +504,7 @@ func (se *SessionExecutor) recycleBackendConn(pc backend.PooledConnect) {
 		return
 	}
 
-	if se.isInTransaction() {
+	if se.isInTransaction() || se.IsKeepSession() {
 		return
 	}
 
@@ -472,7 +512,7 @@ func (se *SessionExecutor) recycleBackendConn(pc backend.PooledConnect) {
 }
 
 func (se *SessionExecutor) recycleBackendConns(pcs map[string]backend.PooledConnect, rollback bool) {
-	if se.isInTransaction() {
+	if se.isInTransaction() || se.IsKeepSession() {
 		return
 	}
 
@@ -983,8 +1023,14 @@ func (se *SessionExecutor) commit() (err error) {
 			err = e
 		}
 		pc.Recycle()
+
 	}
 
+	for _, pc := range se.ksConns {
+		if e := pc.Commit(); e != nil {
+			err = e
+		}
+	}
 	se.txConns = make(map[string]backend.PooledConnect)
 	se.savepoints = []string{}
 	return
@@ -998,6 +1044,10 @@ func (se *SessionExecutor) rollback() (err error) {
 		err = pc.Rollback()
 		pc.Recycle()
 	}
+
+	for _, pc := range se.ksConns {
+		err = pc.Rollback()
+	}
 	se.txConns = make(map[string]backend.PooledConnect)
 	se.savepoints = []string{}
 	return
@@ -1007,6 +1057,9 @@ func (se *SessionExecutor) rollbackSavepoint(savepoint string) (err error) {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 	for _, pc := range se.txConns {
+		_, err = pc.Execute("rollback to "+savepoint, 0)
+	}
+	for _, pc := range se.ksConns {
 		_, err = pc.Execute("rollback to "+savepoint, 0)
 	}
 	if err == nil && se.isInTransaction() {
@@ -1051,6 +1104,15 @@ func (se *SessionExecutor) recycleTx() {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 	se.txConns = make(map[string]backend.PooledConnect)
+}
+
+// handleKQuit close backend connection and recycle, only called when client exit
+func (se *SessionExecutor) handleKsQuit() {
+	for _, ksConn := range se.ksConns {
+		ksConn.Close()
+		ksConn.Recycle()
+	}
+	se.ksConns = make(map[string]backend.PooledConnect)
 }
 
 // ExecuteSQL execute sql

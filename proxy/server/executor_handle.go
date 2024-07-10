@@ -560,6 +560,27 @@ func (se *SessionExecutor) handleFieldList(data []byte) ([]*mysql.Field, error) 
 	return fs, nil
 }
 
+func (se *SessionExecutor) handleKeepSessionPing() (err error) {
+	for _, ksConn := range se.ksConns {
+		if err = ksConn.PingWithTimeout(backend.GetConnTimeout); err != nil {
+			ksConn.Close()
+			break
+		}
+	}
+
+	if err != nil {
+		for _, ksConn := range se.ksConns {
+			if se.isInTransaction() {
+				ksConn.Close()
+			}
+			ksConn.Recycle()
+		}
+		return mysql.ErrBadConn
+	}
+
+	return nil
+}
+
 // getMyCatHintSQL get SQL from MyCat hints
 func getMyCatHintSQL(hints string) string {
 	tmp := strings.Split(hints, mycatHint+"sql=")

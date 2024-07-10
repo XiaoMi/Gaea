@@ -129,7 +129,6 @@ func (s *Slice) GetConn(fromSlave bool, userType int, localSlaveReadPriority int
 	}
 	if err != nil {
 		log.Warn("get connection from backend failed, error: %s", err.Error())
-		return
 	}
 	return
 }

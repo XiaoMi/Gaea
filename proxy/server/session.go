@@ -249,6 +249,8 @@ func (cc *Session) Close() {
 	if err := cc.executor.rollback(); err != nil {
 		log.Warn("executor rollback error when Session close: %v", err)
 	}
+
+	cc.executor.handleKsQuit()
 	cc.c.Close()
 	log.Debug("client closed, %d", cc.c.GetConnectionID())
 
@@ -271,6 +273,7 @@ func (cc *Session) Run() {
 
 			log.Warn("[server] Session Run panic error, error: %s, stack: %s", err.Error(), string(buf))
 		}
+		cc.clearKsConns(true)
 		cc.Close()
 		cc.proxy.tw.Remove(cc)
 		cc.manager.GetStatisticManager().DescSessionCount(cc.namespace)
@@ -285,6 +288,8 @@ func (cc *Session) Run() {
 		data, err := cc.c.ReadEphemeralPacket()
 		if err != nil {
 			cc.c.RecycleReadPacket()
+			cc.clearKsConns(true)
+			cc.Close()
 			return
 		}
 
@@ -304,8 +309,10 @@ func (cc *Session) Run() {
 		if err = cc.writeResponse(rs); err != nil {
 			log.Warn("Session write response error, connId: %d, err: %v", cc.c.GetConnectionID(), err)
 			if err == mysql.ErrBadConn {
-				log.Notice("Aborted - conn_id=%d, namespace=%s, clientAddr=%s, remoteAddr=%s", cc.c.GetConnectionID(), cc.namespace, cc.executor.clientAddr, cc.c.RemoteAddr())
+				log.Notice("Aborted - conn_id=%d, namespace=%s, clientAddr=%s, remoteAddr=%s",
+					cc.c.GetConnectionID(), cc.namespace, cc.executor.clientAddr, cc.c.RemoteAddr())
 			}
+			cc.clearKsConns(true)
 			cc.Close()
 			return
 		}
@@ -313,6 +320,8 @@ func (cc *Session) Run() {
 		if cmd == mysql.ComQuit {
 			cc.Close()
 		}
+
+		cc.clearKsConns(false)
 	}
 }
 
@@ -372,5 +381,20 @@ func (cc *Session) writeResponse(r Response) error {
 		err := fmt.Errorf("invalid response type: %T", r)
 		log.Fatal(err.Error())
 		return cc.c.writeErrorPacket(err)
+	}
+}
+
+// clearKsConns clear ksConns after namespace changed
+func (cc *Session) clearKsConns(rollback bool) {
+	if cc.executor.IsKeepSession() && cc.getNamespace().namespaceChanged {
+		for _, ksConn := range cc.executor.ksConns {
+			if cc.executor.isInTransaction() && rollback {
+				ksConn.Rollback()
+			}
+			ksConn.Close()
+			ksConn.Recycle()
+		}
+		cc.executor.ksConns = make(map[string]backend.PooledConnect)
+		cc.getNamespace().namespaceChanged = false
 	}
 }
