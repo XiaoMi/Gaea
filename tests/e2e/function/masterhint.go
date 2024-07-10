@@ -21,7 +21,6 @@ var _ = ginkgo.Describe("Force Read from Master", func() {
 	db := config.DefaultE2eDatabase
 	slice := e2eMgr.NsSlices[config.SliceDualSlave]
 	table := config.DefaultE2eTable
-	currentTime := time.Now()
 	ginkgo.BeforeEach(func() {
 		// mysql prepare
 		masterAdminConn, err := slice.GetMasterAdminConn(0)
@@ -117,6 +116,8 @@ var _ = ginkgo.Describe("Force Read from Master", func() {
 					ExpectBackendAddr: slice.Slices[0].Master,
 				},
 			}
+			e2eMgr.ClearSqlLog()
+			currentTime := time.Now()
 			for _, sqlCase := range sqlCases {
 				_, err := sqlCase.GaeaConn.Exec(sqlCase.GaeaSQL)
 				util.ExpectNoError(err)

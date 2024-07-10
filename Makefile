@@ -39,8 +39,13 @@ test:
 
 e2e-test: gaea gaea-cc
 	cp bin/gaea bin/gaea-cc tests/e2e/cmd/
-	./hack/e2e.sh
-	ginkgo --v --progress --trace --flake-attempts=1 ./tests/e2e/
+	./hack/e2e-mysql5.sh
+	./hack/ginkgo-run-mysql5.sh
+
+e2e-test-mysql8: gaea gaea-cc
+	cp bin/gaea bin/gaea-cc tests/e2e/cmd/
+	./hack/e2e-mysql8.sh
+	./hack/ginkgo-run-mysql8.sh
 
 integrate_test:
 	go test -timeout 30m -coverprofile=.integrate_coverage.out ./... -run ^TestIntegration$

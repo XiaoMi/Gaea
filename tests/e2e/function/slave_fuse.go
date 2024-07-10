@@ -32,10 +32,11 @@ var _ = ginkgo.Describe("Test slave fuse", func() {
 		err = e2eMgr.ModifyNamespace(initNs)
 		util.ExpectNoError(err, "create namespace")
 		// wait mysql data  sync and namespace load
-		time.Sleep(3 * time.Second)
+		time.Sleep(1 * time.Second)
 	})
 
 	ginkgo.It("slave will not fuse when no privilege to show slave status", func() {
+		e2eMgr.ClearSqlLog()
 		e2eMgr.StartTime = time.Now()
 		// step1: revoke mysql cluster privilege
 		_, err = masterAdminConn.Exec(fmt.Sprintf(`REVOKE REPLICATION SLAVE, REPLICATION CLIENT ON *.* from '%s'@'%%'`, slice.Slices[0].UserName))
@@ -47,7 +48,7 @@ var _ = ginkgo.Describe("Test slave fuse", func() {
 		ns := initNs
 		// set slave to one slave for checking log
 		ns.Slices[0].Slaves = []string{slice.Slices[0].Slaves[0]}
-		ns.SecondsBehindMaster = 10
+		ns.SecondsBehindMaster = 5
 		err = e2eMgr.ModifyNamespace(ns)
 		util.ExpectNoError(err, "modify namespace")
 
@@ -57,7 +58,7 @@ var _ = ginkgo.Describe("Test slave fuse", func() {
 		for i := 0; i < counts; i++ {
 			_, err := gaeaReadConn.Exec(sql)
 			util.ExpectNoError(err)
-			time.Sleep(1 * time.Second)
+			time.Sleep(300 * time.Millisecond)
 		}
 
 		// step4: check the gaea log for distribution.
@@ -74,6 +75,7 @@ var _ = ginkgo.Describe("Test slave fuse", func() {
 	})
 
 	ginkgo.It("slave will not fuse when show slave status is empty", func() {
+		e2eMgr.ClearSqlLog()
 		e2eMgr.StartTime = time.Now()
 		// step1: change cluster master to Gaea config slave, cluster slave to Gaea config master for test.
 		ns := initNs
@@ -91,7 +93,7 @@ var _ = ginkgo.Describe("Test slave fuse", func() {
 		for i := 0; i < counts; i++ {
 			_, err := gaeaReadConn.Exec(sql)
 			util.ExpectNoError(err)
-			time.Sleep(1 * time.Second)
+			time.Sleep(300 * time.Millisecond)
 		}
 
 		// step4: check the gaea log for distribution.

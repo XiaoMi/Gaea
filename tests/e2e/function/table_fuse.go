@@ -44,7 +44,7 @@ var _ = ginkgo.Describe("Test HealthyCheck Sql Fuse Result", func() {
 		err = e2eMgr.ModifyNamespace(initNs)
 		util.ExpectNoError(err)
 		// wait namespace down after no alive effect
-		time.Sleep(10 * time.Second)
+		time.Sleep(1 * time.Second)
 	})
 
 	ginkgo.Context("When executing basic SQL operations", func() {
@@ -90,8 +90,9 @@ var _ = ginkgo.Describe("Test HealthyCheck Sql Fuse Result", func() {
 					_, err = v.DB.Exec(v.PrePareSql)
 					util.ExpectNoError(err, "Prepare Sql Exec Error")
 				}
+				e2eMgr.ClearSqlLog()
 				// 1. wait fuse  effect
-				time.Sleep(10 * time.Second)
+				time.Sleep(6 * time.Second)
 				// 2. gaea exec sql
 				currentTime := time.Now()
 				gaea, err := e2eMgr.GetReadWriteGaeaUserConn()
@@ -112,7 +113,6 @@ var _ = ginkgo.Describe("Test HealthyCheck Sql Fuse Result", func() {
 					_, err = v.DB.Exec(v.CleanSql)
 					util.ExpectNoError(err, "Clean Sql Exec Error")
 				}
-
 			}
 
 		})

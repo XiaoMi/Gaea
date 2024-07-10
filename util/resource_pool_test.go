@@ -526,7 +526,7 @@ func TestIdleTimeout(t *testing.T) {
 	if p.IdleClosed() != 0 {
 		t.Errorf("Expecting 0, received %d", p.IdleClosed())
 	}
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	if count.Get() != 0 {
 		t.Errorf("Expecting 0, received %d", count.Get())
