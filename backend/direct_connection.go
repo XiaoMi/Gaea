@@ -182,14 +182,18 @@ func (dc *DirectConnection) writePacket(data []byte) error {
 	err := dc.conn.WritePacket(data)
 	if err != nil && strings.Contains(err.Error(), "broken pipe") {
 		// retry 3 times, close dc's conn、reset dc's stats and reconnect
+		var connError error
 		for i := 0; i < 3; i++ {
 			dc.Close()
-			e := dc.connect()
-			if e == nil { // no need to write data again
+			connError = dc.connect()
+			if connError == nil { // no need to write data again
 				break
 			}
 		}
-
+		if dc.conn == nil {
+			log.Warn("dc address %v, DirectConnection writePacket conn is nil, err = %v, reConnet err = %v",
+				dc.addr, connError, err)
+		}
 	}
 	return err
 }
@@ -199,12 +203,18 @@ func (dc *DirectConnection) writeEphemeralPacket() error {
 	err := dc.conn.WriteEphemeralPacket()
 	if err != nil && strings.Contains(err.Error(), "broken pipe") {
 		// retry 3 times, close dc's conn、reset dc's stats and reconnect
+		// todo 先不下线这个重试，确认线上问题是不是这里产生的再下掉重试逻辑。下面的重试目前也没有生效，dc close后状态未恢复。
+		var connError error
 		for i := 0; i < 3; i++ {
 			dc.Close()
-			e := dc.connect()
-			if e == nil { // no need to write data again and ephemeral buffer is recycled
+			connError = dc.connect()
+			if connError == nil { // no need to write data again and ephemeral buffer is recycled
 				break
 			}
+		}
+		if dc.conn == nil {
+			log.Warn("dc address %v, DirectConnection writePacket conn is nil, err = %v, reConnet err = %v",
+				dc.addr, connError, err)
 		}
 	}
 	return err
@@ -710,6 +720,11 @@ func (dc *DirectConnection) ResetConnection() error {
 			log.Warn("set autocommit = 1 in reset connection error, addr: %s, user: %s, db: %s, status: %d, err: %v", dc.addr, dc.user, dc.db, dc.status, err)
 			return err
 		}
+	}
+
+	if dc.conn == nil {
+		log.Warn("reset connect failed conn is nil, addr: %s, user: %s, db: %s, status: %d", dc.addr, dc.user, dc.db, dc.status)
+		return fmt.Errorf("dc.conn is nil")
 	}
 
 	return nil

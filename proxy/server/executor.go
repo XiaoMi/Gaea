@@ -438,8 +438,14 @@ func (se *SessionExecutor) getTransactionConn(sliceName string) (pc backend.Pool
 	return
 }
 
-func (se *SessionExecutor) recycleBackendConn(pc backend.PooledConnect, rollback bool) {
+func (se *SessionExecutor) recycleBackendConn(pc backend.PooledConnect) {
 	if pc == nil {
+		return
+	}
+
+	if pc.IsClosed() {
+		se.recycleTx()
+		pc.Recycle()
 		return
 	}
 
@@ -450,10 +456,6 @@ func (se *SessionExecutor) recycleBackendConn(pc backend.PooledConnect, rollback
 
 	if se.isInTransaction() {
 		return
-	}
-
-	if rollback {
-		pc.Rollback()
 	}
 
 	pc.Recycle()
@@ -1019,6 +1021,15 @@ func (se *SessionExecutor) handleSavepoint(stmt *ast.SavepointStmt) (err error) 
 	return
 }
 
+func (se *SessionExecutor) recycleTx() {
+	if !se.isInTransaction() {
+		return
+	}
+	se.txLock.Lock()
+	defer se.txLock.Unlock()
+	se.txConns = make(map[string]backend.PooledConnect)
+}
+
 // ExecuteSQL execute sql
 func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sql string) (*mysql.Result, error) {
 	phyDB, err := se.GetNamespace().GetDefaultPhyDB(db)
@@ -1032,7 +1043,7 @@ func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sq
 	sqls[slice] = dbSQLs
 
 	pc, err := se.getBackendConn(slice, getFromSlave(reqCtx))
-	defer se.recycleBackendConn(pc, false)
+	defer se.recycleBackendConn(pc)
 
 	if err != nil {
 		log.Warn("[ns:%s]getBackendConn failed: %v", se.GetNamespace().name, err)

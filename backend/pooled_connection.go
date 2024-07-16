@@ -16,6 +16,7 @@ package backend
 
 import (
 	"fmt"
+	"github.com/XiaoMi/Gaea/log"
 	"time"
 
 	"github.com/XiaoMi/Gaea/mysql"
@@ -180,6 +181,9 @@ func (pc *pooledConnectImpl) WriteSetStatement() error {
 }
 
 func (pc *pooledConnectImpl) GetConnectionID() int64 {
+	if pc.directConnection.conn == nil {
+		log.Warn("GetConnectionID failed conn is nil, conn closed = %v, pc address = %v", pc.directConnection.IsClosed(), &(pc.directConnection))
+	}
 	return int64(pc.directConnection.conn.ConnectionID)
 }
 
