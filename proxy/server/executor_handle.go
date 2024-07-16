@@ -530,7 +530,7 @@ func (se *SessionExecutor) handleFieldList(data []byte) ([]*mysql.Field, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer se.recycleBackendConn(pc, false)
+	defer se.recycleBackendConn(pc)
 
 	phyDB, err := se.GetNamespace().GetDefaultPhyDB(se.GetDatabase())
 	if err != nil {
