@@ -352,12 +352,11 @@ func (se *SessionExecutor) handleSetVariable(sql string, v *ast.VariableAssignme
 			se.collation = se.GetNamespace().GetDefaultCollationID()
 			return nil
 		}
-		cid, ok := mysql.CharsetIds[charset]
-		if !ok {
-			return mysql.NewDefaultError(mysql.ErrUnknownCharacterSet, charset)
+
+		if err := se.sessionVariables.Set(name, charset); err != nil {
+			return err
 		}
-		se.charset = charset
-		se.collation = cid
+
 		return nil
 	case "autocommit":
 		value := getVariableExprResult(v.Value)
