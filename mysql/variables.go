@@ -26,12 +26,15 @@ type verifyFunc func(interface{}) error
 
 // allowed session variables
 const (
-	SQLModeStr          = "sql_mode"
-	SQLSafeUpdates      = "sql_safe_updates"
-	TimeZone            = "time_zone"
-	SQLSelectLimit      = "sql_select_limit"
-	TxReadOnly          = "tx_read_only"
-	TransactionReadOnly = "transaction_read_only"
+	SQLModeStr             = "sql_mode"
+	SQLSafeUpdates         = "sql_safe_updates"
+	TimeZone               = "time_zone"
+	SQLSelectLimit         = "sql_select_limit"
+	TxReadOnly             = "tx_read_only"
+	TransactionReadOnly    = "transaction_read_only"
+	CharacterSetConnection = "character_set_connection"
+	CharacterSetResults    = "character_set_results"
+	CharacterSetClient     = "character_set_client"
 )
 
 // not allowed session variables
@@ -40,12 +43,15 @@ const (
 )
 
 var variableVerifyFuncMap = map[string]verifyFunc{
-	SQLModeStr:          verifySQLMode,
-	SQLSafeUpdates:      verifyOnOffInteger,
-	TimeZone:            verifyTimeZone,
-	SQLSelectLimit:      verifyInteger,
-	TxReadOnly:          verifyOnOffInteger,
-	TransactionReadOnly: verifyOnOffInteger,
+	SQLModeStr:             verifySQLMode,
+	SQLSafeUpdates:         verifyOnOffInteger,
+	TimeZone:               verifyTimeZone,
+	SQLSelectLimit:         verifyInteger,
+	TxReadOnly:             verifyOnOffInteger,
+	TransactionReadOnly:    verifyOnOffInteger,
+	CharacterSetConnection: verifyString,
+	CharacterSetResults:    verifyString,
+	CharacterSetClient:     verifyString,
 }
 
 // SessionVariables variables in session
@@ -314,5 +320,13 @@ func verifyTimeZone(v interface{}) error {
 		return fmt.Errorf("exceed limit of time_zone")
 	}
 
+	return nil
+}
+
+func verifyString(v interface{}) error {
+	_, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("value is not string type")
+	}
 	return nil
 }

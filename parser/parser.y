@@ -5784,6 +5784,10 @@ SetExpr:
 	{
 		$$ = ast.NewValueExpr("ON")
 	}
+|	"BINARY"
+        {
+        	$$ = ast.NewValueExpr("BINARY")
+        }
 |	ExprOrDefault
 
 VariableAssignment:

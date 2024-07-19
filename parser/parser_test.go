@@ -730,6 +730,8 @@ func TestDBAStmt(t *testing.T) {
 		// set default value
 		{"SET @@global.autocommit = default", true, "SET @@GLOBAL.`autocommit`=DEFAULT"},
 		{"SET @@session.autocommit = default", true, "SET @@SESSION.`autocommit`=DEFAULT"},
+		// set binary value
+		{"SET @@character_set_client = binary", true, "SET @@SESSION.`character_set_client`='BINARY'"},
 		// SET CHARACTER SET
 		{"SET CHARACTER SET utf8mb4;", true, "SET NAMES 'utf8mb4'"},
 		{"SET CHARACTER SET 'utf8mb4';", true, "SET NAMES 'utf8mb4'"},

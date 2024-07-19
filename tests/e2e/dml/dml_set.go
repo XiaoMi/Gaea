@@ -298,6 +298,34 @@ var _ = ginkgo.Describe("test dml set variables", func() {
 			}
 		})
 
+		ginkgo.It("set character_set_client binary test", func() {
+			sqlCases := []struct {
+				GaeaSQL   string
+				CheckSQL  string
+				ExpectRes string
+			}{
+				{
+					GaeaSQL:   `set character_set_client=binary`,
+					CheckSQL:  `show variables like "character_set_client"`,
+					ExpectRes: "binary",
+				},
+				{
+					GaeaSQL:   `set character_set_connection=utf8, character_set_results=utf8, character_set_client=binary`,
+					CheckSQL:  `show variables like "character_set_connection"`,
+					ExpectRes: "utf8",
+				},
+			}
+
+			for _, sqlCase := range sqlCases {
+				gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
+				util.ExpectNoError(err)
+				_, err = gaeaConn.Exec(sqlCase.GaeaSQL)
+				util.ExpectNoError(err)
+				err = checkFunc(gaeaConn, sqlCase.CheckSQL, sqlCase.ExpectRes)
+				util.ExpectNoError(err)
+			}
+		})
+
 	})
 	ginkgo.AfterEach(func() {
 		e2eMgr.Clean()
