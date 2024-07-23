@@ -107,7 +107,7 @@ var _ = ginkgo.Describe("Force Read from Master", func() {
 				},
 				{
 					GaeaConn:          gaeaReadWriteConn,
-					GaeaSQL:           fmt.Sprintf("SELECT * /*master*/  FROM `%s`.`%s` WHERE `id`= 5", db, table),
+					GaeaSQL:           fmt.Sprintf("SELECT *  FROM `%s`.`%s` WHERE `id`= 5 /*master*/", db, table),
 					ExpectBackendAddr: slice.Slices[0].Master,
 				},
 				{

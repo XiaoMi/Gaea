@@ -236,6 +236,7 @@ func (cc *Session) handleHandshakeResponse(info HandshakeResponseInfo) error {
 	cc.namespace = namespace
 	cc.executor.namespace = namespace
 	cc.c.namespace = namespace // TODO: remove it when refactor is done
+	cc.executor.SetContextNamespace()
 	return nil
 }
 
@@ -289,6 +290,7 @@ func (cc *Session) Run() {
 
 		cc.proxy.tw.Add(cc.proxy.sessionTimeout, cc, cc.Close)
 		cc.manager.GetStatisticManager().AddReadFlowCount(cc.namespace, len(data))
+		cc.executor.SetContextNamespace()
 
 		cmd := data[0]
 		data = data[1:]

@@ -107,9 +107,8 @@ func (p *ExplainPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysq
 	}
 
 	r, _ := mysql.BuildResultset(nil, names, rows)
-	ret := &mysql.Result{
-		Resultset: r,
-	}
+	ret := mysql.ResultPool.Get()
+	ret.Resultset = r
 
 	return ret, nil
 }

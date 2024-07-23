@@ -246,7 +246,6 @@ func Tokenize(s string) []string {
 	tokens := strings.FieldsFunc(s, IsSqlSep)
 	// remove first version comment mark
 	// TODO: 处理 mycat hint: /* !mycat:sql=select 1 from order where order_id = 1 */
-	// TODO: 处理开头的 hint如：/*master*/ select * from t
 	if strings.HasPrefix(s, "/*!") {
 		if len(tokens) > 1 {
 			return tokens[1:]
@@ -254,9 +253,13 @@ func Tokenize(s string) []string {
 			return tokens
 		}
 	} else if strings.HasPrefix(s, "/*") {
+		masterHint := tokens[0]
 		idx := strings.Index(s, "*/")
 		if idx > 0 {
-			tokens = strings.FieldsFunc(string(s[idx+2:]), IsSqlSep)
+			tokens = strings.FieldsFunc(s[idx+2:], IsSqlSep)
+		}
+		if masterHint == "*master*" {
+			tokens = append(tokens, masterHint)
 		}
 	}
 	return tokens

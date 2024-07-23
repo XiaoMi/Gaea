@@ -92,6 +92,7 @@ type SessionExecutor struct {
 	serverAddr          net.Addr
 	backendAddr         string //记录执行 SQL 后端实例的地址
 	backendConnectionId int64  //记录执行 SQL 后端实例的连接ID
+	contextNamespace    *Namespace
 }
 
 // Response response info
@@ -192,6 +193,15 @@ func newSessionExecutor(manager *Manager) *SessionExecutor {
 
 // GetNamespace return namespace in session
 func (se *SessionExecutor) GetNamespace() *Namespace {
+	return se.contextNamespace
+}
+
+// GetNamespace return namespace in session
+func (se *SessionExecutor) SetContextNamespace() {
+	se.contextNamespace = se.GetManagerNamespace()
+}
+
+func (se *SessionExecutor) GetManagerNamespace() *Namespace {
 	return se.manager.GetNamespace(se.namespace)
 }
 
@@ -629,7 +639,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backend.PooledConnect, phyDb, sql string) (*mysql.Result, error) {
 	var ctx = context.Background()
 	var cancel context.CancelFunc
-	maxExecuteTime := se.manager.GetNamespace(se.namespace).GetMaxExecuteTime()
+	maxExecuteTime := se.GetNamespace().GetMaxExecuteTime()
 	if maxExecuteTime > 0 {
 		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(maxExecuteTime)*time.Millisecond)
 		defer cancel()
@@ -653,7 +663,7 @@ func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backen
 			return
 		}
 		startTime := time.Now()
-		rs, err = pc.Execute(sql, se.manager.GetNamespace(se.namespace).GetMaxResultSize())
+		rs, err = pc.Execute(sql, se.GetNamespace().GetMaxResultSize())
 
 		se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, "slice0", sql, pc.GetAddr(), startTime, err)
 		done <- struct{}{}
@@ -702,7 +712,7 @@ func getOnOffVariable(v string) (string, error) {
 }
 
 // extractPrefixCommentsAndRewrite extractPrefixComments and rewrite origin SQL
-func extractPrefixCommentsAndRewrite(sql string, version string) (trimmed string, comment parser.MarginComments) {
+func extractPrefixCommentsAndRewrite(sql string, version *util.VersionCompareStatus) (trimmed string, comment parser.MarginComments) {
 	sql = preRewriteSQL(sql, version)
 
 	//TODO: 优化 tokens 逻辑，所有的 comments 都从 tokens 中获取
@@ -713,7 +723,7 @@ func extractPrefixCommentsAndRewrite(sql string, version string) (trimmed string
 }
 
 // master-slave routing
-func checkExecuteFromSlave(reqCtx *util.RequestContext, c *SessionExecutor, sql string, comments parser.MarginComments) bool {
+func checkExecuteFromSlave(reqCtx *util.RequestContext, c *SessionExecutor, sql string) bool {
 	stmtType := reqCtx.GetStmtType()
 	tokens := reqCtx.GetTokens()
 	tokensLen := len(tokens)
@@ -749,25 +759,24 @@ func checkExecuteFromSlave(reqCtx *util.RequestContext, c *SessionExecutor, sql 
 		return false
 	}
 
-	// handle select @@read_only default to master
-	if strings.Contains(strings.ToLower(sql), "@@"+readonlyVariable) {
-		return false
-	}
+	if strings.Contains(sql, "@@") {
+		// handle select @@read_only default to master
+		if strings.Contains(strings.ToLower(sql), "@@"+readonlyVariable) {
+			return false
+		}
 
-	// handle select @@global.read_only default to master
-	if strings.Contains(strings.ToLower(sql), "@@"+globalReadonlyVariable) {
-		return false
-	}
-
-	// handle master hint
-	for _, token := range tokens {
-		if strings.ToLower(token) == masterHint {
+		// handle select @@global.read_only default to master
+		if strings.Contains(strings.ToLower(sql), "@@"+globalReadonlyVariable) {
 			return false
 		}
 	}
 
-	// we can't delete this cause leading comments has been removed
-	if strings.ToLower(strings.TrimSpace(comments.Leading)) == masterComment {
+	// handle master hint
+	if len(tokens) > 1 && util.LowerEqual(tokens[1], masterHint) {
+		return false
+	}
+	// handle master hint
+	if len(tokens) > 1 && util.LowerEqual(tokens[tokensLen-1], masterHint) {
 		return false
 	}
 
@@ -783,19 +792,15 @@ func isSQLNotAllowedByUser(c *SessionExecutor, stmtType int) bool {
 	return stmtType == parser.StmtDelete || stmtType == parser.StmtInsert || stmtType == parser.StmtUpdate
 }
 
+// 旧版本，这边有个版本对比的函数性能比较差，qps 大时损耗比较严重遂去掉，Contains 比 HasSuffix 性能差，去掉
 // preRewriteSQL pre rewite sql with string
-func preRewriteSQL(sql string, version string) string {
-	if !util.CheckMySQLVersion(version, util.LessThanMySQLVersion80) {
+func preRewriteSQL(sql string, version *util.VersionCompareStatus) string {
+	if !version.LessThanMySQLVersion80 {
 		return sql
 	}
-
 	// fix jdbc version mismatch gaea version
 	if strings.HasPrefix(sql, JdbcInitPrefix) {
 		return strings.Replace(sql, TxIsolationGT5720, TxIsolationLT5720, 1)
-	}
-
-	if !strings.Contains(sql, "@@") {
-		return sql
 	}
 
 	// fix `select @@transaction_isolation`
@@ -840,10 +845,9 @@ func createShowDatabaseResult(dbs []string) *mysql.Result {
 		r.Values = append(r.Values, []interface{}{db})
 	}
 
-	result := &mysql.Result{
-		AffectedRows: uint64(len(dbs)),
-		Resultset:    r,
-	}
+	result := mysql.ResultPool.Get()
+	result.AffectedRows = uint64(len(dbs))
+	result.Resultset = r
 
 	plan.GenerateSelectResultRowData(result)
 	return result
@@ -863,27 +867,46 @@ func createShowGeneralLogResult() *mysql.Result {
 		value = "OFF"
 	}
 	r.Values = append(r.Values, []interface{}{value})
-	result := &mysql.Result{
-		AffectedRows: 1,
-		Resultset:    r,
-	}
+	result := mysql.ResultPool.Get()
+	result.AffectedRows = 1
+	result.Resultset = r
 
 	plan.GenerateSelectResultRowData(result)
 	return result
 }
 
 func getFromSlave(reqCtx *util.RequestContext) bool {
-	slaveFlag := reqCtx.Get(util.FromSlave)
-	if slaveFlag != nil && slaveFlag.(int) == 1 {
-		return true
-	}
+	slaveFlag := reqCtx.GetFromSlave()
+	return slaveFlag == 1
+}
 
-	return false
+// 仅多语句执行时使用
+func setContextSQLFingerprint(reqCtx *util.RequestContext, sql string) {
+	fingerprint := mysql.GetFingerprint(sql)
+	md5sql := mysql.GetMd5(fingerprint)
+	reqCtx.SetFingerprint(fingerprint)
+	reqCtx.SetFingerprintMD5(md5sql)
+}
+
+func getSQLFingerprint(reqCtx *util.RequestContext, sql string) string {
+	if reqCtx.GetFingerprint() == "" {
+		fingerprint := mysql.GetFingerprint(sql)
+		reqCtx.SetFingerprint(fingerprint)
+	}
+	return reqCtx.GetFingerprint()
+}
+
+func getSQLFingerprintMd5(reqCtx *util.RequestContext, sql string) string {
+	if reqCtx.GetFingerprintMD5() == "" {
+		fingerprint := getSQLFingerprint(reqCtx, sql)
+		md5Value := mysql.GetMd5(fingerprint)
+		reqCtx.SetFingerprintMD5(md5Value)
+	}
+	return reqCtx.GetFingerprintMD5()
 }
 
 func (se *SessionExecutor) isInTransaction() bool {
-	return se.status&mysql.ServerStatusInTrans > 0 ||
-		!se.isAutoCommit()
+	return se.status&mysql.ServerStatusInTrans > 0 || !se.isAutoCommit()
 }
 
 func (se *SessionExecutor) isAutoCommit() bool {
@@ -903,11 +926,11 @@ func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string) (
 	}
 	// readonly && readwrite user send to slave
 	if !se.GetNamespace().IsAllowWrite(se.user) || se.GetNamespace().IsRWSplit(se.user) {
-		reqCtx.Set(util.FromSlave, 1)
+		reqCtx.SetFromSlave(1)
 	}
 	// handle show variables like '%read_only%' default to master
 	if strings.Contains(sql, readonlyVariable) && se.GetNamespace().IsAllowWrite(se.user) {
-		reqCtx.Set(util.FromSlave, 0)
+		reqCtx.SetFromSlave(0)
 	}
 	r, err := se.ExecuteSQL(reqCtx, se.GetNamespace().GetDefaultSlice(), se.db, sql)
 	if err != nil {
@@ -1036,11 +1059,6 @@ func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sq
 	if err != nil {
 		return nil, err
 	}
-
-	sqls := make(map[string]map[string][]string)
-	dbSQLs := make(map[string][]string)
-	dbSQLs[phyDB] = []string{sql}
-	sqls[slice] = dbSQLs
 
 	pc, err := se.getBackendConn(slice, getFromSlave(reqCtx))
 	defer se.recycleBackendConn(pc)

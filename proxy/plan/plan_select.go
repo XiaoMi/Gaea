@@ -66,9 +66,8 @@ func (s *SelectPlan) ExecuteIn(reqCtx *util.RequestContext, sess Executor) (*mys
 
 	if len(sqls) == 0 {
 		r := newEmptyResultset(s, s.GetStmt())
-		ret := &mysql.Result{
-			Resultset: r,
-		}
+		ret := mysql.ResultPool.Get()
+		ret.Resultset = r
 		return ret, nil
 	}
 

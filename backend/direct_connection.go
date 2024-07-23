@@ -806,13 +806,7 @@ func (dc *DirectConnection) exec(query string, maxRows int) (*mysql.Result, erro
 
 // read resultset from mysql
 func (dc *DirectConnection) readResultSet(data []byte, binary bool, maxRows int) (*mysql.Result, error) {
-	result := &mysql.Result{
-		Status:       0,
-		InsertID:     0,
-		AffectedRows: 0,
-		Warnings:     0,
-		Resultset:    &mysql.Resultset{},
-	}
+	result := mysql.ResultPool.Get()
 
 	// column count
 	pos := 0
@@ -962,7 +956,7 @@ func (dc *DirectConnection) isEOFPacket(data []byte) bool {
 func (dc *DirectConnection) handleOKPacket(data []byte) (*mysql.Result, error) {
 	var pos = 1
 
-	r := new(mysql.Result)
+	r := mysql.ResultPool.GetWithoutResultSet()
 
 	r.AffectedRows, pos, _, _ = mysql.ReadLenEncInt(data, pos)
 	r.InsertID, pos, _, _ = mysql.ReadLenEncInt(data, pos)

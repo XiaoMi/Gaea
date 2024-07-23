@@ -17,7 +17,7 @@ package models
 import (
 	"fmt"
 	"github.com/XiaoMi/Gaea/log"
-	"github.com/XiaoMi/Gaea/log/xlog"
+	"github.com/XiaoMi/Gaea/log/zap"
 	"github.com/XiaoMi/Gaea/mysql"
 	"strconv"
 	"strings"
@@ -181,7 +181,7 @@ func InitXLog(output, path, filename, level, service string, logKeepDays int, lo
 	if logKeepCounts != 0 {
 		cfg["log_keep_counts"] = strconv.Itoa(logKeepCounts)
 	}
-	logger, err := xlog.CreateLogManager(output, cfg)
+	logger, err := zap.CreateLogManager(cfg)
 	if err != nil {
 		return err
 	}

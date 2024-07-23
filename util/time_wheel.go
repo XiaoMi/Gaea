@@ -27,6 +27,11 @@ type Task struct {
 	callback func()
 }
 
+type PipeLineItem struct {
+	value interface{}
+	key   string
+}
+
 // TimeWheel means time wheel
 type TimeWheel struct {
 	tick   time.Duration
@@ -37,10 +42,7 @@ type TimeWheel struct {
 	bucketIndexes map[interface{}]int     // key: added item, value: bucket position
 
 	currentIndex int
-
-	addC    chan *Task
-	removeC chan interface{}
-	stopC   chan struct{}
+	pipelineC    chan PipeLineItem
 }
 
 // NewTimeWheel create new time wheel
@@ -58,9 +60,7 @@ func NewTimeWheel(tick time.Duration, bucketsNum int) (*TimeWheel, error) {
 		bucketIndexes: make(map[interface{}]int, 1024),
 		buckets:       make([]map[interface{}]*Task, bucketsNum),
 		currentIndex:  0,
-		addC:          make(chan *Task, 1024),
-		removeC:       make(chan interface{}, 1024),
-		stopC:         make(chan struct{}),
+		pipelineC:     make(chan PipeLineItem, 4096),
 	}
 
 	for i := 0; i < bucketsNum; i++ {
@@ -72,29 +72,42 @@ func NewTimeWheel(tick time.Duration, bucketsNum int) (*TimeWheel, error) {
 
 // Start start the time wheel
 func (tw *TimeWheel) Start() {
-	tw.ticker = time.NewTicker(tw.tick)
 	go tw.start()
 }
 
+// 此处旧版本连接数大的时候资源占用比较多
 func (tw *TimeWheel) start() {
 	for {
-		select {
-		case <-tw.ticker.C:
-			tw.handleTick()
-		case task := <-tw.addC:
-			tw.add(task)
-		case key := <-tw.removeC:
-			tw.remove(key)
-		case <-tw.stopC:
-			tw.ticker.Stop()
-			return
+		time.Sleep(tw.tick)
+		count := 0
+		// 取不到数据或者处理 count 超过 16 * 1024 退出
+		for count >= 0 && count < 16*1024 {
+			select {
+			case item := <-tw.pipelineC:
+				count++
+				// 为了保证获取的顺序，用统一的 pipeline 获取，select 不同的管道不能保证顺序
+				switch item.key {
+				case "add":
+					tw.add(item.value.(*Task))
+				case "del":
+					tw.remove(item.value)
+				case "stop":
+					return
+				}
+			default:
+				count = -1
+			}
 		}
+		tw.handleTick()
 	}
 }
 
 // Stop stop the time wheel
 func (tw *TimeWheel) Stop() {
-	tw.stopC <- struct{}{}
+	tw.pipelineC <- PipeLineItem{
+		key:   "stop",
+		value: nil,
+	}
 }
 
 func (tw *TimeWheel) handleTick() {
@@ -116,11 +129,20 @@ func (tw *TimeWheel) handleTick() {
 }
 
 // Add add an item into time wheel
+// 每执行一个 sql 就需要执行一次这个方法，旧版本管道只有 1024，高并发情况下会存在资源抢占和阻塞
+// 为了提高性能，降低 session timeout 的精确度
 func (tw *TimeWheel) Add(delay time.Duration, key interface{}, callback func()) error {
 	if delay <= 0 || key == nil {
 		return errors.New("invalid params")
 	}
-	tw.addC <- &Task{delay: delay, key: key, callback: callback}
+	// 高并发情况下可能阻塞
+	select {
+	case tw.pipelineC <- PipeLineItem{
+		key:   "add",
+		value: &Task{delay: delay, key: key, callback: callback},
+	}:
+	default:
+	}
 	return nil
 }
 
@@ -154,7 +176,11 @@ func (tw *TimeWheel) Remove(key interface{}) error {
 	if key == nil {
 		return errors.New("invalid params")
 	}
-	tw.removeC <- key
+	//tw.removeC <- key
+	tw.pipelineC <- PipeLineItem{
+		key:   "del",
+		value: key,
+	}
 	return nil
 }
 
