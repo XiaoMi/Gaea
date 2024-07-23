@@ -146,7 +146,7 @@ func CreateSetPlan(sql string, stmt ast.StmtNode) *SetPlan {
 
 // ExecuteIn implement Plan
 func (p *UnshardPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysql.Result, error) {
-	r, err := se.ExecuteSQL(reqCtx, reqCtx.Get(util.DefaultSlice).(string), p.db, p.sql)
+	r, err := se.ExecuteSQL(reqCtx, reqCtx.GetDefaultSlice(), p.db, p.sql)
 	if err != nil {
 		return nil, err
 	}
@@ -193,9 +193,8 @@ func createLastInsertIDResult(lastInsertID uint64) *mysql.Result {
 	}
 
 	r, _ := mysql.BuildResultset(nil, names, values)
-	ret := &mysql.Result{
-		Resultset: r,
-	}
+	ret := mysql.ResultPool.Get()
+	ret.Resultset = r
 
 	return ret
 }

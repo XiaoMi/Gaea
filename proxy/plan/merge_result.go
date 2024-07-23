@@ -420,7 +420,7 @@ func (a *AggregateFuncGroupConcatMerger) MergeTo(from, to ResultRow) error {
 
 // MergeExecResult merge execution results, like UPDATE, INSERT, DELETE, ...
 func MergeExecResult(rs []*mysql.Result) (*mysql.Result, error) {
-	r := new(mysql.Result)
+	r := mysql.ResultPool.GetWithoutResultSet()
 	for _, v := range rs {
 		r.Status |= v.Status
 		r.AffectedRows += v.AffectedRows

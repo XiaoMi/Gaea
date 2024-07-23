@@ -270,14 +270,9 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 	}
 
 	for continueConn.MoreRowsExist() {
-		result := &mysql.Result{
-			Status:       0,
-			InsertID:     0,
-			AffectedRows: 0,
-			Warnings:     0,
-			Resultset: &mysql.Resultset{
-				Fields: rs.Fields,
-			},
+		result := mysql.ResultPool.Get()
+		result.Resultset = &mysql.Resultset{
+			Fields: rs.Fields,
 		}
 		err = continueConn.FetchMoreRows(result, maxRows)
 		if isBinary {
@@ -311,6 +306,7 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 }
 
 func (cc *ClientConn) writeOKResult(status uint16, moreRows bool, r *mysql.Result) error {
+	defer r.Free()
 	if r.Resultset == nil {
 		return cc.WriteOKPacket(r.AffectedRows, r.InsertID, status, 0, r.Info)
 	}
@@ -318,6 +314,7 @@ func (cc *ClientConn) writeOKResult(status uint16, moreRows bool, r *mysql.Resul
 }
 
 func (cc *ClientConn) writeRowsWithEOF(result *mysql.Result, moreRowsExists bool, status uint16) error {
+	defer result.Free()
 	var err error
 	cc.StartWriterBuffering()
 	for _, v := range result.RowDatas {

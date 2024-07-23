@@ -85,7 +85,7 @@ func TestTokenize(t *testing.T) {
 		},
 		{
 			name: "test simple with tab",
-			sql:  "select a	b from A.t",
+			sql: "select a	b from A.t",
 			want: []string{"select", "a", "b", "from", "A.t"},
 		},
 		{
@@ -96,7 +96,7 @@ func TestTokenize(t *testing.T) {
 		{
 			name: "test select master hint leading",
 			sql:  "/*master*/ select a,b from A.t",
-			want: []string{"select", "a", "b", "from", "A.t"},
+			want: []string{"select", "a", "b", "from", "A.t", "*master*"},
 		},
 		{
 			name: "test select master hint training",
@@ -156,6 +156,26 @@ func TestTokenize(t *testing.T) {
 			name: "test only comment",
 			sql:  "select * from t\v",
 			want: []string{"select", "*", "from", "t"},
+		},
+		{
+			name: "test only comment",
+			sql:  "select * from t\v",
+			want: []string{"select", "*", "from", "t"},
+		},
+		{
+			name: "test read_only",
+			sql:  "/* hint */ select @@read_only",
+			want: []string{"select", "@@read_only"},
+		},
+		{
+			name: "test read_only",
+			sql:  "select /* hint */ @@read_only",
+			want: []string{"select", "*", "hint", "*", "@@read_only"},
+		},
+		{
+			name: "test empty",
+			sql:  " ",
+			want: []string{},
 		},
 	}
 	for _, tt := range tests {

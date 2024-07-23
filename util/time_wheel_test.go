@@ -109,6 +109,22 @@ func TestRemove(t *testing.T) {
 	tw.Stop()
 }
 
+func TestRemoveMulti(t *testing.T) {
+	a := &A{a: 0, b: "test"}
+	tw := newTimeWheel()
+	for i := 0; i < 10; i++ {
+		err := tw.Add(time.Second*1, a, a.callback)
+		assert.NoError(t, err)
+	}
+	for i := 0; i < 10; i++ {
+		err := tw.Remove(a)
+		assert.NoError(t, err)
+	}
+	time.Sleep(time.Second * 2)
+	assert.Equal(t, int32(0), a.getCallbackValue())
+	tw.Stop()
+}
+
 func BenchmarkAdd(b *testing.B) {
 	a := &A{}
 	tw := newTimeWheel()

@@ -319,10 +319,7 @@ func (n *Namespace) IsSQLAllowed(reqCtx *util.RequestContext, sql string) bool {
 	if len(n.sqls) == 0 {
 		return true
 	}
-
-	fingerprint := mysql.GetFingerprint(sql)
-	reqCtx.Set("fingerprint", fingerprint)
-	md5 := mysql.GetMd5(fingerprint)
+	md5 := getSQLFingerprintMd5(reqCtx, sql)
 	if _, ok := n.sqls[md5]; ok {
 		return false
 	}

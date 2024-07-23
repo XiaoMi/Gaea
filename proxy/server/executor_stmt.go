@@ -205,9 +205,7 @@ func (se *SessionExecutor) handleStmtExecute(data []byte) (*mysql.Result, error)
 	} else {
 		executeSQL = s.sql
 	}
-
 	defer s.ResetParams()
-
 	// execute sql using ComQuery
 	return se.handleQuery(executeSQL)
 }

@@ -44,7 +44,7 @@ const (
 	// SliceDualSlave 表示测试的主从 MySQL 集群 3319 3329 3339
 	SliceDualSlave = "slice-dual-slave"
 	// LogExpression 标识 Gaea SQL Log 的格式
-	LogExpression = `\[(.*?)\] \[NOTICE\] \[(\d+)\] OK - (\d+\.\d+)ms - ns=(.*?), (.*?)@(.*?)->(.*?)/(.*?), mysql_connect_id=(\d+), r=\d+\|(.*?)$`
+	LogExpression = `\[(.*?)\] \[INFO\] \[(\d+)\] OK - (\d+\.\d+)ms - ns=(.*?), (.*?)@(.*?)->(.*?)/(.*?), mysql_connect_id=(\d+)\|(.*?)$`
 )
 
 var logDirectory = "cmd/logs"
@@ -410,6 +410,8 @@ func (g *GaeaCCManager) deleteNamespace(key string) error {
 // It uses regular expressions to parse and match log entries based on the input parameters.
 // If a matching entry is found, it's added to the result slice. The function handles errors such as file access issues and returns an error if any problems occur during the file reading and parsing process.
 func (e *E2eManager) SearchSqlLog(searchString string, currentTime time.Time) ([]util.LogEntry, error) {
+	// 等待日志落盘
+	time.Sleep(100 * time.Millisecond)
 	searchString = strings.TrimSuffix(searchString, ";")
 	var allEntries []util.LogEntry
 
@@ -417,7 +419,7 @@ func (e *E2eManager) SearchSqlLog(searchString string, currentTime time.Time) ([
 		if err != nil {
 			return err
 		}
-		if !info.IsDir() && strings.HasPrefix(info.Name(), "gaea_sql.log") {
+		if !info.IsDir() && strings.HasPrefix(info.Name(), "gaea_sql.log") && info.Mode()&os.ModeSymlink == 0 {
 			file, err := os.Open(path)
 			if err != nil {
 				return fmt.Errorf("open file:%s error %v", path, err)

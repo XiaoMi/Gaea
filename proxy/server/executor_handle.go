@@ -62,26 +62,34 @@ func (se *SessionExecutor) handleQuery(sql string) (r *mysql.Result, err error) 
 	reqCtx := util.NewRequestContext()
 	// check black sql
 	ns := se.GetNamespace()
-	if !ns.IsSQLAllowed(reqCtx, sql) {
-		fingerprint := mysql.GetFingerprint(sql)
-		log.Warn("catch black sql, sql: %s", sql)
-		se.manager.GetStatisticManager().RecordSQLForbidden(fingerprint, se.GetNamespace().GetName())
-		err := mysql.NewError(mysql.ErrUnknown, "sql in blacklist")
-		return nil, err
-	}
 
 	startTime := time.Now()
 	// TODO: 统一使用 token 处理
-	stmtType := parser.Preview(sql)
-	reqCtx.Set(util.StmtType, stmtType)
 	if ns.supportMultiQuery && se.session.c.capability&mysql.ClientMultiStatements != 0 {
 		r, err = se.doMultiStmts(reqCtx, sql)
 	} else {
 		r, err = se.doQuery(reqCtx, sql)
 	}
 
-	se.manager.RecordSessionSQLMetrics(reqCtx, se, sql, startTime, r, err)
+	se.manager.RecordSessionSQLMetrics(reqCtx, se, sql, startTime, err)
 	return r, err
+}
+
+func (se *SessionExecutor) checkSQLAllowed(reqCtx *util.RequestContext, sql string) error {
+	stmtType := parser.Preview(sql)
+	reqCtx.SetStmtType(stmtType)
+	if isSQLNotAllowedByUser(se, stmtType) {
+		return fmt.Errorf("write DML is now allowed by read user")
+	}
+	ns := se.GetNamespace()
+	if !ns.IsSQLAllowed(reqCtx, sql) {
+		fingerprint := getSQLFingerprint(reqCtx, sql)
+		log.Warn("catch black sql, sql: %s", sql)
+		se.manager.GetStatisticManager().RecordSQLForbidden(fingerprint, se.GetNamespace().GetName())
+		err := mysql.NewError(mysql.ErrUnknown, "sql in blacklist")
+		return err
+	}
+	return nil
 }
 
 // handle multi-stmts,like `select 1;set autcommit=0;insert into...;`
@@ -103,9 +111,7 @@ func (se *SessionExecutor) doMultiStmts(reqCtx *util.RequestContext, sql string)
 
 	//multi-query
 	for index, piece := range piecesSql {
-		reqCtx.Set(util.StmtType, parser.Preview(piece))
-		reqCtx.Set(util.FromSlave, 0)
-
+		setContextSQLFingerprint(reqCtx, sql)
 		r, errRet = se.doQuery(reqCtx, piece)
 		if errRet != nil {
 			return nil, errRet
@@ -126,13 +132,11 @@ func (se *SessionExecutor) doMultiStmts(reqCtx *util.RequestContext, sql string)
 }
 
 func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*mysql.Result, error) {
-	stmtType := reqCtx.Get(util.StmtType).(int)
-
-	if isSQLNotAllowedByUser(se, stmtType) {
-		return nil, fmt.Errorf("write DML is now allowed by read user")
+	if err := se.checkSQLAllowed(reqCtx, sql); err != nil {
+		return nil, err
 	}
 
-	if canHandleWithoutPlan(stmtType) {
+	if canHandleWithoutPlan(reqCtx.GetStmtType()) {
 		return se.handleQueryWithoutPlan(reqCtx, sql)
 	}
 
@@ -141,25 +145,20 @@ func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*my
 		return nil, fmt.Errorf("session is nil")
 	}
 
-	//TODO: 获取 token 没有处理 `/* !mycat:sql=` hint，所以需要在这里处理下
-	trimmedSql, comments := extractPrefixCommentsAndRewrite(sql, se.session.proxy.ServerVersion)
-
-	hintPlan, err := checkMyCatHintPlan(reqCtx, se, db, comments)
-	// get MyCat hint plan error,will only log
+	// get plan 会生成 tokens，需要放在 checkExecuteFromSlave 前面
+	p, err := se.getPlan(reqCtx, se.GetNamespace(), db, sql, true)
 	if err != nil {
-		log.Notice("check MyCat hint plan err:%s", err)
+		return nil, fmt.Errorf("get plan error, db: %s, origin sql: %s, err: %v", db, sql, err)
 	}
 
-	p, err := se.getPlan(reqCtx, se.GetNamespace(), db, sql, hintPlan)
-	if err != nil {
-		return nil, fmt.Errorf("get plan error, db: %s, origin sql: %s, trimmedSql: %s, err: %v", db, sql, trimmedSql, err)
+	// 防止多语句执行的时候被复用
+	if checkExecuteFromSlave(reqCtx, se, sql) {
+		reqCtx.SetFromSlave(1)
+	} else {
+		reqCtx.SetFromSlave(0)
 	}
 
-	if checkExecuteFromSlave(reqCtx, se, sql, comments) {
-		reqCtx.Set(util.FromSlave, 1)
-	}
-
-	reqCtx.Set(util.DefaultSlice, se.GetNamespace().GetDefaultSlice())
+	reqCtx.SetDefaultSlice(se.GetNamespace().GetDefaultSlice())
 	r, err := p.ExecuteIn(reqCtx, se)
 	if err != nil {
 		return nil, err
@@ -179,7 +178,7 @@ func checkMyCatHintPlan(reqCtx *util.RequestContext, se *SessionExecutor, db str
 	if hintSQL == "" {
 		return nil, fmt.Errorf("get nil hintSQL.comments:%+v", comments)
 	}
-	hintPlan, err := se.getPlan(reqCtx, se.GetNamespace(), db, hintSQL, nil)
+	hintPlan, err := se.getPlan(reqCtx, se.GetNamespace(), db, hintSQL, false)
 	if err != nil {
 		return nil, fmt.Errorf("get MyCat hintPlan error")
 	}
@@ -243,7 +242,7 @@ func (se *SessionExecutor) handleUseDB(dbName string) error {
 	return mysql.NewDefaultError(mysql.ErrNoDB)
 }
 
-func (se *SessionExecutor) getPlan(reqCtx *util.RequestContext, ns *Namespace, db string, sql string, hintPlan plan.Plan) (plan.Plan, error) {
+func (se *SessionExecutor) getPlan(reqCtx *util.RequestContext, ns *Namespace, db string, sql string, checkHint bool) (plan.Plan, error) {
 	p, isUnshardPlan := se.preBuildUnshardPlan(reqCtx, db, sql)
 	if isUnshardPlan {
 		return p, nil
@@ -251,6 +250,17 @@ func (se *SessionExecutor) getPlan(reqCtx *util.RequestContext, ns *Namespace, d
 	n, err := se.Parse(sql)
 	if err != nil {
 		return nil, fmt.Errorf("parse sql error, sql: %s, err: %v", sql, err)
+	}
+
+	var hintPlan plan.Plan
+	if checkHint {
+		//TODO: 获取 token 没有处理 `/* !mycat:sql=` hint，所以需要在这里处理下
+		_, comments := extractPrefixCommentsAndRewrite(sql, se.session.proxy.ServerVersionCompareStatus)
+		hintPlan, err = checkMyCatHintPlan(reqCtx, se, db, comments)
+		// get MyCat hint plan error,will only log
+		if err != nil {
+			log.Notice("check MyCat hint plan err:%s", err)
+		}
 	}
 
 	p, err = plan.BuildPlan(n, ns.GetPhysicalDBs(), db, sql, ns.GetRouter(), ns.GetSequences(), hintPlan)
@@ -272,16 +282,18 @@ func (se *SessionExecutor) preBuildUnshardPlan(reqCtx *util.RequestContext, db s
 	}
 
 	// to be used to check master hint
-	reqCtx.Set(util.Tokens, tokens)
+	reqCtx.SetTokens(tokens)
 
 	// StmtComment not in UnshardPlan
-	if reqCtx.Get(util.StmtType) == parser.StmtComment {
+	if reqCtx.GetStmtType() == parser.StmtComment {
 		return nil, false
 	}
 
-	// select last_insert_id() not in UnshardPlan
-	if len(strings.Join(tokens, "")) == len(lastInsetIdMark) && strings.ToUpper(strings.Join(tokens, "")) == lastInsetIdMark {
-		return nil, false
+	// select last_insert_id() not in UnshardPlan 使用长度判断，进一步降低命中的概率
+	if len(tokens[1]) > 13 && len(tokens[1]) < 17 {
+		if compressSQL := strings.Join(tokens, ""); util.UpperEqual(compressSQL, lastInsetIdMark) {
+			return nil, false
+		}
 	}
 
 	// preCheck unshard sql

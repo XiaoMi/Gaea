@@ -30,22 +30,23 @@ import (
 )
 
 var (
-	timeWheelUnit       = time.Second * 1
+	timeWheelUnit       = time.Second * 5
 	timeWheelBucketsNum = 3600
 )
 
 // Server means proxy that serve client request
 type Server struct {
-	closed         sync2.AtomicBool
-	listener       net.Listener
-	sessionTimeout time.Duration
-	tw             *util.TimeWheel
-	adminServer    *AdminServer
-	manager        *Manager
-	EncryptKey     string
-	ServerVersion  string
-	AuthPlugin     string
-	ServerConfig   *models.Proxy
+	closed                     sync2.AtomicBool
+	listener                   net.Listener
+	sessionTimeout             time.Duration
+	tw                         *util.TimeWheel
+	adminServer                *AdminServer
+	manager                    *Manager
+	EncryptKey                 string
+	ServerVersion              string
+	ServerVersionCompareStatus *util.VersionCompareStatus
+	AuthPlugin                 string
+	ServerConfig               *models.Proxy
 }
 
 // NewServer create new server
@@ -58,6 +59,7 @@ func NewServer(cfg *models.Proxy, manager *Manager) (*Server, error) {
 	s.ServerConfig = cfg
 	s.manager = manager
 	s.ServerVersion = util.CompactServerVersion(cfg.ServerVersion)
+	s.ServerVersionCompareStatus = util.NewVersionCompareStatus(cfg.ServerVersion)
 	s.AuthPlugin = cfg.AuthPlugin
 
 	if len(s.AuthPlugin) > 0 {

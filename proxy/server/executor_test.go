@@ -103,11 +103,12 @@ func TestExecute(t *testing.T) {
 		t.Fatal("prepare session executer error:", err)
 		return
 	}
+	se.session.proxy.ServerVersionCompareStatus = util.NewVersionCompareStatus("")
 
 	reqCtx := util.NewRequestContext()
 
-	reqCtx.Set(util.StmtType, parser.StmtSelect)
-	reqCtx.Set(util.FromSlave, 0)
+	reqCtx.SetStmtType(parser.StmtSelect)
+	reqCtx.SetFromSlave(0)
 
 	type testCase struct {
 		sql             string
@@ -129,8 +130,8 @@ func TestExecute(t *testing.T) {
 	for _, ca := range testCases {
 		t.Run(ca.sql, func(t *testing.T) {
 			_ = se.forTest(ca.sql, reqCtx)
-			assert.Equal(t, reqCtx.Get(util.FromSlave).(int), ca.expectFromSlave)
-			reqCtx.Set(util.FromSlave, 0)
+			assert.Equal(t, reqCtx.GetFromSlave(), ca.expectFromSlave)
+			reqCtx.SetFromSlave(0)
 		})
 	}
 	mockCtl := gomock.NewController(t)
@@ -186,7 +187,7 @@ func TestExecute(t *testing.T) {
 	ret := make([]*mysql.Result, 0)
 	ret = append(ret, expectResult1, expectResult2)
 
-	reqCtx.Set(util.StmtType, parser.StmtInsert)
+	reqCtx.SetStmtType(parser.StmtInsert)
 
 	rs, err := se.ExecuteSQLs(reqCtx, sqls)
 	assert.Equal(t, nil, err)
@@ -220,6 +221,7 @@ func prepareSessionExecutor() (*SessionExecutor, error) {
 		ServerVersion: "5.7.25-gaea",
 	}
 	executor.session = cc
+	executor.SetContextNamespace()
 	return executor, nil
 }
 
@@ -517,6 +519,13 @@ func newDefaultSessionExecutor(mnFunc ModifyNamespaceFunc) (*SessionExecutor, er
 	c.namespace = "test_executor_namespace"
 	c.user = "test_executor"
 	c.db = "db_ks"
+	cc := new(Session)
+	cc.proxy = &Server{
+		manager:       localManager,
+		ServerVersion: "5.7.25-gaea",
+	}
+	c.session = cc
+	c.SetContextNamespace()
 	return c, nil
 }
 
@@ -572,8 +581,20 @@ func TestCanExecuteFromSlave(t *testing.T) {
 			expectFromSlaves: []bool{true, false, true},
 		},
 		{
+			name:             "test select simple where id=?",
+			sql:              "select * from t",
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{true, false, true},
+		},
+		{
 			name:             "test select master hint",
 			sql:              "/*master*/ select * from t",
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{false, false, true},
+		},
+		{
+			name:             "test prepare select master hint",
+			sql:              "/*master*/ select * from t where id=?",
 			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
 			expectFromSlaves: []bool{false, false, true},
 		},
@@ -584,14 +605,32 @@ func TestCanExecuteFromSlave(t *testing.T) {
 			expectFromSlaves: []bool{false, false, true},
 		},
 		{
+			name:             "test prepare select master hint internal",
+			sql:              "select /*master*/ * from t where id=?",
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{false, false, true},
+		},
+		{
 			name:             "test select master hint after",
 			sql:              "select * from t /*master*/",
 			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
 			expectFromSlaves: []bool{false, false, true},
 		},
 		{
+			name:             "test prepare select master hint after",
+			sql:              "select * from t where id=? /*master*/",
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{false, false, true},
+		},
+		{
 			name:             "test select for update",
 			sql:              "select * from t where id=1 for update",
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{false, false, true},
+		},
+		{
+			name:             "test prepare select for update",
+			sql:              "select * from t where id=? for update",
 			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
 			expectFromSlaves: []bool{false, false, true},
 		},
@@ -661,22 +700,29 @@ func TestCanExecuteFromSlave(t *testing.T) {
 			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
 			expectFromSlaves: []bool{false, false, false},
 		},
+		{
+			name:             "test select read_only",
+			sql:              "select 'aaa', @@read_only, 'bbb';",
+			userList:         []string{userPriv["read_write_split"], userPriv["write_only"], userPriv["read_only"]},
+			expectFromSlaves: []bool{false, false, true},
+		},
 	}
 
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			for i, user := range tt.userList {
+				tt.sql = strings.TrimRight(tt.sql, ";")
 				se, err := newDefaultSessionExecutor(nil)
+				se.session.proxy.ServerVersionCompareStatus = util.NewVersionCompareStatus("")
 				assert.Equal(t, err, nil)
 				se.user = user
-				_, comments := extractPrefixCommentsAndRewrite(tt.sql, mysql.ServerVersion)
 				reqCtx := util.NewRequestContext()
-				reqCtx.Set(util.StmtType, parser.Preview(tt.sql))
-				_, err = se.getPlan(reqCtx, se.GetNamespace(), se.db, tt.sql, nil)
+				reqCtx.SetStmtType(parser.Preview(tt.sql))
+				_, err = se.getPlan(reqCtx, se.GetNamespace(), se.db, tt.sql, true)
 				if err != nil {
 					t.Fatalf("getPlan error.name:%s, sql:%s,err:%s", tt.name, tt.sql, err)
 				}
-				assert.Equal(t, checkExecuteFromSlave(reqCtx, se, tt.sql, comments), tt.expectFromSlaves[i], tt.name+"-"+tt.userList[i])
+				assert.Equal(t, checkExecuteFromSlave(reqCtx, se, tt.sql), tt.expectFromSlaves[i], tt.name+"-"+tt.userList[i])
 			}
 		})
 	}
@@ -705,7 +751,7 @@ func TestCanExecuteJDBCPrefix(t *testing.T) {
 	}
 
 	for _, tt := range testCases {
-		trimmedSql, _ := extractPrefixCommentsAndRewrite(tt.sql, mysql.ServerVersion)
+		trimmedSql, _ := extractPrefixCommentsAndRewrite(tt.sql, util.NewVersionCompareStatus(mysql.ServerVersion))
 		assert.Equal(t, trimmedSql, tt.trimmedSql, tt.name+"-"+tt.sql)
 	}
 }
@@ -1003,9 +1049,10 @@ func TestUnshardPlan(t *testing.T) {
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			se, err := newDefaultSessionExecutor(tt.mnFunc)
+			se.session.proxy.ServerVersionCompareStatus = util.NewVersionCompareStatus("")
 			assert.Equal(t, err, nil)
 			reqCtx := util.NewRequestContext()
-			p, err := se.getPlan(reqCtx, se.GetNamespace(), se.db, tt.sql, nil)
+			p, err := se.getPlan(reqCtx, se.GetNamespace(), se.db, tt.sql, true)
 			if err != nil {
 				t.Fatalf("getPlan error.name:%s,err:%s\n", tt.name, err)
 			}
@@ -1097,7 +1144,7 @@ func TestPreRewriteSQL(t *testing.T) {
 	}
 
 	for _, tt := range testCases {
-		sql := preRewriteSQL(tt.sql, tt.mysqlVersion)
+		sql := preRewriteSQL(tt.sql, util.NewVersionCompareStatus(tt.mysqlVersion))
 		assert.Equal(t, tt.expectSQL, sql, tt.sql+"-"+tt.mysqlVersion)
 	}
 }
@@ -1164,9 +1211,28 @@ func TestExtractPrefixCommentsAndRewrite(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			gotTrimmed, gotComment := extractPrefixCommentsAndRewrite(tt.args.sql, tt.args.version)
+			gotTrimmed, gotComment := extractPrefixCommentsAndRewrite(tt.args.sql, util.NewVersionCompareStatus(tt.args.version))
 			assert.Equalf(t, tt.expectTrimmed, gotTrimmed, "extractPrefixCommentsAndRewrite(%v, %v)", tt.args.sql, tt.args.version)
 			assert.Equalf(t, tt.expectComment, gotComment, "extractPrefixCommentsAndRewrite(%v, %v)", tt.args.sql, tt.args.version)
 		})
+	}
+}
+
+func BenchmarkGetManagerNamespace(b *testing.B) {
+	se, _ := newDefaultSessionExecutor(nil)
+	for n := 0; n < b.N; n++ {
+		for i := 0; i < 10; i++ {
+			se.GetManagerNamespace()
+		}
+	}
+}
+
+func BenchmarkGetNamespace(b *testing.B) {
+	se, _ := newDefaultSessionExecutor(nil)
+	for n := 0; n < b.N; n++ {
+		se.SetContextNamespace()
+		for i := 0; i < 10; i++ {
+			se.GetNamespace()
+		}
 	}
 }

@@ -62,7 +62,7 @@ func ParseLogEntries(file *os.File, re *regexp.Regexp, currentTime time.Time, se
 		if err != nil {
 			return []LogEntry{}, nil
 		}
-		if res != -1 {
+		if res > 0 {
 			continue
 		}
 		fmt.Sscanf(matches[3], "%f", &logEntry.ResponseTimeMs)

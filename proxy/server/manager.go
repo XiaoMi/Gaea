@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
+	"github.com/XiaoMi/Gaea/log/zap"
 	"net/http"
 	"os"
 	"runtime"
@@ -32,7 +33,6 @@ import (
 
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
-	"github.com/XiaoMi/Gaea/log/xlog"
 	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser"
@@ -192,6 +192,10 @@ func (m *Manager) Close() {
 	}
 
 	m.statistics.Close()
+	if m.statistics.generalLogger != nil {
+		// 日志落盘
+		m.statistics.generalLogger.Close()
+	}
 }
 
 // ReloadNamespacePrepare prepare commit
@@ -319,20 +323,20 @@ func (m *Manager) ConfigFingerprint() string {
 }
 
 // RecordSessionSQLMetrics record session SQL metrics, like response time, error
-func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *SessionExecutor, sql string, startTime time.Time, result *mysql.Result, err error) {
-	trimmedSql := strings.ReplaceAll(sql, "\n", " ")
+func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *SessionExecutor, sql string, startTime time.Time, err error) {
 	namespace := se.namespace
 	ns := m.GetNamespace(namespace)
 	if ns == nil {
-		log.Warn("record session SQL metrics error, namespace: %s, sql: %s, err: %s", namespace, trimmedSql, "namespace not found")
+		log.Warn("record session SQL metrics error, namespace: %s, sql: %s, err: %s", namespace, sql, "namespace not found")
 		return
 	}
 
 	var operation string
-	if stmtType, ok := reqCtx.Get(util.StmtType).(int); ok {
+	if stmtType := reqCtx.GetStmtType(); stmtType > -1 {
 		operation = parser.StmtType(stmtType)
 	} else {
-		fingerprint := mysql.GetFingerprint(sql)
+		trimmedSql := strings.ReplaceAll(sql, "\n", " ")
+		fingerprint := getSQLFingerprint(reqCtx, trimmedSql)
 		operation = mysql.GetFingerprintOperation(fingerprint)
 	}
 
@@ -341,59 +345,47 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 
 	durationFloat := float64(time.Since(startTime).Microseconds()) / 1000.0
 
-	// record full sql log
-	affectedRows := uint64(0)
-	if result != nil {
-		affectedRows = result.AffectedRows
-	}
-
 	if err == nil {
-		se.manager.statistics.generalLogger.Notice("%s - %.1fms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d, r=%d|%v",
+		se.manager.statistics.generalLogger.Notice("%s - %.1fms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d|%v",
 			SQLExecStatusOk, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
-			se.backendConnectionId, affectedRows, sql)
+			se.backendConnectionId, sql)
 	} else {
 		// record error sql
-		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d, r=%d|%v. err:%s",
+		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d|%v. err:%s",
 			SQLExecStatusErr, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
-			se.backendConnectionId, affectedRows, sql, err)
-		fingerprint := mysql.GetFingerprint(sql)
-		md5 := mysql.GetMd5(fingerprint)
+			se.backendConnectionId, sql, err)
+		fingerprint := getSQLFingerprint(reqCtx, sql)
+		md5 := getSQLFingerprintMd5(reqCtx, sql)
 		ns.SetErrorSQLFingerprint(md5, fingerprint)
 		m.statistics.recordSessionErrorSQLFingerprint(namespace, operation, md5)
 	}
 
 	// record slow sql, only durationFloat > slowSQLTime will be recorded
 	if ns.getSessionSlowSQLTime() > 0 && int64(durationFloat) > ns.getSessionSlowSQLTime() {
-		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d, r=%d|%v",
+		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d|%v",
 			SQLExecStatusSlow, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
-			se.backendConnectionId, affectedRows, sql)
-		fingerprint := mysql.GetFingerprint(sql)
-		md5 := mysql.GetMd5(fingerprint)
+			se.backendConnectionId, sql)
+		fingerprint := getSQLFingerprint(reqCtx, sql)
+		md5 := getSQLFingerprintMd5(reqCtx, sql)
 		ns.SetSlowSQLFingerprint(md5, fingerprint)
 		m.statistics.recordSessionSlowSQLFingerprint(namespace, md5)
-	}
-
-	// record general sql log
-	if ns.openGeneralLog {
-		m.statistics.generalLogger.Notice("client: %s, ns: %s, db: %s, user: %s, cmd: %s, sql: %s, cost: %.1fms, succ: %t",
-			se.clientAddr, namespace, se.db, se.user, operation, trimmedSql, durationFloat, err == nil)
 	}
 }
 
 // RecordBackendSQLMetrics record backend SQL metrics, like response time, error
 func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace string, sliceName, sql, backendAddr string, startTime time.Time, err error) {
-	trimmedSql := strings.ReplaceAll(sql, "\n", " ")
 	ns := m.GetNamespace(namespace)
 	if ns == nil {
-		log.Warn("record backend SQL metrics error, namespace: %s, backend addr: %s, sql: %s, err: %s", namespace, backendAddr, trimmedSql, "namespace not found")
+		log.Warn("record backend SQL metrics error, namespace: %s, backend addr: %s, sql: %s, err: %s", namespace, backendAddr, sql, "namespace not found")
 		return
 	}
 
 	var operation string
-	if stmtType, ok := reqCtx.Get(util.StmtType).(int); ok {
+	if stmtType := reqCtx.GetStmtType(); stmtType > -1 {
 		operation = parser.StmtType(stmtType)
 	} else {
-		fingerprint := mysql.GetFingerprint(sql)
+		trimmedSql := strings.ReplaceAll(sql, "\n", " ")
+		fingerprint := getSQLFingerprint(reqCtx, trimmedSql)
 		operation = mysql.GetFingerprintOperation(fingerprint)
 	}
 
@@ -404,9 +396,9 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace
 	duration := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
 	if m.statistics.isBackendSlowSQL(duration) {
 		m.statistics.generalLogger.Warn("%s - %d - ns=%s, addr: %s|%v",
-			SQLBackendExecStatusSlow, duration, namespace, backendAddr, trimmedSql)
-		fingerprint := mysql.GetFingerprint(sql)
-		md5 := mysql.GetMd5(fingerprint)
+			SQLBackendExecStatusSlow, duration, namespace, backendAddr, sql)
+		fingerprint := getSQLFingerprint(reqCtx, sql)
+		md5 := getSQLFingerprintMd5(reqCtx, sql)
 		ns.SetBackendSlowSQLFingerprint(md5, fingerprint)
 		m.statistics.recordBackendSlowSQLFingerprint(namespace, md5)
 	}
@@ -414,9 +406,9 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace
 	// record backend error sql
 	if err != nil {
 		m.statistics.generalLogger.Warn("%s - %d - ns=%s,addr: %s|%v, err:%s",
-			SQLBackendExecStatusErr, duration, namespace, backendAddr, trimmedSql, err)
-		fingerprint := mysql.GetFingerprint(sql)
-		md5 := mysql.GetMd5(fingerprint)
+			SQLBackendExecStatusErr, duration, namespace, backendAddr, sql, err)
+		fingerprint := getSQLFingerprint(reqCtx, sql)
+		md5 := getSQLFingerprintMd5(reqCtx, sql)
 		ns.SetBackendErrorSQLFingerprint(md5, fingerprint)
 		m.statistics.recordBackendErrorSQLFingerprint(namespace, operation, md5)
 	}
@@ -849,7 +841,7 @@ func initGeneralLogger(cfg *models.Proxy) (log.Logger, error) {
 		c["log_keep_counts"] = strconv.Itoa(cfg.LogKeepCounts)
 	}
 
-	return xlog.CreateLogManager(cfg.LogOutput, c)
+	return zap.CreateLogManager(c)
 }
 
 func parseProxyStatsConfig(cfg *models.Proxy) (*proxyStatsConfig, error) {
