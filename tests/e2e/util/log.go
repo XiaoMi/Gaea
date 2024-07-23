@@ -10,15 +10,17 @@ import (
 )
 
 type LogEntry struct {
-	Timestamp      string
-	Namespace      string
-	User           string
-	ClientAddr     string
-	BackendAddr    string
-	Database       string
-	ConnectionID   int
-	Query          string
-	ResponseTimeMs float64
+	Timestamp         string
+	Namespace         string
+	User              string
+	ClientAddr        string
+	BackendAddr       string
+	Database          string
+	ConnectionID      int
+	MySQLConnectionID int
+	Query             string
+	ResponseTimeMs    float64
+	InTx              bool
 }
 
 // CompareTimeStrings 比较两个时间字符串的大小
@@ -51,7 +53,7 @@ func ParseLogEntries(file *os.File, re *regexp.Regexp, currentTime time.Time, se
 		line := scanner.Text()
 		// 使用正则表达式匹配日志行
 		matches := re.FindStringSubmatch(line)
-		if len(matches) != 11 {
+		if len(matches) != 13 {
 			continue
 		}
 		// 解析并填充结构体
@@ -72,7 +74,9 @@ func ParseLogEntries(file *os.File, re *regexp.Regexp, currentTime time.Time, se
 		logEntry.BackendAddr = matches[7]
 		logEntry.Database = matches[8]
 		fmt.Sscanf(matches[9], "%d", &logEntry.ConnectionID)
-		logEntry.Query = matches[10]
+		fmt.Sscanf(matches[10], "%d", &logEntry.MySQLConnectionID)
+		fmt.Sscanf(matches[11], "%t", &logEntry.InTx)
+		logEntry.Query = matches[12]
 
 		if strings.Compare(searchString, logEntry.Query) != 0 {
 			continue
