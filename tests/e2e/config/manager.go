@@ -44,7 +44,7 @@ const (
 	// SliceDualSlave 表示测试的主从 MySQL 集群 3319 3329 3339
 	SliceDualSlave = "slice-dual-slave"
 	// LogExpression 标识 Gaea SQL Log 的格式
-	LogExpression = `\[(.*?)\] \[INFO\] \[(\d+)\] OK - (\d+\.\d+)ms - ns=(.*?), (.*?)@(.*?)->(.*?)/(.*?), mysql_connect_id=(\d+)\|(.*?)$`
+	LogExpression = `\[(.*?)\] \[INFO\] \[(\d+)\] OK - (\d+\.\d+)ms - ns=(.*?), (.*?)@(.*?)->(.*?)/(.*?), connect_id=(\d+), mysql_connect_id=(\d+), transaction=(\w+)\|(.*?)$`
 )
 
 var logDirectory = "cmd/logs"

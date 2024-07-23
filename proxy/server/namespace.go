@@ -72,8 +72,8 @@ type Namespace struct {
 	userProperties         map[string]*UserProperty  // key: user name ,value: user's properties
 	defaultCharset         string
 	defaultCollationID     mysql.CollationID
-	openGeneralLog         bool
-	maxSqlExecuteTime      int // session max sql execute time,millisecond
+	openGeneralLog         bool // 已废弃
+	maxSqlExecuteTime      int  // session max sql execute time,millisecond
 	maxSqlResultSize       int
 	defaultSlice           string
 	downAfterNoAlive       int

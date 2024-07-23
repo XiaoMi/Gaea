@@ -346,14 +346,14 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 	durationFloat := float64(time.Since(startTime).Microseconds()) / 1000.0
 
 	if err == nil {
-		se.manager.statistics.generalLogger.Notice("%s - %.1fms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d|%v",
+		se.manager.statistics.generalLogger.Notice("%s - %.1fms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v",
 			SQLExecStatusOk, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
-			se.backendConnectionId, sql)
+			se.session.c.GetConnectionID(), se.backendConnectionId, se.isInTransaction(), sql)
 	} else {
 		// record error sql
-		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d|%v. err:%s",
+		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v. err:%s",
 			SQLExecStatusErr, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
-			se.backendConnectionId, sql, err)
+			se.session.c.GetConnectionID(), se.backendConnectionId, se.isInTransaction(), sql, err)
 		fingerprint := getSQLFingerprint(reqCtx, sql)
 		md5 := getSQLFingerprintMd5(reqCtx, sql)
 		ns.SetErrorSQLFingerprint(md5, fingerprint)
@@ -362,9 +362,9 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 
 	// record slow sql, only durationFloat > slowSQLTime will be recorded
 	if ns.getSessionSlowSQLTime() > 0 && int64(durationFloat) > ns.getSessionSlowSQLTime() {
-		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d|%v",
+		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v",
 			SQLExecStatusSlow, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
-			se.backendConnectionId, sql)
+			se.session.c.GetConnectionID(), se.backendConnectionId, se.isInTransaction(), sql, err)
 		fingerprint := getSQLFingerprint(reqCtx, sql)
 		md5 := getSQLFingerprintMd5(reqCtx, sql)
 		ns.SetSlowSQLFingerprint(md5, fingerprint)
