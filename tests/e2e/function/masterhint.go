@@ -132,5 +132,4 @@ var _ = ginkgo.Describe("Force Read from Master", func() {
 	ginkgo.AfterEach(func() {
 		e2eMgr.Clean()
 	})
-
 })
