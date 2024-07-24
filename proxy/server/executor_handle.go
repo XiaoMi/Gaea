@@ -446,7 +446,7 @@ func (se *SessionExecutor) handleSetVariable(sql string, v *ast.VariableAssignme
 		}
 
 		// mysql 8.0.3 not support tx_read_only
-		if name == "tx_read_only" && !util.CheckMySQLVersion(se.session.proxy.ServerVersion, util.LessThanMySQLVersion803) {
+		if name == "tx_read_only" && !se.session.proxy.ServerVersionCompareStatus.LessThanMySQLVersion803 {
 			return se.setIntSessionVariable("transaction_read_only", onOffValue)
 		}
 

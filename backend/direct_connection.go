@@ -41,11 +41,12 @@ var ErrExecuteTimeout = errors.New("execute timeout")
 type DirectConnection struct {
 	conn *mysql.Conn
 
-	addr     string
-	user     string
-	password string
-	db       string
-	version  string
+	addr           string
+	user           string
+	password       string
+	db             string
+	version        string
+	versionCompare *util.VersionCompareStatus
 
 	capability uint32
 
@@ -241,6 +242,7 @@ func (dc *DirectConnection) readInitialHandshake() error {
 	}
 
 	dc.version = version
+	dc.versionCompare = util.NewVersionCompareStatus(version)
 
 	// get connection id
 	dc.conn.ConnectionID = binary.LittleEndian.Uint32(data[pos : pos+4])
@@ -681,7 +683,7 @@ func (dc *DirectConnection) SetAutoCommit(v uint8) error {
 func (dc *DirectConnection) SetCharset(charset string, collation mysql.CollationID) ( /*changed*/ bool, error) {
 	charset = strings.Trim(charset, "\"'`")
 
-	if collation == 0 || collation > 247 {
+	if collation == 0 || (collation > 247 && (dc.versionCompare == nil || dc.versionCompare.LessThanMySQLVersion80)) {
 		collation = mysql.CollationNames[mysql.Charsets[charset]]
 	}
 
@@ -745,7 +747,7 @@ func (dc *DirectConnection) WriteSetStatement() error {
 	appendSetCharset(&setVariableSQL, dc.charset, collation)
 
 	for _, v := range dc.sessionVariables.GetAll() {
-		if v.Name() == mysql.TxReadOnly && !util.CheckMySQLVersion(dc.version, util.LessThanMySQLVersion803) {
+		if v.Name() == mysql.TxReadOnly && dc.versionCompare != nil && !dc.versionCompare.LessThanMySQLVersion803 {
 			appendSetVariable(&setVariableSQL, mysql.TransactionReadOnly, v.Get())
 			continue
 		}
