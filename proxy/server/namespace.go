@@ -168,7 +168,7 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 		defaultPhyDBs[strings.TrimSpace(db)] = strings.TrimSpace(phyDB)
 	}
 
-	namespace.defaultPhyDBs, err = parseDefaultPhyDB(defaultPhyDBs, allowDBs)
+	namespace.defaultPhyDBs, err = parseDefaultPhyDB(defaultPhyDBs, allowDBs, namespaceConfig.ShardRules)
 	if err != nil {
 		return nil, fmt.Errorf("parse defaultPhyDBs error: %v", err)
 	}
@@ -664,7 +664,7 @@ func parseCharset(charset, collation string) (string, mysql.CollationID, error) 
 	return charset, collationID, nil
 }
 
-func parseDefaultPhyDB(defaultPhyDBs map[string]string, allowedDBs map[string]bool) (map[string]string, error) {
+func parseDefaultPhyDB(defaultPhyDBs map[string]string, allowedDBs map[string]bool, shardRules []*models.Shard) (map[string]string, error) {
 	// no logic database mode
 	if len(defaultPhyDBs) == 0 {
 		result := make(map[string]string, len(allowedDBs))
@@ -680,5 +680,17 @@ func parseDefaultPhyDB(defaultPhyDBs map[string]string, allowedDBs map[string]bo
 			return nil, fmt.Errorf("db %s have no phy db", db)
 		}
 	}
+
+	// add real phyDB to phyDBs
+	for _, rule := range shardRules {
+		realDBs, err := router.GetRealDatabases(rule.Databases)
+		if err != nil {
+			return defaultPhyDBs, err
+		}
+		for _, realDB := range realDBs {
+			defaultPhyDBs[realDB] = realDB
+		}
+	}
+
 	return defaultPhyDBs, nil
 }

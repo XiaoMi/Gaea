@@ -636,3 +636,7 @@ func getRealDatabases(dbs []string) ([]string, error) {
 func IsMycatShardingRule(ruleType string) bool {
 	return ruleType == MycatModRuleType || ruleType == MycatLongRuleType || ruleType == MycatMurmurRuleType || ruleType == MycatPaddingModRuleType || ruleType == MycatStringRuleType
 }
+
+func GetRealDatabases(dbs []string) ([]string, error) {
+	return getRealDatabases(dbs)
+}
