@@ -341,7 +341,9 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 	}
 
 	// record sql timing
-	m.statistics.recordSessionSQLTiming(namespace, operation, startTime)
+	if !(err != nil && err.Error() == ErrClientQpsLimited) {
+		m.statistics.recordSessionSQLTiming(namespace, operation, startTime)
+	}
 
 	durationFloat := float64(time.Since(startTime).Microseconds()) / 1000.0
 

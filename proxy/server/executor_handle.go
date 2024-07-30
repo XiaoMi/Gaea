@@ -32,6 +32,8 @@ import (
 	"github.com/XiaoMi/Gaea/util"
 )
 
+const ErrClientQpsLimited = "client qps limited"
+
 // Parse parse sql
 func (se *SessionExecutor) Parse(sql string) (ast.StmtNode, error) {
 	return parser.New().ParseOneStmt(sql, "", "")
@@ -65,10 +67,14 @@ func (se *SessionExecutor) handleQuery(sql string) (r *mysql.Result, err error) 
 
 	startTime := time.Now()
 	// TODO: 统一使用 token 处理
-	if ns.supportMultiQuery && se.session.c.capability&mysql.ClientMultiStatements != 0 {
-		r, err = se.doMultiStmts(reqCtx, sql)
+	if se.GetNamespace().clientQPSLimit > 0 && !se.isInTransaction() && !se.GetNamespace().limiter.Allow() {
+		err = fmt.Errorf(ErrClientQpsLimited)
 	} else {
-		r, err = se.doQuery(reqCtx, sql)
+		if ns.supportMultiQuery && se.session.c.capability&mysql.ClientMultiStatements != 0 {
+			r, err = se.doMultiStmts(reqCtx, sql)
+		} else {
+			r, err = se.doQuery(reqCtx, sql)
+		}
 	}
 
 	se.manager.RecordSessionSQLMetrics(reqCtx, se, sql, startTime, err)

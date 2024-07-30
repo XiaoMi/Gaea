@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"golang.org/x/time/rate"
 	"net"
 	"strconv"
 	"strings"
@@ -83,6 +84,7 @@ type Namespace struct {
 	CheckSelectLock        bool
 	localSlaveReadPriority int
 	setForKeepSession      bool
+	clientQPSLimit         uint32
 
 	slowSQLCache         *cache.LRUCache
 	errorSQLCache        *cache.LRUCache
@@ -90,6 +92,7 @@ type Namespace struct {
 	backendErrorSQLCache *cache.LRUCache
 	planCache            *cache.LRUCache
 	CloseCancel          context.CancelFunc
+	limiter              *rate.Limiter
 	namespaceChanged     bool
 }
 
@@ -251,6 +254,12 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 
 	// init global keepSession in namespace
 	namespace.setForKeepSession = namespaceConfig.SetForKeepSession
+
+	// init client qps limit config
+	if namespaceConfig.ClientQPSLimit > 0 {
+		namespace.clientQPSLimit = namespaceConfig.ClientQPSLimit
+		namespace.limiter = rate.NewLimiter(rate.Limit(namespaceConfig.ClientQPSLimit), int(namespaceConfig.ClientQPSLimit))
+	}
 
 	return namespace, nil
 }

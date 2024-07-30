@@ -55,6 +55,7 @@ type Namespace struct {
 	SupportMultiQuery      bool              `json:"support_multi_query"`       //是否支持多语句
 	LocalSlaveReadPriority int               `json:"local_slave_read_priority"` //是否可以跨机房访问从库
 	SetForKeepSession      bool              `json:"set_for_keep_session"`      // 是否支持业务连接会话保持
+	ClientQPSLimit         uint32            `json:"client_qps_limit"`          // Namespace 级别的 qps 限制，默认为 0，即不开启
 }
 
 // Encode encode json
