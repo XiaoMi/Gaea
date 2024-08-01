@@ -40,6 +40,9 @@ const (
 	masterComment = "/*master*/"
 	// general query log variable
 	gaeaGeneralLogVariable = "gaea_general_log"
+
+	//Delimiter between backendConnId and frontendConnId
+	backend2FrontendDelimiter = "@@"
 )
 
 // SessionExecutor is bound to a session, so requests are serializable
@@ -826,4 +829,31 @@ func (se *SessionExecutor) ExecuteSQLs(reqCtx *util.RequestContext, sqls map[str
 		return nil, err
 	}
 	return rs, nil
+}
+
+func (se *SessionExecutor) forceClose() (err error) {
+	se.txLock.Lock()
+	defer se.txLock.Unlock()
+
+	se.status &= ^mysql.ServerStatusInTrans
+
+	for _, pc := range se.txConns {
+		pc.Close()
+		pc.Recycle()
+	}
+
+	se.txConns = make(map[string]backend.PooledConnect)
+	return
+}
+
+
+func (se *SessionExecutor) getAllTrxConn() map[string]backend.PooledConnect {
+	se.txLock.Lock()
+	defer se.txLock.Unlock()
+	txConns := make(map[string]backend.PooledConnect, len(se.txConns))
+	for k, v := range se.txConns {
+		txConns[k+backend2FrontendDelimiter+strconv.Itoa(int(v.Id()))] = v
+	}
+
+	return txConns
 }

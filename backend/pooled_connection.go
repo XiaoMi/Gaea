@@ -27,6 +27,10 @@ type pooledConnectImpl struct {
 	returnTime       time.Time
 }
 
+func (pc *pooledConnectImpl) Id() uint32 {
+	return pc.directConnection.conn.ConnectionID
+}
+
 // Recycle return PooledConnect to the pool
 func (pc *pooledConnectImpl) Recycle() {
 	//if has error,the connection can’t be recycled

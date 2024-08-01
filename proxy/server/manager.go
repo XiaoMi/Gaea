@@ -134,6 +134,7 @@ type Manager struct {
 	namespaces     [2]*NamespaceManager
 	users          [2]*UserManager
 	statistics     *StatisticManager
+	ProxyCfg       *models.Proxy
 }
 
 // NewManager return empty Manager
@@ -144,7 +145,8 @@ func NewManager() *Manager {
 // CreateManager create manager
 func CreateManager(cfg *models.Proxy, namespaceConfigs map[string]*models.Namespace) (*Manager, error) {
 	m := NewManager()
-
+    m.ProxyCfg = cfg
+	
 	// init statistics
 	statisticManager, err := CreateStatisticManager(cfg, m)
 	if err != nil {
@@ -260,6 +262,11 @@ func (m *Manager) DeleteNamespace(name string) error {
 func (m *Manager) GetNamespace(name string) *Namespace {
 	current, _, _ := m.switchIndex.Get()
 	return m.namespaces[current].GetNamespace(name)
+}
+
+func (m *Manager) GetNamespaces() map[string]*Namespace {
+	current, _, _ := m.switchIndex.Get()
+	return m.namespaces[current].GetNamespaces()
 }
 
 // CheckUser check if user in users
