@@ -40,8 +40,8 @@ func makeList(start, end int) []int {
 	return list
 }
 
-//if value is 2016, and indexs is [2015,2016,2017]
-//the result is [2015,2016]
+// if value is 2016, and indexs is [2015,2016,2017]
+// the result is [2015,2016]
 // the indexs must be sorted
 func makeLeList(value int, indexs []int) []int {
 	for k, v := range indexs {
@@ -52,8 +52,8 @@ func makeLeList(value int, indexs []int) []int {
 	return nil
 }
 
-//if value is 2016, and indexs is [2015,2016,2017,2018]
-//the result is [2016,2017,2018]
+// if value is 2016, and indexs is [2015,2016,2017,2018]
+// the result is [2016,2017,2018]
 // the indexs must be sorted
 func makeGeList(value int, indexs []int) []int {
 	for k, v := range indexs {
@@ -64,8 +64,8 @@ func makeGeList(value int, indexs []int) []int {
 	return nil
 }
 
-//if value is 2016, and indexs is [2015,2016,2017,2018]
-//the result is [2015]
+// if value is 2016, and indexs is [2015,2016,2017,2018]
+// the result is [2015]
 // the indexs must be sorted
 func makeLtList(value int, indexs []int) []int {
 	for k, v := range indexs {
@@ -76,8 +76,8 @@ func makeLtList(value int, indexs []int) []int {
 	return nil
 }
 
-//if value is 2016, and indexs is [2015,2016,2017,2018]
-//the result is [2017,2018]
+// if value is 2016, and indexs is [2015,2016,2017,2018]
+// the result is [2017,2018]
 // the indexs must be sorted
 func makeGtList(value int, indexs []int) []int {
 	for k, v := range indexs {
@@ -88,8 +88,8 @@ func makeGtList(value int, indexs []int) []int {
 	return nil
 }
 
-//if start is 2016, end is 2017. indexs is [2015,2016,2017,2018]
-//the result is [2016,2017]
+// if start is 2016, end is 2017. indexs is [2015,2016,2017,2018]
+// the result is [2016,2017]
 // the indexs must be sorted
 func makeBetweenList(start, end int, indexs []int) []int {
 	var startIndex, endIndex int

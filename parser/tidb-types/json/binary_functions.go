@@ -151,8 +151,9 @@ func decodeEscapedUnicode(s []byte) (char [4]byte, size int, err error) {
 }
 
 // Extract receives several path expressions as arguments, matches them in bj, and returns:
-//  ret: target JSON matched any path expressions. maybe autowrapped as an array.
-//  found: true if any path expressions matched.
+//
+//	ret: target JSON matched any path expressions. maybe autowrapped as an array.
+//	found: true if any path expressions matched.
 func (bj BinaryJSON) Extract(pathExprList []PathExpression) (ret BinaryJSON, found bool) {
 	buf := make([]BinaryJSON, 0, 1)
 	for _, pathExpr := range pathExprList {

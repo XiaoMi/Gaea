@@ -21,9 +21,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/emirpasic/gods/maps/treemap"
 	"github.com/XiaoMi/Gaea/util"
 	"github.com/XiaoMi/Gaea/util/hack"
+	"github.com/emirpasic/gods/maps/treemap"
 )
 
 // MycatPartitionModShard mycat route algorithm: PartitionByMod

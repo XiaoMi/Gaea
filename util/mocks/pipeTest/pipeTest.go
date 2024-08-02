@@ -1,11 +1,26 @@
+// Copyright 2024 The Gaea Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package pipeTest
 
 import (
 	"bufio"
-	"github.com/stretchr/testify/require"
 	"net"
 	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // ReplyMsgFuncType 回应函数的型态，测试时，当客户端或服务端接收到讯息时，可以利用此函数去建立回传讯息
@@ -13,8 +28,9 @@ type ReplyMsgFuncType func([]uint8) []uint8
 
 // TestReplyMsgFunc　，目前是用于验证测试流程是否正确，在这里会处理常接收到什么讯息，要将下来跟着回应什么讯息
 // 每次的回应讯息为接收讯息加 1
-//     比如 当接收值为 1，就会回传值为 2 给对方
-//     比如 当接收值为 2，就会回传值为 3 给对方
+//
+//	比如 当接收值为 1，就会回传值为 2 给对方
+//	比如 当接收值为 2，就会回传值为 3 给对方
 func TestReplyMsgFunc(data []uint8) []uint8 {
 	return []uint8{data[0] + 1} // 回应讯息为接收讯息加 1
 }
