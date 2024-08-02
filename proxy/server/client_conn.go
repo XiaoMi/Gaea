@@ -16,9 +16,11 @@ package server
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/mysql"
-	"strings"
+	"github.com/XiaoMi/Gaea/util/sync2"
 )
 
 // ClientConn session client connection
@@ -29,11 +31,11 @@ type ClientConn struct {
 
 	manager *Manager
 
-	capability uint32
-
 	namespace string // TODO: remove it when refactor is done
 
 	proxy *Server
+
+	hasRecycledReadPacket sync2.AtomicBool
 }
 
 // HandshakeResponseInfo handshake response information
@@ -49,11 +51,13 @@ type HandshakeResponseInfo struct {
 // NewClientConn constructor of ClientConn
 func NewClientConn(c *mysql.Conn, manager *Manager) *ClientConn {
 	salt, _ := mysql.RandomBuf(20)
-	return &ClientConn{
+	cc := &ClientConn{
 		Conn:    c,
 		salt:    salt,
-		manager: manager,
+		manager: manager,	
 	}
+	cc.hasRecycledReadPacket.Set(false)
+	return cc
 }
 
 func (cc *ClientConn) CompactVersion(sv string) string {
@@ -177,7 +181,7 @@ func (cc *ClientConn) readHandshakeResponse() (HandshakeResponseInfo, error) {
 		return info, fmt.Errorf("readHandshakeResponse: only support protocol 4.1")
 	}
 
-	cc.capability = capability
+	cc.Capabilities = capability
 	// Max packet size. Don't do anything with this now.
 	_, pos, ok = mysql.ReadUint32(data, pos)
 	if !ok {

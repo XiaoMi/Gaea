@@ -47,6 +47,7 @@ type Namespace struct {
 	DefaultCollation  string            `json:"default_collation"`
 	MaxSqlExecuteTime int               `json:"max_sql_execute_time"` // sql最大执行时间，大于该时间，进行熔断
 	MaxSqlResultSize  int               `json:"max_sql_result_size"`  // 限制单分片返回结果集大小不超过max_select_rows
+	SupportMultiQuery bool              `json:"support_multi_query"` //是否支持多语句
 }
 
 // Encode encode json
