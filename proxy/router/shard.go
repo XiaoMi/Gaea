@@ -226,7 +226,7 @@ func (s *DateYearShard) getNumYear(key interface{}) (int, error) {
 	return -1, NewKeyError("Unexpected key variable type %T", key)
 }
 
-//the format of date is: YYYY-MM-DD HH:MM:SS,YYYY-MM-DD or unix timestamp(int)
+// the format of date is: YYYY-MM-DD HH:MM:SS,YYYY-MM-DD or unix timestamp(int)
 func (s *DateYearShard) FindForKey(key interface{}) (int, error) {
 	return s.getNumYear(key)
 }
@@ -287,7 +287,7 @@ func (s *DateMonthShard) getNumYearMonth(key interface{}) (int, error) {
 	return -1, NewKeyError("Unexpected key variable type %T", key)
 }
 
-//the format of date is: YYYY-MM-DD HH:MM:SS,YYYY-MM-DD or unix timestamp(int)
+// the format of date is: YYYY-MM-DD HH:MM:SS,YYYY-MM-DD or unix timestamp(int)
 func (s *DateMonthShard) FindForKey(key interface{}) (int, error) {
 	return s.getNumYearMonth(key)
 }
@@ -348,7 +348,7 @@ func (s *DateDayShard) getNumYearMonthDay(key interface{}) (int, error) {
 	return -1, NewKeyError("Unexpected key variable type %T", key)
 }
 
-//the format of date is: YYYY-MM-DD HH:MM:SS,YYYY-MM-DD or unix timestamp(int)
+// the format of date is: YYYY-MM-DD HH:MM:SS,YYYY-MM-DD or unix timestamp(int)
 func (s *DateDayShard) FindForKey(key interface{}) (int, error) {
 	return s.getNumYearMonthDay(key)
 }

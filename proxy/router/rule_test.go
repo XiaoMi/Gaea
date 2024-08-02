@@ -222,7 +222,7 @@ func TestParseMycatRule(t *testing.T) {
 	}
 }
 
-//TODO YYYY-MM-DD HH:MM:SS,YYYY-MM-DD test
+// TODO YYYY-MM-DD HH:MM:SS,YYYY-MM-DD test
 func TestParseDateRule(t *testing.T) {
 	var s = `
 	{"name": "gaea_namespace_1",

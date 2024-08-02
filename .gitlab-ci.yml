@@ -1,9 +1,5 @@
 image: micr.cloud.mioffice.cn/dockerhub/library/golang:1.16.15
 
-variables:
-  HOSTS: "master:tj1-dba-garm-test02.kscn:3308,\
-      slave:tj1-dba-garm-test01.kscn:3308"
-
 cache:
   key: "$CI_COMMIT_REF_SLUG"
   paths:

@@ -69,8 +69,8 @@ func ParseNumSharding(Locations []int, TableRowLimit int) ([]NumKeyRange, error)
 }
 
 // ParseDayRange return date of daynumber by order
-//20151201-20151205
-//20151201,20151202,20151203,20151204,20151205
+// 20151201-20151205
+// 20151201,20151202,20151203,20151204,20151205
 func ParseDayRange(dateRange string) ([]int, error) {
 	timeFormat := "20060102"
 	dateDays := make([]int, 0)
@@ -123,8 +123,8 @@ func ParseDayRange(dateRange string) ([]int, error) {
 }
 
 // ParseMonthRange return date of month by order
-//201510-201512
-//201510,201511,201512
+// 201510-201512
+// 201510,201511,201512
 func ParseMonthRange(dateRange string) ([]int, error) {
 	dateMonth := make([]int, 0)
 	dateLength := 6
@@ -186,8 +186,8 @@ func ParseMonthRange(dateRange string) ([]int, error) {
 }
 
 // ParseYearRange return date of year by order
-//2013-2015
-//2013,2014,2015
+// 2013-2015
+// 2013,2014,2015
 func ParseYearRange(dateRange string) ([]int, error) {
 	dateYear := make([]int, 0)
 	dateLength := 4

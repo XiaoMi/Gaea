@@ -88,6 +88,7 @@ var ReplaceNumbersInWords = false
 //   - Collapse whitespace
 //   - Remove comments
 //   - Lowercase everything
+//
 // Additional trasnformations are performed which change the syntax of the
 // original query without affecting its performance characteristics. For
 // example, "ORDER BY col ASC" is the same as "ORDER BY col", so "ASC" in the
