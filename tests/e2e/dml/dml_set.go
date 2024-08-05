@@ -341,6 +341,28 @@ var _ = ginkgo.Describe("test dml set variables", func() {
 			}
 		})
 
+		ginkgo.It("set some SQL statements with syntax errors", func() {
+			sqlCases := []struct {
+				GaeaSQL   string
+				CheckSQL  string
+				ExpectRes string
+			}{
+				{
+					GaeaSQL:   `/*!40101 SET @@SQL_MODE := @OLD_SQL_MODE, @@SQL_QUOTE_SHOW_CREATE := @OLD_QUOTE */`,
+					CheckSQL:  `select @@SQL_MODE`,
+					ExpectRes: "",
+				},
+			}
+			for _, sqlCase := range sqlCases {
+				gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
+				util.ExpectNoError(err)
+				_, err = gaeaConn.Exec(sqlCase.GaeaSQL)
+				util.ExpectNoError(err)
+				// 不检测结果，只验证释放能够继续执行
+				_, err = gaeaConn.Exec(sqlCase.CheckSQL)
+				util.ExpectNoError(err)
+			}
+		})
 	})
 	ginkgo.AfterEach(func() {
 		e2eMgr.Clean()

@@ -765,6 +765,7 @@ func TestUnshardPlan(t *testing.T) {
 		expectUnshardPlan bool
 		expectDB          string
 		expectSql         string
+		expectPlan        plan.Plan
 	}
 
 	defaltDb := "db_ks"
@@ -1044,35 +1045,56 @@ func TestUnshardPlan(t *testing.T) {
 				expectDB:          defaltDb,
 				expectSql:         "SELECT 5 DIV 2, -5 DIV 2, 5 DIV -2, -5 DIV -2;",
 			},
+			{
+				name: "test comment sql",
+				sql:  "/*!40101 SET @@SQL_MODE := @OLD_SQL_MODE, @@SQL_QUOTE_SHOW_CREATE := @OLD_QUOTE */;",
+				mnFunc: func(nsConfig *models.Namespace) {
+					nsConfig.AllowedDBS = map[string]bool{"db_unshard": true}
+					nsConfig.DefaultPhyDBS = map[string]string{"db_unshard": "db_unshard"}
+					nsConfig.ShardRules = nil
+				},
+				expectUnshardPlan: true,
+				expectDB:          defaltDb,
+				expectSql:         "/*!40101 SET @@SQL_MODE := @OLD_SQL_MODE, @@SQL_QUOTE_SHOW_CREATE := @OLD_QUOTE */;",
+				expectPlan:        &plan.IgnorePlan{},
+			},
 		}
 	)
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			se, err := newDefaultSessionExecutor(tt.mnFunc)
+			se.SetContextNamespace()
 			se.session.proxy.ServerVersionCompareStatus = util.NewVersionCompareStatus("")
 			assert.Equal(t, err, nil)
 			reqCtx := util.NewRequestContext()
+			stmtType := parser.Preview(tt.sql)
+			reqCtx.SetStmtType(stmtType)
 			p, err := se.getPlan(reqCtx, se.GetNamespace(), se.db, tt.sql, true)
 			if err != nil {
 				t.Fatalf("getPlan error.name:%s,err:%s\n", tt.name, err)
 			}
-			up, ok := p.(*plan.UnshardPlan)
-			if ok != tt.expectUnshardPlan {
-				t.Fatalf("getPlan not equal, name:%s,sql:%s, plan type:%T, expect unshard plan:%v\n", tt.name, tt.sql, p, tt.expectUnshardPlan)
-				return
+			if tt.expectPlan == nil {
+				up, ok := p.(*plan.UnshardPlan)
+				if ok != tt.expectUnshardPlan {
+					t.Fatalf("getPlan not equal, name:%s,sql:%s, plan type:%T, expect unshard plan:%v\n", tt.name, tt.sql, p, tt.expectUnshardPlan)
+					return
+				}
+				if !ok {
+					return
+				}
+				v := reflect.ValueOf(up)
+				resDb := v.Elem().Field(1).String()
+				resSql := v.Elem().Field(3).String()
+				if tt.expectDB != resDb {
+					t.Fatalf("getPlan db error, name:%s,sql:%s, get db:%s, expect db:%s\n", tt.name, tt.sql, resDb, tt.expectDB)
+				}
+				if tt.expectSql != resSql {
+					t.Fatalf("getPlan sql error, name:%s,sql:%s, get sql:%s, expect sql:%s\n", tt.name, tt.sql, resSql, tt.expectSql)
+				}
+			} else {
+				assert.Equal(t, reflect.TypeOf(tt.expectPlan), reflect.TypeOf(p))
 			}
-			if !ok {
-				return
-			}
-			v := reflect.ValueOf(up)
-			resDb := v.Elem().Field(1).String()
-			resSql := v.Elem().Field(3).String()
-			if tt.expectDB != resDb {
-				t.Fatalf("getPlan db error, name:%s,sql:%s, get db:%s, expect db:%s\n", tt.name, tt.sql, resDb, tt.expectDB)
-			}
-			if tt.expectSql != resSql {
-				t.Fatalf("getPlan sql error, name:%s,sql:%s, get sql:%s, expect sql:%s\n", tt.name, tt.sql, resSql, tt.expectSql)
-			}
+
 		})
 	}
 }

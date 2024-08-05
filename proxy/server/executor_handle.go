@@ -249,6 +249,10 @@ func (se *SessionExecutor) getPlan(reqCtx *util.RequestContext, ns *Namespace, d
 	}
 	n, err := se.Parse(sql)
 	if err != nil {
+		// 如果是注释的情况，则忽略
+		if reqCtx.GetStmtType() == parser.StmtComment {
+			return plan.CreateIgnorePlan(), nil
+		}
 		return nil, fmt.Errorf("parse sql error, sql: %s, err: %v", sql, err)
 	}
 

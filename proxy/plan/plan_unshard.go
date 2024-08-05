@@ -51,6 +51,10 @@ type SetPlan struct {
 	stmt ast.StmtNode
 }
 
+type IgnorePlan struct {
+	basePlan
+}
+
 // IsSelectLastInsertIDStmt check if the statement is SELECT LAST_INSERT_ID()
 func IsSelectLastInsertIDStmt(stmt ast.StmtNode) bool {
 	s, ok := stmt.(*ast.SelectStmt)
@@ -144,6 +148,11 @@ func CreateSetPlan(sql string, stmt ast.StmtNode) *SetPlan {
 		stmt: stmt}
 }
 
+// CreateIgnoreSetPlan constructor of SetPlan
+func CreateIgnorePlan() *IgnorePlan {
+	return &IgnorePlan{}
+}
+
 // ExecuteIn implement Plan
 func (p *UnshardPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysql.Result, error) {
 	r, err := se.ExecuteSQL(reqCtx, reqCtx.GetDefaultSlice(), p.db, p.sql)
@@ -172,6 +181,11 @@ func (p *SetPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysql.Re
 	}
 
 	return nil, nil
+}
+
+// ExecuteIn implement Plan
+func (p *IgnorePlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysql.Result, error) {
+	return mysql.ResultPool.GetWithoutResultSet(), nil
 }
 
 func createLastInsertIDResult(lastInsertID uint64) *mysql.Result {
