@@ -524,6 +524,7 @@ func newDefaultSessionExecutor(mnFunc ModifyNamespaceFunc) (*SessionExecutor, er
 		manager:       localManager,
 		ServerVersion: "5.7.25-gaea",
 	}
+	cc.c = &ClientConn{Conn: &mysql.Conn{}}
 	c.session = cc
 	c.SetContextNamespace()
 	return c, nil

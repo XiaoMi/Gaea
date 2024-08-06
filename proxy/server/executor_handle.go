@@ -215,8 +215,8 @@ func (se *SessionExecutor) handleQueryWithoutPlan(reqCtx *util.RequestContext, s
 	case *ast.LockTablesStmt:
 		// TODO: handle lock tables
 		// TODO: unify sql exec time
-		se.manager.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t, r=%d|%v. err:%s",
-			SQLExecStatusIgnore, 0, se.namespace, se.user, se.clientAddr, "", se.db, se.session.c.GetConnectionID(), 0, 0, se.isInTransaction(), sql, "ignore lock tables")
+		se.manager.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v. err:%s",
+			SQLExecStatusIgnore, 0, se.namespace, se.user, se.clientAddr, "", se.db, se.session.c.GetConnectionID(), 0, se.isInTransaction(), sql, "ignore lock tables")
 		return nil, nil
 	case *ast.RollbackStmt:
 		return nil, se.handleRollback(stmt)
@@ -251,6 +251,8 @@ func (se *SessionExecutor) getPlan(reqCtx *util.RequestContext, ns *Namespace, d
 	if err != nil {
 		// 如果是注释的情况，则忽略
 		if reqCtx.GetStmtType() == parser.StmtComment {
+			se.manager.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v. err:%s",
+				SQLExecStatusIgnore, 0, se.namespace, se.user, se.clientAddr, "", se.db, se.session.c.GetConnectionID(), 0, se.isInTransaction(), sql, "ignore syntax error")
 			return plan.CreateIgnorePlan(), nil
 		}
 		return nil, fmt.Errorf("parse sql error, sql: %s, err: %v", sql, err)
@@ -465,9 +467,9 @@ func (se *SessionExecutor) handleSetVariable(sql string, v *ast.VariableAssignme
 	default:
 		// unsupported variables will be ignored and logged to avoid user confusion
 		// TODO: refactor sql exec time log
-		se.manager.statistics.generalLogger.Warn("%s -0ms - ns=%s, %s@%s->%s/%s, mysql_connect_id=%d, r=0|%v. err:%s",
-			SQLExecStatusIgnore, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
-			se.backendConnectionId, sql, fmt.Sprintf("variable(%s) not supported", name))
+		se.manager.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v. err:%s",
+			SQLExecStatusIgnore, 0, se.namespace, se.user, se.clientAddr, "", se.db, se.session.c.GetConnectionID(), 0, se.isInTransaction(),
+			sql, fmt.Sprintf("variable(%s) not supported", name))
 		return nil
 	}
 }
