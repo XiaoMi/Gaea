@@ -86,10 +86,11 @@ type SessionExecutor struct {
 	keepSession bool
 	userPriv    int
 
-	txConns    map[string]backend.PooledConnect
-	ksConns    map[string]backend.PooledConnect // keep session connections
-	savepoints []string
-	txLock     sync.Mutex
+	txConns          map[string]backend.PooledConnect
+	ksConns          map[string]backend.PooledConnect // keep session connections
+	nsChangeIndexOld uint32
+	savepoints       []string
+	txLock           sync.Mutex
 
 	stmtID uint32
 	stmts  map[uint32]*Stmt //prepare相关,client端到proxy的stmt
@@ -451,6 +452,22 @@ func (se *SessionExecutor) getBackendKsConn(sliceName string) (pc backend.Pooled
 		return
 	}
 
+	if !se.isAutoCommit() {
+		if err = pc.SetAutoCommit(0); err != nil {
+			pc.Close()
+			pc.Recycle()
+			return
+		}
+	}
+
+	if se.isInTransaction() {
+		if err = pc.Begin(); err != nil {
+			pc.Close()
+			pc.Recycle()
+			return
+		}
+	}
+
 	se.ksConns[sliceName] = pc
 	return
 }
@@ -514,7 +531,12 @@ func (se *SessionExecutor) recycleBackendConn(pc backend.PooledConnect) {
 		return
 	}
 
-	if se.isInTransaction() || se.IsKeepSession() {
+	if se.IsKeepSession() {
+		se.session.clearKsConns(se.nsChangeIndexOld)
+		return
+	}
+
+	if se.isInTransaction() {
 		return
 	}
 
@@ -1016,6 +1038,14 @@ func (se *SessionExecutor) handleBegin() error {
 			return err
 		}
 	}
+
+	// 客户端执行 begin 时后端 MySQL 实际并未执行
+	for _, co := range se.ksConns {
+		if err := co.Begin(); err != nil {
+			return err
+		}
+	}
+
 	se.status |= mysql.ServerStatusInTrans
 	se.savepoints = []string{}
 	return nil

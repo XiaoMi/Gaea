@@ -201,15 +201,15 @@ var _ = ginkgo.Describe("keep session test", func() {
 					CheckSQL:      fmt.Sprintf("select /*master*/ count(*) from %s", table),
 					Action:        "rollback",
 					ExpectSuccess: "0",
-					ExpectErr:     "0",
+					ExpectErr:     "Error 1105: namespace changed in transaction when keep session",
 				},
 				{
 					TestSQL1:      fmt.Sprintf("insert into %s values(105, 'a')", table),
 					TestSQL2:      fmt.Sprintf("insert into %s values(106, 'a')", table),
 					CheckSQL:      fmt.Sprintf("select /*master*/ count(*) from %s", table),
 					Action:        "commit",
-					ExpectSuccess: "2",
-					ExpectErr:     "0",
+					ExpectSuccess: "0",
+					ExpectErr:     "Error 1105: namespace changed in transaction when keep session",
 				},
 			}
 			gaeaConn, err := e2eMgr.GetReadWriteGaeaUserDBConn(db)
@@ -225,32 +225,136 @@ var _ = ginkgo.Describe("keep session test", func() {
 				err = e2eMgr.ModifyNamespace(initNs)
 				util.ExpectNoError(err)
 				_, err = tx.Exec(testCase.TestSQL2)
-				util.ExpectNoError(err)
+				gomega.Expect(err.Error()).Should(gomega.Equal(testCase.ExpectErr))
 
-				var actionErr error
-				switch testCase.Action {
-				case "rollback":
-					actionErr = tx.Rollback()
-				case "commit":
-					actionErr = tx.Commit()
-				}
 				// 重新获取 gaea 连接
 				gaeaConnNew, err := e2eMgr.GetReadWriteGaeaUserDBConn(db)
 				util.ExpectNoError(err)
-				// 检测 rollback 和 commit 执行正常和异常的行为是否符合预期
-				if actionErr != nil {
-					res, err := util.MysqlQuery(gaeaConnNew, testCase.CheckSQL)
-					util.ExpectNoError(err)
-					gomega.Expect(res).Should(gomega.HaveLen(1))
-					gomega.Expect(res[0]).Should(gomega.HaveLen(1))
-					gomega.Expect(res[0][0]).Should(gomega.Equal(testCase.ExpectErr))
-				} else {
-					res, err := util.MysqlQuery(gaeaConnNew, testCase.CheckSQL)
-					util.ExpectNoError(err)
-					gomega.Expect(res).Should(gomega.HaveLen(1))
-					gomega.Expect(res[0]).Should(gomega.HaveLen(1))
-					gomega.Expect(res[0][0]).Should(gomega.Equal(testCase.ExpectSuccess))
+				res, err := util.MysqlQuery(gaeaConnNew, testCase.CheckSQL)
+				util.ExpectNoError(err)
+				gomega.Expect(res).Should(gomega.HaveLen(1))
+				gomega.Expect(res[0]).Should(gomega.HaveLen(1))
+				gomega.Expect(res[0][0]).Should(gomega.Equal(testCase.ExpectSuccess))
+				//}
+				gaeaConnNew.Close()
+			}
+		})
+	})
+
+	// 测试事务时，keepsession 模式的行为
+	ginkgo.Context("test transaction when use keep session", func() {
+		initNs.SetForKeepSession = true
+		err = e2eMgr.ModifyNamespace(initNs)
+		// 模拟事务中配置变更的情况
+		ginkgo.It("should commit success when use keep session", func() {
+			var testSqlCases = []struct {
+				TestSQL  string
+				CheckSQL string
+				Action   string
+				Expect   string
+			}{
+				{
+					TestSQL:  fmt.Sprintf("insert into %s values(100, 'a')", table),
+					CheckSQL: fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:   "commit",
+					Expect:   "1",
+				},
+				{
+					TestSQL:  fmt.Sprintf("insert into %s values(101, 'a')", table),
+					CheckSQL: fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:   "rollback",
+					Expect:   "1",
+				},
+				{
+					TestSQL:  fmt.Sprintf("insert into %s values(102, 'a')", table),
+					CheckSQL: fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:   "commit",
+					Expect:   "2",
+				},
+			}
+			gaeaConn, err := e2eMgr.GetReadWriteGaeaUserDBConn(db)
+			util.ExpectNoError(err)
+			defer gaeaConn.Close()
+			for _, testCase := range testSqlCases {
+				tx, err := gaeaConn.Begin()
+				util.ExpectNoError(err)
+				_, err = tx.Exec(testCase.TestSQL)
+				util.ExpectNoError(err)
+				switch testCase.Action {
+				case "rollback":
+					err = tx.Rollback()
+				case "commit":
+					err = tx.Commit()
 				}
+				tx.Commit()
+				util.ExpectNoError(err)
+				// 重新获取 gaea 连接
+				gaeaConnNew, err := e2eMgr.GetReadWriteGaeaUserDBConn(db)
+				util.ExpectNoError(err)
+				res, err := util.MysqlQuery(gaeaConnNew, testCase.CheckSQL)
+				util.ExpectNoError(err)
+				gomega.Expect(res).Should(gomega.HaveLen(1))
+				gomega.Expect(res[0]).Should(gomega.HaveLen(1))
+				gomega.Expect(res[0][0]).Should(gomega.Equal(testCase.Expect))
+			}
+		})
+		ginkgo.It("should commit error when namespace changed", func() {
+			// 清除数据
+			masterConn, err := slice.GetMasterAdminConn(0)
+			util.ExpectNoError(err)
+			defer masterConn.Close()
+			_, err = masterConn.Exec(fmt.Sprintf("truncate table `%s`.`%s`", db, table))
+			util.ExpectNoError(err)
+
+			var testSqlCases = []struct {
+				TestSQL1      string
+				TestSQL2      string
+				CheckSQL      string
+				Action        string
+				ExpectSuccess string
+				ExpectErr     string
+			}{
+				{
+					TestSQL1:      fmt.Sprintf("insert into %s values(103, 'a')", table),
+					TestSQL2:      fmt.Sprintf("insert into %s values(104, 'a')", table),
+					CheckSQL:      fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:        "rollback",
+					ExpectSuccess: "0",
+					ExpectErr:     "Error 1105: namespace changed in transaction when keep session",
+				},
+				{
+					TestSQL1:      fmt.Sprintf("insert into %s values(105, 'a')", table),
+					TestSQL2:      fmt.Sprintf("insert into %s values(106, 'a')", table),
+					CheckSQL:      fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:        "commit",
+					ExpectSuccess: "0",
+					ExpectErr:     "Error 1105: namespace changed in transaction when keep session",
+				},
+			}
+			gaeaConn, err := e2eMgr.GetReadWriteGaeaUserDBConn(db)
+			util.ExpectNoError(err)
+			defer gaeaConn.Close()
+			for _, testCase := range testSqlCases {
+				tx, err := gaeaConn.Begin()
+				util.ExpectNoError(err)
+				_, err = tx.Exec(testCase.TestSQL1)
+				util.ExpectNoError(err)
+				// 配置变更
+				initNs.SetForKeepSession = true
+				err = e2eMgr.ModifyNamespace(initNs)
+				util.ExpectNoError(err)
+				_, err = tx.Exec(testCase.TestSQL2)
+				//util.ExpectNoError(err)
+				gomega.Expect(err.Error()).Should(gomega.Equal(testCase.ExpectErr))
+
+				// 重新获取 gaea 连接
+				gaeaConnNew, err := e2eMgr.GetReadWriteGaeaUserDBConn(db)
+				util.ExpectNoError(err)
+				res, err := util.MysqlQuery(gaeaConnNew, testCase.CheckSQL)
+				util.ExpectNoError(err, nil)
+				gomega.Expect(res).Should(gomega.HaveLen(1))
+				gomega.Expect(res[0]).Should(gomega.HaveLen(1))
+				gomega.Expect(res[0][0]).Should(gomega.Equal(testCase.ExpectSuccess))
 				gaeaConnNew.Close()
 			}
 		})

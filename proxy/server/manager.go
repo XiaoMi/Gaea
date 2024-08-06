@@ -204,11 +204,21 @@ func (m *Manager) ReloadNamespacePrepare(namespaceConfig *models.Namespace) erro
 	current, other, _ := m.switchIndex.Get()
 	// reload namespace prepare
 	currentNamespaceManager := m.namespaces[current]
+
+	nsOld := currentNamespaceManager.GetNamespace(name)
+	var nsChangeIndexOld uint32
+	if nsOld != nil {
+		nsChangeIndexOld = nsOld.namespaceChangeIndex
+	}
+
 	newNamespaceManager := ShallowCopyNamespaceManager(currentNamespaceManager)
 	if err := newNamespaceManager.RebuildNamespace(namespaceConfig); err != nil {
 		log.Warn("prepare config of namespace: %s failed, err: %v", name, err)
 		return err
 	}
+
+	newNamespaceManager.GetNamespace(name).namespaceChangeIndex = nsChangeIndexOld + 1
+
 	m.namespaces[other] = newNamespaceManager
 
 	// reload user prepare
