@@ -18,12 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"golang.org/x/time/rate"
-	"net"
-	"strconv"
-	"strings"
-	"time"
-
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/models"
@@ -33,6 +27,11 @@ import (
 	"github.com/XiaoMi/Gaea/proxy/sequence"
 	"github.com/XiaoMi/Gaea/util"
 	"github.com/XiaoMi/Gaea/util/cache"
+	"golang.org/x/time/rate"
+	"net"
+	"strconv"
+	"strings"
+	"time"
 )
 
 const (
@@ -93,7 +92,7 @@ type Namespace struct {
 	planCache            *cache.LRUCache
 	CloseCancel          context.CancelFunc
 	limiter              *rate.Limiter
-	namespaceChanged     bool
+	namespaceChangeIndex uint32
 }
 
 // DumpToJSON  means easy encode json
@@ -521,9 +520,6 @@ func (n *Namespace) Close(delay bool) {
 	var err error
 	// close check alive
 	n.CloseCancel()
-
-	// change namespaceChanged flag
-	n.namespaceChanged = true
 
 	// delay close time
 	if delay {

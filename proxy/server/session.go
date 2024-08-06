@@ -273,7 +273,6 @@ func (cc *Session) Run() {
 
 			log.Warn("[server] Session Run panic error, error: %s, stack: %s", err.Error(), string(buf))
 		}
-		cc.clearKsConns(true)
 		cc.Close()
 		cc.proxy.tw.Remove(cc)
 		cc.manager.GetStatisticManager().DescSessionCount(cc.namespace)
@@ -284,11 +283,12 @@ func (cc *Session) Run() {
 	cc.manager.GetStatisticManager().IncrConnectionCount(cc.namespace)
 
 	for !cc.IsClosed() {
+		cc.executor.nsChangeIndexOld = cc.executor.GetNamespace().namespaceChangeIndex
 		cc.c.SetSequence(0)
 		data, err := cc.c.ReadEphemeralPacket()
 		if err != nil {
 			cc.c.RecycleReadPacket()
-			cc.clearKsConns(true)
+			cc.clearKsConns(cc.executor.nsChangeIndexOld)
 			cc.Close()
 			return
 		}
@@ -296,11 +296,12 @@ func (cc *Session) Run() {
 		cc.proxy.tw.Add(cc.proxy.sessionTimeout, cc, cc.Close)
 		cc.manager.GetStatisticManager().AddReadFlowCount(cc.namespace, len(data))
 		cc.executor.SetContextNamespace()
+		cc.clearKsConns(cc.executor.nsChangeIndexOld)
 
 		cmd := data[0]
 		data = data[1:]
+		rs := cc.execCommand(cmd, data)
 
-		rs := cc.executor.ExecuteCommand(cmd, data)
 		// 如果其他地方已经回收过,不再回收
 		if !cc.c.hasRecycledReadPacket.CompareAndSwap(true, false) {
 			cc.c.RecycleReadPacket()
@@ -312,16 +313,14 @@ func (cc *Session) Run() {
 				log.Notice("Aborted - conn_id=%d, namespace=%s, clientAddr=%s, remoteAddr=%s",
 					cc.c.GetConnectionID(), cc.namespace, cc.executor.clientAddr, cc.c.RemoteAddr())
 			}
-			cc.clearKsConns(true)
+			cc.clearKsConns(cc.executor.nsChangeIndexOld)
 			cc.Close()
 			return
 		}
 
-		if cmd == mysql.ComQuit {
+		if cmd == mysql.ComQuit || cc.shouldClearKsAndCloseSession(cc.executor.nsChangeIndexOld) {
 			cc.Close()
 		}
-
-		cc.clearKsConns(false)
 	}
 }
 
@@ -385,16 +384,26 @@ func (cc *Session) writeResponse(r Response) error {
 }
 
 // clearKsConns clear ksConns after namespace changed
-func (cc *Session) clearKsConns(rollback bool) {
-	if cc.executor.IsKeepSession() && cc.getNamespace().namespaceChanged {
+func (cc *Session) clearKsConns(nsChangeIndex uint32) {
+	if cc.executor.IsKeepSession() && cc.getNamespace().namespaceChangeIndex > nsChangeIndex && !cc.executor.isInTransaction() {
 		for _, ksConn := range cc.executor.ksConns {
-			if cc.executor.isInTransaction() && rollback {
-				ksConn.Rollback()
-			}
 			ksConn.Close()
 			ksConn.Recycle()
 		}
 		cc.executor.ksConns = make(map[string]backend.PooledConnect)
-		cc.getNamespace().namespaceChanged = false
 	}
+}
+
+// shouldClearKsAndCloseSession should clear ks map and close session
+func (cc *Session) shouldClearKsAndCloseSession(nsChangeIndex uint32) bool {
+	return cc.executor.IsKeepSession() && cc.executor.isInTransaction() && cc.executor.GetNamespace().namespaceChangeIndex > nsChangeIndex
+}
+
+func (cc *Session) execCommand(cmd byte, data []byte) (rs Response) {
+	if cc.shouldClearKsAndCloseSession(cc.executor.nsChangeIndexOld) {
+		rs = CreateErrorResponse(cc.executor.status, mysql.ErrTxNsChanged)
+	} else {
+		rs = cc.executor.ExecuteCommand(cmd, data)
+	}
+	return
 }

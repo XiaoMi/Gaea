@@ -45,6 +45,8 @@ var (
 	ErrMalformPacket = errors.New("Malform packet error")
 	// ErrTxDone transaction done error
 	ErrTxDone = errors.New("sql: Transaction has already been committed or rolled back")
+	// ErrTxNsChanged namespace changed in transaction error
+	ErrTxNsChanged = errors.New("namespace changed in transaction when keep session")
 )
 
 // SQLError contains error code、SQLSTATE and message string
