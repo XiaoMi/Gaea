@@ -264,6 +264,8 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 			return err
 		}
 	}
+	// 提前拷贝，防止 writeOKResult 中 rs 释放
+	globalFields := rs.Fields
 	err := cc.writeOKResult(status, continueConn.MoreRowsExist(), rs)
 	if err != nil {
 		return err
@@ -272,7 +274,7 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 	for continueConn.MoreRowsExist() {
 		result := mysql.ResultPool.Get()
 		result.Resultset = &mysql.Resultset{
-			Fields: rs.Fields,
+			Fields: globalFields,
 		}
 		err = continueConn.FetchMoreRows(result, maxRows)
 		if isBinary {
@@ -305,6 +307,7 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 	return nil
 }
 
+// 写入结果集后，不能再引用结果集
 func (cc *ClientConn) writeOKResult(status uint16, moreRows bool, r *mysql.Result) error {
 	defer r.Free()
 	if r.Resultset == nil {
@@ -313,6 +316,7 @@ func (cc *ClientConn) writeOKResult(status uint16, moreRows bool, r *mysql.Resul
 	return cc.writeResultset(status, moreRows, r.Resultset)
 }
 
+// 写入结果集后，不能再引用结果集
 func (cc *ClientConn) writeRowsWithEOF(result *mysql.Result, moreRowsExists bool, status uint16) error {
 	defer result.Free()
 	var err error
