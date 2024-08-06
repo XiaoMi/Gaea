@@ -32,7 +32,7 @@ check-%:
 	./hack/verify-$*.sh
 
 test:
-	go test -coverprofile=.coverage.out `go list ./...` -short
+	go test -gcflags="all=-l -N" -coverprofile=.coverage.out `go list ./...` -short
 	go tool cover -func=.coverage.out -o .coverage.func
 	tail -1 .coverage.func
 	go tool cover -html=.coverage.out -o .coverage.html

@@ -238,6 +238,9 @@ func (l *ZapLoggerManager) Debugx(logID, format string, a ...interface{}) (err e
 
 // Close implements XLogger
 func (l *ZapLoggerManager) Close() {
+	if l.logger == nil {
+		return
+	}
 	l.logger.Sync()
 	for _, writer := range l.writers {
 		writer.Close()
