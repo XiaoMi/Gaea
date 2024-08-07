@@ -177,6 +177,22 @@ var _ = ginkgo.Describe("test unshard multi query", func() {
 				}
 			}
 		})
+
+		ginkgo.It("when gaea not set supprt multiquery and client set multi query insert", func() {
+			initNs.SupportMultiQuery = false
+			err = e2eMgr.ModifyNamespace(initNs)
+			util.ExpectNoError(err, "create namespace")
+			// wait mysql data  sync and namespace load
+			time.Sleep(3 * time.Millisecond)
+
+			masterAdminConn, err := slice.GetMasterAdminConn(0)
+			util.ExpectNoError(err)
+			util.SetupDatabaseAndInsertData(masterAdminConn, db, table)
+			gaeaReadWriteDB, err := sql.Open("mysql", dsn+"?multiStatements=true")
+			util.ExpectNoError(err)
+			_, err = gaeaReadWriteDB.Exec(fmt.Sprintf("INSERT INTO %s.%s (`id`, `name`) VALUES ('101', 'aaa');INSERT INTO %s.%s (`id`, `name`) VALUES ('102', 'bbb');", db, table, db, table))
+			util.ExpectNoError(err)
+		})
 	})
 
 	ginkgo.AfterEach(func() {
