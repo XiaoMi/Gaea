@@ -265,7 +265,10 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 		}
 	}
 	// 提前拷贝，防止 writeOKResult 中 rs 释放
-	globalFields := rs.Fields
+	var globalFields []*mysql.Field
+	if rs.Resultset != nil {
+		globalFields = rs.Resultset.Fields
+	}
 	err := cc.writeOKResult(status, continueConn.MoreRowsExist(), rs)
 	if err != nil {
 		return err
