@@ -749,6 +749,7 @@ func canHandleWithoutPlan(stmtType int) bool {
 }
 
 const variableRestoreFlag = format.RestoreKeyWordLowercase | format.RestoreNameLowercase
+const sqlModeRestoreFlag = format.RestoreStringSingleQuotes
 
 // 获取SET语句中变量的字符串值, 去掉各种引号并转换为小写
 func getVariableExprResult(v ast.ExprNode) string {
@@ -756,6 +757,14 @@ func getVariableExprResult(v ast.ExprNode) string {
 	ctx := format.NewRestoreCtx(variableRestoreFlag, s)
 	v.Restore(ctx)
 	return strings.ToLower(s.String())
+}
+
+// 获取 SET 语句中变量的字符串值, 保留引号，不转换大小写
+func getSqlModeExprResult(v ast.ExprNode) string {
+	s := &strings.Builder{}
+	ctx := format.NewRestoreCtx(sqlModeRestoreFlag, s)
+	v.Restore(ctx)
+	return s.String()
 }
 
 func getOnOffVariable(v string) (string, error) {
