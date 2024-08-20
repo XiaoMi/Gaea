@@ -18,8 +18,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	"github.com/XiaoMi/Gaea/core/errors"
 )
 
 type verifyFunc func(interface{}) error
@@ -222,14 +220,6 @@ func verifySQLMode(v interface{}) error {
 		return nil
 	}
 
-	value = strings.Trim(value, "'`\"")
-	value = strings.ToUpper(value)
-	values := strings.Split(value, ",")
-	for _, sqlMode := range values {
-		if _, ok := SQLModeSet[sqlMode]; !ok {
-			return errors.ErrInvalidSQLMode
-		}
-	}
 	return nil
 }
 

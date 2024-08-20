@@ -420,7 +420,7 @@ func (se *SessionExecutor) handleSetVariable(sql string, v *ast.VariableAssignme
 		se.collation = collationID
 		return nil
 	case "sql_mode":
-		sqlMode := getVariableExprResult(v.Value)
+		sqlMode := getSqlModeExprResult(v.Value)
 		return se.setStringSessionVariable(mysql.SQLModeStr, sqlMode)
 	case "sql_safe_updates":
 		value := getVariableExprResult(v.Value)

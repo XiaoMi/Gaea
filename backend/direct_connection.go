@@ -1075,7 +1075,7 @@ func appendSetVariable(buf *bytes.Buffer, key string, value interface{}) {
 	buf.WriteString(" = ")
 	switch v := value.(type) {
 	case string:
-		if strings.ToLower(v) == mysql.KeywordDefault {
+		if strings.ToLower(v) == mysql.KeywordDefault || key == mysql.SQLModeStr {
 			buf.WriteString(v)
 		} else {
 			buf.WriteString("'")

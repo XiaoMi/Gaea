@@ -95,27 +95,44 @@ var _ = ginkgo.Describe("test dml set variables", func() {
 			testQueryCase := []struct {
 				sqlMode   string
 				sql       []string
+				expectRes string
 				expectErr []bool
 			}{
 				{
-					sqlMode: "ANSI_QUOTES",
+					sqlMode: "set sql_mode=ANSI_QUOTES",
 					sql: []string{
 						`show variables like "sql_mode"`,
 					},
 					expectErr: []bool{true},
 				},
+				{
+					sqlMode: `set sql_mode=REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+						@@sql_mode,
+						"STRICT_ALL_TABLES,", ""),
+						",STRICT_ALL_TABLES", ""),
+						"STRICT_ALL_TABLES", ""),
+						"STRICT_TRANS_TABLES,", ""),
+						",STRICT_TRANS_TABLES",""),
+						"STRICT_TRANS_TABLES", "")`,
+					sql: []string{
+						`show variables like "sql_mode"`,
+					},
+					expectRes: `NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION`,
+					expectErr: []bool{false},
+				},
 			}
 
 			for _, tt := range testQueryCase {
-				_, err := gaeaRWConn.Exec(fmt.Sprintf("set sql_mode='%s'", tt.sqlMode))
-				util.ExpectNoError(err, fmt.Sprintf("set sql_mode='%s'", tt.sqlMode))
+				gaeaRWConn, err := e2eMgr.GetReadWriteGaeaUserConn()
+				_, err = gaeaRWConn.Exec(tt.sqlMode)
+				util.ExpectNoError(err, fmt.Sprintf("set sql_mode=%s", tt.sqlMode))
 				for i := 0; i < len(tt.sql); i++ {
 					_, err := gaeaRWConn.Query(tt.sql[i])
 					if tt.expectErr[i] {
 						util.ExpectError(err, fmt.Sprintf("exec sql: %s", tt.sql[i]))
 						continue
 					}
-					util.ExpectNoError(err, fmt.Sprintf("exec sql: %s", tt.sql[i]))
+					checkFunc(gaeaRWConn, tt.sql[i], tt.expectRes)
 				}
 			}
 		})
