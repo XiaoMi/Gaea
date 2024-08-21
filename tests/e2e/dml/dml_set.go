@@ -23,6 +23,17 @@ import (
 	"github.com/onsi/ginkgo/v2"
 )
 
+// This Ginkgo test suite validates the correct setting and behavior of session variables within a database context,
+// focusing on DML operations and session controls.
+// It ensures that changes to session-specific variables,
+// such as SQL modes and transaction read/write settings, are enforced correctly and affect database operations as expected.
+// The tests cover various scenarios including the enforcement of SQL standards, limits on SQL select queries, and settings that govern data modification permissions within a session.
+// This suite helps verify that the database handles session settings correctly, providing a robust environment for further application-specific testing.
+// BeforeEach and AfterEach are defined directly inside the Describe block,
+// but outside the Context block. This means that they will be executed for all It blocks inside Describe blocks,
+// including those inside any Context blocks. No matter what level of Context these It blocks are located in,
+// BeforeEach and AfterEach will be called before and after each It block runs.
+// e2eMgr.Clean() will clean the connection of each open gaea, so make sure that each ginkgo.It uses an independent gaea connection
 var _ = ginkgo.Describe("test dml set variables", func() {
 	e2eMgr := config.NewE2eManager()
 	db := config.DefaultE2eDatabase
@@ -51,7 +62,7 @@ var _ = ginkgo.Describe("test dml set variables", func() {
 		gaeaRWConn, err := e2eMgr.GetReadWriteGaeaUserConn()
 		gaeaRWConn.SetMaxOpenConns(1)
 		gaeaRWConn.SetMaxIdleConns(1)
-		util.ExpectNoError(err, "get gaea read write conn")
+		util.ExpectNoError(err, "get gaea read write conn when test set session variables take effect")
 		ginkgo.It("set sql_mode", func() {
 			testExecCase := []struct {
 				sqlMode   string
@@ -110,6 +121,10 @@ var _ = ginkgo.Describe("test dml set variables", func() {
 		})
 
 		ginkgo.It("set session sql_select_limit", func() {
+			gaeaRWConn, err := e2eMgr.GetReadWriteGaeaUserConn()
+			gaeaRWConn.SetMaxOpenConns(1)
+			gaeaRWConn.SetMaxIdleConns(1)
+			util.ExpectNoError(err, "get gaea read write conn when set session sql_select_limit")
 			testQueryCase := []struct {
 				setSQL    string
 				sql       []string
@@ -156,6 +171,10 @@ var _ = ginkgo.Describe("test dml set variables", func() {
 		})
 
 		ginkgo.It("set session read write", func() {
+			gaeaRWConn, err := e2eMgr.GetReadWriteGaeaUserConn()
+			gaeaRWConn.SetMaxOpenConns(1)
+			gaeaRWConn.SetMaxIdleConns(1)
+			util.ExpectNoError(err, "get gaea read write conn when set session read write")
 			testExecCase := []struct {
 				setSQL    string
 				sql       []string

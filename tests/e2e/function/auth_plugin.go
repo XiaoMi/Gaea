@@ -23,9 +23,16 @@ import (
 	"github.com/onsi/ginkgo/v2"
 )
 
-// test three cases:
-// 1. mysql_native_password
-// 2. sha256_password
+// This test suite is designed to validate the integration of backend authentication plugins within the Gaea database middleware.
+// The test scenarios include:
+// 1. Creating a MySQL user with 'mysql_native_password', granting them select permissions, and configuring Gaea to recognize and authenticate using these credentials.
+// 2. Similarly, setting up another user with 'sha256_password', which represents a more secure authentication mechanism, and ensuring Gaea can handle this advanced encryption during the authentication process.
+// Each test:
+// - Configures user credentials specific to the authentication method being tested.
+// - Executes SQL commands to create and grant permissions to these users.
+// - Modifies the Gaea namespace to utilize these new credentials.
+// - Performs database queries to confirm that the connections are appropriately authenticated and operational.
+// Overall, this testing strategy is crucial for verifying that Gaea's integration with MySQL authentication plugins is robust
 var _ = ginkgo.Describe("test backend auth plugin", func() {
 	e2eMgr := config.NewE2eManager()
 	db := config.DefaultE2eDatabase

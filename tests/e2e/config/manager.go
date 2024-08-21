@@ -99,13 +99,14 @@ var (
 
 type E2eManager struct {
 	// 用于管理所有的测试用例
-	NsManager *NamespaceRegisterManager
-	GCluster  *GaeaCluster
-	NsSlices  map[string]*NsSlice
-	BasePath  string
-	StartTime time.Time
-	Db        string
-	Table     string
+	NsManager       *NamespaceRegisterManager
+	GCluster        *GaeaCluster
+	NsSlices        map[string]*NsSlice
+	BasePath        string
+	StartTime       time.Time
+	Db              string
+	Table           string
+	openConnections []*sql.DB // 存储所有打开的数据库连接
 }
 
 func NewE2eManager() *E2eManager {
@@ -272,27 +273,57 @@ func NewE2eManager() *E2eManager {
 }
 
 func (e *E2eManager) GetReadWriteGaeaUserConn() (*sql.DB, error) {
-	return InitConn(e.GCluster.ReadWriteUser.UserName, e.GCluster.ReadWriteUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), "")
+	conn, err := InitConn(e.GCluster.ReadWriteUser.UserName, e.GCluster.ReadWriteUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), "")
+	if err != nil {
+		return nil, err
+	}
+	e.openConnections = append(e.openConnections, conn) // 添加到追踪列表
+	return conn, nil
 }
 
 func (e *E2eManager) GetReadWriteGaeaUserDBConn(db string) (*sql.DB, error) {
-	return InitConn(e.GCluster.ReadWriteUser.UserName, e.GCluster.ReadWriteUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), db)
+	conn, err := InitConn(e.GCluster.ReadWriteUser.UserName, e.GCluster.ReadWriteUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), db)
+	if err != nil {
+		return nil, err
+	}
+	e.openConnections = append(e.openConnections, conn) // 添加到追踪列表
+	return conn, nil
 }
 
 func (e *E2eManager) GetReadGaeaUserConn() (*sql.DB, error) {
-	return InitConn(e.GCluster.ReadUser.UserName, e.GCluster.ReadUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), "")
+	conn, err := InitConn(e.GCluster.ReadUser.UserName, e.GCluster.ReadUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), "")
+	if err != nil {
+		return nil, err
+	}
+	e.openConnections = append(e.openConnections, conn) // 添加到追踪列表
+	return conn, err
 }
 
 func (e *E2eManager) GetReadGaeaUserDBConn(db string) (*sql.DB, error) {
-	return InitConn(e.GCluster.ReadUser.UserName, e.GCluster.ReadUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), db)
+	conn, err := InitConn(e.GCluster.ReadUser.UserName, e.GCluster.ReadUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), db)
+	if err != nil {
+		return nil, err
+	}
+	e.openConnections = append(e.openConnections, conn) // 添加到追踪列表
+	return conn, err
 }
 
 func (e *E2eManager) GetWriteGaeaUserConn() (*sql.DB, error) {
-	return InitConn(e.GCluster.WriteUser.UserName, e.GCluster.WriteUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), "")
+	conn, err := InitConn(e.GCluster.WriteUser.UserName, e.GCluster.WriteUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), "")
+	if err != nil {
+		return nil, err
+	}
+	e.openConnections = append(e.openConnections, conn) // 添加到追踪列表
+	return conn, err
 }
 
 func (e *E2eManager) GetWriteGaeaUserDBConn(db string) (*sql.DB, error) {
-	return InitConn(e.GCluster.WriteUser.UserName, e.GCluster.WriteUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), db)
+	conn, err := InitConn(e.GCluster.WriteUser.UserName, e.GCluster.WriteUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), db)
+	if err != nil {
+		return nil, err
+	}
+	e.openConnections = append(e.openConnections, conn) // 添加到追踪列表
+	return conn, err
 }
 
 func (e *E2eManager) ModifyNamespace(m *models.Namespace) error {

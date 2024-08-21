@@ -338,6 +338,14 @@ func (m *MockPooledConnect) SetSessionVariables(arg0 *mysql.SessionVariables) (b
 	return ret0, ret1
 }
 
+// SyncSessionVariables mocks base method
+func (m *MockPooledConnect) SyncSessionVariables(arg0 *mysql.SessionVariables) (error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SyncSessionVariables", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
 // SetSessionVariables indicates an expected call of SetSessionVariables
 func (mr *MockPooledConnectMockRecorder) SetSessionVariables(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()

@@ -26,6 +26,13 @@ import (
 	"github.com/onsi/ginkgo/v2"
 )
 
+// This test suite is designed to assess Gaea's handling of abrupt MySQL connection failures.
+// It prepares a testing environment with necessary database setups and namespace configurations.
+// The BeforeEach block initializes the database with data and configures the Gaea namespace to simulate controlled connection disruptions.
+// The actual test, within the It block, executes a long-running SQL command (`select sleep(100)`) that is intentionally interrupted by killing the MySQL process handling the query.
+// This test checks if Gaea correctly detects and reports the connection failure, with the expected error message ("Error 1105: connection was bad").
+// The goal is to ensure that Gaea provides accurate error feedback when database connections are forcibly terminated, which is critical for applications relying on stable database interactions.
+// The AfterEach block ensures that the environment is cleaned up, removing any artifacts that may affect subsequent tests or system stability.
 var _ = ginkgo.Describe("mysql bad connection test", func() {
 	e2eMgr := config.NewE2eManager()
 	db := config.DefaultE2eDatabase

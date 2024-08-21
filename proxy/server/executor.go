@@ -17,7 +17,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"github.com/XiaoMi/Gaea/models"
 	"net"
 	"sort"
 	"strconv"
@@ -25,6 +24,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/XiaoMi/Gaea/models"
 
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/core/errors"
@@ -467,7 +468,16 @@ func (se *SessionExecutor) getTransactionConn(sliceName string) (pc backend.Pool
 	if pc, err = slice.GetMasterConn(); err != nil {
 		return
 	}
-
+	// Synchronize session variables before starting the transaction.
+	// This step ensures that the session settings like `transaction_read_only` are correctly applied.
+	// Setting session variables after `BEGIN` might not affect the transaction as expected,
+	// since some session settings need to be established before the transaction starts.
+	// pc.SetAutoCommit(0) is equivalent to starting a transaction
+	if err = pc.SyncSessionVariables(se.sessionVariables); err != nil {
+		pc.Close()
+		pc.Recycle()
+		return
+	}
 	if !se.isAutoCommit() {
 		if err = pc.SetAutoCommit(0); err != nil {
 			pc.Close()
@@ -527,11 +537,18 @@ func (se *SessionExecutor) recycleBackendConns(pcs map[string]backend.PooledConn
 	}
 }
 
+// initBackendConn tries to initialize the database connection with the specified database,
+// charset, and session variables.
 func initBackendConn(pc backend.PooledConnect, phyDB string, charset string, collation mysql.CollationID, sessionVariables *mysql.SessionVariables) error {
 	if err := pc.UseDB(phyDB); err != nil {
 		return err
 	}
+	return InitializeSessionVariables(pc, charset, collation, sessionVariables)
+}
 
+// InitializeSessionVariables sets the charset and session variables for the pooled connection.
+// It attempts to write these settings and handles errors appropriately by closing the connection.
+func InitializeSessionVariables(pc backend.PooledConnect, charset string, collation mysql.CollationID, sessionVariables *mysql.SessionVariables) error {
 	charsetChanged, err := pc.SetCharset(charset, collation)
 	if err != nil {
 		return err
@@ -544,8 +561,8 @@ func initBackendConn(pc backend.PooledConnect, phyDB string, charset string, col
 
 	if charsetChanged || variablesChanged {
 		if err = pc.WriteSetStatement(); err != nil {
-			log.Warn("set charset or session variables failed,addr:%s, error: %s", pc.GetAddr(), err.Error())
-			// close pc to avoid session variables or charset not set
+			log.Warn("set charset or session variables failed, address: %s, error: %s", pc.GetAddr(), err.Error())
+			// Close pc to avoid using a connection with incorrect session variables or charset
 			pc.Close()
 			return err
 		}

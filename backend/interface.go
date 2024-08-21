@@ -39,6 +39,7 @@ type PooledConnect interface {
 	FieldList(table string, wildcard string) ([]*mysql.Field, error)
 	GetAddr() string
 	SetSessionVariables(frontend *mysql.SessionVariables) (bool, error)
+	SyncSessionVariables(frontend *mysql.SessionVariables) error
 	WriteSetStatement() error
 	GetConnectionID() int64
 	GetReturnTime() time.Time
