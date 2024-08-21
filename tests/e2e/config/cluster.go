@@ -182,6 +182,14 @@ func (e *E2eManager) Clean() {
 			_ = e.GCluster.readConn.Close()
 		}
 	}
+	for _, conn := range e.openConnections {
+		if conn != nil {
+			// Close each database connection
+			conn.Close()
+		}
+	}
+	// Clear the list to avoid repeated closings
+	e.openConnections = []*sql.DB{}
 }
 
 func GetJSONFilesFromDir(dir string) ([]string, error) {

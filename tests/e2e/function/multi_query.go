@@ -25,7 +25,18 @@ import (
 	"github.com/onsi/ginkgo/v2"
 )
 
-// test multi query
+// This Ginkgo test suite is designed to validate the prepared statement functionality in Gaea when interfacing with a MySQL database configured with a dual-slave topology. The tests ensure that Gaea correctly prepares, executes, and fetches results from SQL queries using prepared statements, a critical feature for enhancing security and performance in database operations.
+// The test scenarios within the Context block are structured to assess multiple aspects of prepared statement handling:
+// 1. **Execution of Prepared Statements**: Tests whether Gaea can prepare and execute statements with parameters, verifying if the results returned match expected values.
+// 2. **Parameter Mismatch Handling**: Verifies Gaea's error handling capabilities when the number of parameters provided during the execution does not match those expected by the prepared statement.
+// Each It block:
+// - Prepares a SQL statement with parameter placeholders.
+// - Executes the statement with actual parameters, either expecting successful execution and specific results or anticipating an error due to parameter mismatches.
+// - Uses helper functions to validate the results against expected outcomes or to confirm that appropriate errors are raised.
+// Specific tests include:
+// - Successful preparation and execution of a query retrieving specific rows, validating the accuracy of data retrieval.
+// - Execution of a query with insufficient parameters to trigger error handling mechanisms, testing the robustness of Gaea's error reporting.
+// Overall, this testing strategy is crucial for confirming that Gaea’s prepared statement processing is reliable, accurate, and secure, particularly in complex database architectures like those with master-slave configurations. This capability is essential for applications that rely on dynamic SQL generation and execution where prepared statements play a key role in preventing SQL injection attacks and optimizing query performance.
 var _ = ginkgo.Describe("test unshard multi query", func() {
 	e2eMgr := config.NewE2eManager()
 	db := config.DefaultE2eDatabase

@@ -16,8 +16,9 @@ package backend
 
 import (
 	"fmt"
-	"github.com/XiaoMi/Gaea/log"
 	"time"
+
+	"github.com/XiaoMi/Gaea/log"
 
 	"github.com/XiaoMi/Gaea/mysql"
 )
@@ -173,6 +174,14 @@ func (pc *pooledConnectImpl) GetAddr() string {
 // SetSessionVariables set pc variables according to session
 func (pc *pooledConnectImpl) SetSessionVariables(frontend *mysql.SessionVariables) (bool, error) {
 	return pc.directConnection.SetSessionVariables(frontend)
+}
+
+// SyncSessionVariables synchronizes the session variables from the given frontend session state
+// It is typically used to ensure that the database connection reflects the current state
+// expected by the application, such as character sets, transaction settings, and other session-specific
+// settings.
+func (pc *pooledConnectImpl) SyncSessionVariables(frontend *mysql.SessionVariables) error {
+	return pc.directConnection.SyncSessionVariables(frontend)
 }
 
 // WriteSetStatement exec sql

@@ -24,10 +24,11 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"github.com/XiaoMi/Gaea/util"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/XiaoMi/Gaea/util"
 
 	sqlerr "github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
@@ -735,6 +736,25 @@ func (dc *DirectConnection) ResetConnection() error {
 // SetSessionVariables set direction variables according to Session
 func (dc *DirectConnection) SetSessionVariables(frontend *mysql.SessionVariables) (bool, error) {
 	return dc.sessionVariables.SetEqualsWith(frontend)
+}
+
+// SyncSessionVariables synchronizes the session variables from the provided frontend session
+// state to this direct connection's database session. It first sets the session variables based
+// on the frontend's specifications and then commits these changes to the database session with
+// an appropriate SQL SET statement.
+// This method ensures that the connection's state is consistent with the frontend's requirements,
+func (dc *DirectConnection) SyncSessionVariables(frontend *mysql.SessionVariables) error {
+	variablesChanged, err := dc.SetSessionVariables(frontend)
+	if err != nil {
+		return err
+	}
+	if !variablesChanged {
+		return nil
+	}
+	if err = dc.WriteSetStatement(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // WriteSetStatement execute sql

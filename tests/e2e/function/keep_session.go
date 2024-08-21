@@ -24,6 +24,13 @@ import (
 	"github.com/onsi/ginkgo/v2"
 )
 
+// This Ginkgo test suite is designed to validate session persistence and transaction handling in Gaea when interfacing with a MySQL database in a dual-slave configuration. It specifically tests the behavior of both XA (eXtended Architecture) transactions and regular transactions under different session settings.
+// Test scenarios are designed to evaluate:
+// 1. **XA Transactions**: These tests verify that Gaea can handle XA transactions, which are designed for distributed transaction systems. The tests cover starting, preparing, and committing XA transactions, and they ensure that data manipulated within these transactions is correctly committed to the database.
+// 2. **Error Handling in Transactions**: These tests ensure that Gaea appropriately reports errors when transaction commands are misused or when session settings do not support the executed operations.
+// 3. **Regular Transactions**: Testing regular transaction commands (`BEGIN`, `COMMIT`) to confirm that Gaea handles these consistently within the context of session persistence.
+// 4. **Session Persistence**: Some tests specifically manipulate the session persistence settings to observe how Gaea handles transaction states when sessions are not maintained.
+// This suite is crucial for ensuring that Gaea reliably manages transactions across multiple database instances and maintains correct session states, which is essential for applications that require high reliability and strict data consistency in distributed environments.
 var _ = ginkgo.Describe("keep session test", func() {
 	e2eMgr := config.NewE2eManager()
 	db := config.DefaultE2eDatabase
