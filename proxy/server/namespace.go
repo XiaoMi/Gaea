@@ -18,6 +18,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/models"
@@ -28,10 +33,6 @@ import (
 	"github.com/XiaoMi/Gaea/util"
 	"github.com/XiaoMi/Gaea/util/cache"
 	"golang.org/x/time/rate"
-	"net"
-	"strconv"
-	"strings"
-	"time"
 )
 
 const (
@@ -85,14 +86,15 @@ type Namespace struct {
 	setForKeepSession      bool
 	clientQPSLimit         uint32
 
-	slowSQLCache         *cache.LRUCache
-	errorSQLCache        *cache.LRUCache
-	backendSlowSQLCache  *cache.LRUCache
-	backendErrorSQLCache *cache.LRUCache
-	planCache            *cache.LRUCache
-	CloseCancel          context.CancelFunc
-	limiter              *rate.Limiter
-	namespaceChangeIndex uint32
+	slowSQLCache            *cache.LRUCache
+	errorSQLCache           *cache.LRUCache
+	backendSlowSQLCache     *cache.LRUCache
+	backendErrorSQLCache    *cache.LRUCache
+	planCache               *cache.LRUCache
+	CloseCancel             context.CancelFunc
+	limiter                 *rate.Limiter
+	namespaceChangeIndex    uint32
+	allowedSessionVariables map[string]string
 }
 
 // DumpToJSON  means easy encode json
@@ -104,16 +106,17 @@ func (n *Namespace) DumpToJSON() []byte {
 func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*Namespace, error) {
 	var err error
 	namespace := &Namespace{
-		name:                 namespaceConfig.Name,
-		sqls:                 make(map[string]string, 16),
-		userProperties:       make(map[string]*UserProperty, 2),
-		openGeneralLog:       namespaceConfig.OpenGeneralLog,
-		slowSQLCache:         cache.NewLRUCache(defaultSQLCacheCapacity),
-		errorSQLCache:        cache.NewLRUCache(defaultSQLCacheCapacity),
-		backendSlowSQLCache:  cache.NewLRUCache(defaultSQLCacheCapacity),
-		backendErrorSQLCache: cache.NewLRUCache(defaultSQLCacheCapacity),
-		planCache:            cache.NewLRUCache(defaultPlanCacheCapacity),
-		defaultSlice:         namespaceConfig.DefaultSlice,
+		name:                    namespaceConfig.Name,
+		sqls:                    make(map[string]string, 16),
+		userProperties:          make(map[string]*UserProperty, 2),
+		openGeneralLog:          namespaceConfig.OpenGeneralLog,
+		slowSQLCache:            cache.NewLRUCache(defaultSQLCacheCapacity),
+		errorSQLCache:           cache.NewLRUCache(defaultSQLCacheCapacity),
+		backendSlowSQLCache:     cache.NewLRUCache(defaultSQLCacheCapacity),
+		backendErrorSQLCache:    cache.NewLRUCache(defaultSQLCacheCapacity),
+		planCache:               cache.NewLRUCache(defaultPlanCacheCapacity),
+		defaultSlice:            namespaceConfig.DefaultSlice,
+		allowedSessionVariables: namespaceConfig.AllowedSessionVariables,
 	}
 
 	defer func() {
@@ -271,6 +274,11 @@ func (n *Namespace) GetName() string {
 // GetSlice return slice of namespace
 func (n *Namespace) GetSlice(name string) *backend.Slice {
 	return n.slices[name]
+}
+
+// GetDefaultSessionVariables return default session variables of namespace
+func (n *Namespace) GetAllowedSessionVariables() map[string]string {
+	return n.allowedSessionVariables
 }
 
 // GetRouter return router of namespace

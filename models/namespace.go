@@ -18,9 +18,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/XiaoMi/Gaea/log"
 	"strconv"
 	"strings"
+
+	"github.com/XiaoMi/Gaea/log"
 
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util"
@@ -29,33 +30,35 @@ import (
 
 // Namespace means namespace model stored in etcd
 type Namespace struct {
-	OpenGeneralLog         bool              `json:"open_general_log"`
-	IsEncrypt              bool              `json:"is_encrypt"` // true: 加密存储 false: 非加密存储，目前加密Slice、User中的用户名、密码
-	Name                   string            `json:"name"`
-	Online                 bool              `json:"online"`
-	ReadOnly               bool              `json:"read_only"`
-	AllowedDBS             map[string]bool   `json:"allowed_dbs"`
-	DefaultPhyDBS          map[string]string `json:"default_phy_dbs"`
-	SlowSQLTime            string            `json:"slow_sql_time"`
-	BlackSQL               []string          `json:"black_sql"`
-	AllowedIP              []string          `json:"allowed_ip"`
-	Slices                 []*Slice          `json:"slices"`
-	ShardRules             []*Shard          `json:"shard_rules"`
-	Users                  []*User           `json:"users"` // 客户端接入proxy用户，每个用户可以设置读写分离、读写权限等
-	DefaultSlice           string            `json:"default_slice"`
-	GlobalSequences        []*GlobalSequence `json:"global_sequences"`
-	DefaultCharset         string            `json:"default_charset"`
-	DefaultCollation       string            `json:"default_collation"`
-	MaxSqlExecuteTime      int               `json:"max_sql_execute_time"`      // sql最大执行时间，大于该时间，进行熔断
-	MaxSqlResultSize       int               `json:"max_sql_result_size"`       // 限制单分片返回结果集大小不超过max_select_rows
-	MaxClientConnections   int               `json:"max_client_connections"`    // namespace中最大的前端连接数
-	DownAfterNoAlive       int               `json:"down_after_no_alive"`       // 如果探测MySQL服务offline超过该时间后标记mysql为下线
-	SecondsBehindMaster    uint64            `json:"seconds_behind_master"`     // slave延迟超过该值将slave标记为down, 默认值为0，即无限大
-	CheckSelectLock        bool              `json:"check_select_lock"`         // 是否将 select for update 语句打到主库
-	SupportMultiQuery      bool              `json:"support_multi_query"`       //是否支持多语句
-	LocalSlaveReadPriority int               `json:"local_slave_read_priority"` //是否可以跨机房访问从库
-	SetForKeepSession      bool              `json:"set_for_keep_session"`      // 是否支持业务连接会话保持
-	ClientQPSLimit         uint32            `json:"client_qps_limit"`          // Namespace 级别的 qps 限制，默认为 0，即不开启
+	OpenGeneralLog          bool              `json:"open_general_log"`
+	IsEncrypt               bool              `json:"is_encrypt"` // true: 加密存储 false: 非加密存储，目前加密Slice、User中的用户名、密码
+	Name                    string            `json:"name"`
+	Online                  bool              `json:"online"`
+	ReadOnly                bool              `json:"read_only"`
+	AllowedDBS              map[string]bool   `json:"allowed_dbs"`
+	DefaultPhyDBS           map[string]string `json:"default_phy_dbs"`
+	SlowSQLTime             string            `json:"slow_sql_time"`
+	BlackSQL                []string          `json:"black_sql"`
+	AllowedIP               []string          `json:"allowed_ip"`
+	Slices                  []*Slice          `json:"slices"`
+	ShardRules              []*Shard          `json:"shard_rules"`
+	Users                   []*User           `json:"users"` // 客户端接入proxy用户，每个用户可以设置读写分离、读写权限等
+	DefaultSlice            string            `json:"default_slice"`
+	GlobalSequences         []*GlobalSequence `json:"global_sequences"`
+	DefaultCharset          string            `json:"default_charset"`
+	DefaultCollation        string            `json:"default_collation"`
+	MaxSqlExecuteTime       int               `json:"max_sql_execute_time"`      // sql最大执行时间，大于该时间，进行熔断
+	MaxSqlResultSize        int               `json:"max_sql_result_size"`       // 限制单分片返回结果集大小不超过max_select_rows
+	MaxClientConnections    int               `json:"max_client_connections"`    // namespace中最大的前端连接数
+	DownAfterNoAlive        int               `json:"down_after_no_alive"`       // 如果探测MySQL服务offline超过该时间后标记mysql为下线
+	SecondsBehindMaster     uint64            `json:"seconds_behind_master"`     // slave延迟超过该值将slave标记为down, 默认值为0，即无限大
+	CheckSelectLock         bool              `json:"check_select_lock"`         // 是否将 select for update 语句打到主库
+	SupportMultiQuery       bool              `json:"support_multi_query"`       //是否支持多语句
+	LocalSlaveReadPriority  int               `json:"local_slave_read_priority"` //是否可以跨机房访问从库
+	SetForKeepSession       bool              `json:"set_for_keep_session"`      // 是否支持业务连接会话保持
+	ClientQPSLimit          uint32            `json:"client_qps_limit"`          // Namespace 级别的 qps 限制，默认为 0，即不开启
+	AllowedSessionVariables map[string]string `json:"allowed_session_variables"` // 允许设置的会话变量
+
 }
 
 // Encode encode json
@@ -106,6 +109,7 @@ func (n *Namespace) Verify() error {
 	}
 
 	n.verifyCapability()
+	n.verifyDefaultSessionVariables()
 
 	return nil
 }
@@ -345,6 +349,14 @@ func (n *Namespace) verifyCapability() {
 			slice.Capability &= mysql.SupportCapability ^ mysql.ClientConnectWithDB
 			log.Warn("Capability %d incompatible, changed to %d", oldCapability, slice.Capability)
 		}
+	}
+}
+
+// verifyDefaultSessionVariables only support capability in SupportCapability
+func (n *Namespace) verifyDefaultSessionVariables() {
+	if n.AllowedSessionVariables == nil {
+		n.AllowedSessionVariables = map[string]string{}
+		return
 	}
 }
 
