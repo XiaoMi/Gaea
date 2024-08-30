@@ -18,10 +18,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/XiaoMi/Gaea/core/errors"
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/XiaoMi/Gaea/core/errors"
 
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/log"
@@ -382,6 +383,10 @@ func (se *SessionExecutor) handleSetVariable(sql string, v *ast.VariableAssignme
 		}
 
 		return nil
+	case "group_concat_max_len":
+		concatMaxLen := getVariableExprResult(v.Value)
+		return se.setIntSessionVariable(mysql.GroupConcatMaxLen, concatMaxLen)
+
 	case "autocommit":
 		value := getVariableExprResult(v.Value)
 		if value == mysql.KeywordDefault || value == "on" || value == "1" {
@@ -471,6 +476,30 @@ func (se *SessionExecutor) handleSetVariable(sql string, v *ast.VariableAssignme
 		}
 		return se.setGeneralLogVariable(onOffValue)
 	default:
+		// 从命名空间获取允许用户配置的会话变量
+		allowedVariables := se.GetNamespace().GetAllowedSessionVariables()
+		// 如果变量名在命名空间中，则进行类型检查
+		if variableType, ok := allowedVariables[name]; ok {
+			switch variableType {
+			case "int":
+				value := getVariableExprResult(v.Value)
+				return se.setIntSessionVariable(name, value)
+			case "string":
+				value := getVariableExprResult(v.Value)
+				return se.setStringSessionVariable(name, value)
+			case "bool":
+				value := getVariableExprResult(v.Value)
+				onOffValue, err := getOnOffVariable(value)
+				if err != nil {
+					return mysql.NewDefaultError(mysql.ErrWrongValueForVar, name, value)
+				}
+				return se.setIntSessionVariable(name, onOffValue)
+			default:
+				value := getVariableExprResult(v.Value)
+				log.Warn("Unsupported session variable type for variable name: %s\n variable value %s\n", name, value)
+			}
+		}
+
 		// unsupported variables will be ignored and logged to avoid user confusion
 		// TODO: refactor sql exec time log
 		se.manager.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v. err:%s",
