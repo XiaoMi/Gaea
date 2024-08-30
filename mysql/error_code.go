@@ -15,6 +15,7 @@ package mysql
 
 import (
 	"errors"
+	"strings"
 )
 
 // MySQL error code.
@@ -964,4 +965,29 @@ func IsSQLErrorCode(err error, code uint16) bool {
 		return sqlCode == code
 	}
 	return false
+}
+
+// IsWrongValueForVarErr checks if the given error indicates a wrong value
+// for a SQL variable (e.g., "Variable '...' can't be set to the value of '...'").
+// It returns true if the error matches the ErrWrongValueForVar code.
+func IsWrongValueForVarErr(err error) bool {
+	return IsSQLErrorCode(err, ErrWrongValueForVar)
+}
+
+// IsSQLErrorWithMessage checks if the error is an SQL error with the given code
+// and contains the specified message. It returns true if both the code and the
+// message match.
+func IsSQLErrorWithMessage(err error, code uint16, message string) bool {
+	var sqlErr *SQLError
+	if errors.As(err, &sqlErr) {
+		return sqlErr.SQLCode() == code && strings.Contains(sqlErr.Message, message)
+	}
+	return false
+}
+
+// IsWrongValueForSQLModeErr checks if the given error is related to an invalid
+// value for the sql_mode variable. It returns true if the error code matches
+// ErrWrongValueForVar and the error message indicates an issue with sql_mode.
+func IsWrongValueForSQLModeErr(err error) bool {
+	return IsSQLErrorWithMessage(err, ErrWrongValueForVar, "Variable 'sql_mode'")
 }

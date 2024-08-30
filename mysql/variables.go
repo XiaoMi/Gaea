@@ -208,7 +208,7 @@ func (s *SessionVariables) GetUnusedAndClear() map[string]*Variable {
 }
 
 // Reset removes any session variables that are not recognized according to the current verification rules.
-func (s *SessionVariables) Reset() {
+func (s *SessionVariables) Reset(err error) {
 	// Retrieve all current session variables.
 	allVars := s.GetAll()
 	// Iterate through all the variables.
@@ -217,6 +217,23 @@ func (s *SessionVariables) Reset() {
 		if _, ok := variableVerifyFuncMap[key]; !ok {
 			// If the key is not found in the verification function map, delete it from session variables.
 			s.Delete(key)
+		}
+	}
+	// Check if the error is related to an invalid sql_mode
+	if IsWrongValueForSQLModeErr(err) {
+		// Remove the invalid sql_mode from session variables
+		s.RemoveInvalidSQLMode()
+	}
+
+}
+
+func (s *SessionVariables) RemoveInvalidSQLMode() {
+	// Check if 'sql_mode' exists in the session variables
+	if _, ok := s.Get("sql_mode"); ok {
+		// Assume the verification function is available in the variableVerifyFuncMap
+		if _, exists := variableVerifyFuncMap["sql_mode"]; exists {
+			// If verification fails, remove 'sql_mode'
+			s.Delete("sql_mode")
 		}
 	}
 }
