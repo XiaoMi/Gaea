@@ -586,7 +586,7 @@ func InitializeSessionVariables(pc backend.PooledConnect, charset string, collat
 			log.Warn("set charset or session variables failed, address: %s, error: %s", pc.GetAddr(), err.Error())
 			// Reset session variables to ensure the next use of the connection does not encounter incorrect settings or character set issues.
 			// Resetting helps to address the root causes of session inconsistencies without masking them by simply pc.Close()
-			sessionVariables.Reset()
+			sessionVariables.Reset(err)
 			return err
 		}
 	}
