@@ -28,7 +28,34 @@ package mysql
 
 import (
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
+
+func TestFingerPrint(t *testing.T) {
+	tests := []struct {
+		name string
+		sql  string
+		want string
+	}{
+		{
+			name: "test_select",
+			sql:  "SELECT * from `t1` where id IN(5)",
+			want: "select * from `t1` where id in(?+)",
+		},
+		{
+			name: "test_update",
+			sql:  "UPDATE `t1` set `column`=1 where id IN(5)",
+			want: "update `t1` set `column`=? where id in(?+)",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fingerprin := GetFingerprint(tt.sql)
+			assert.Equal(t, fingerprin, tt.want)
+		})
+	}
+}
 
 func TestFingerprintBasic(t *testing.T) {
 	var q, fp string
