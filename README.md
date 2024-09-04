@@ -62,7 +62,7 @@ Gaea是小米中国区电商研发部研发的基于mysql协议的数据库中�
 
 ## 性能测试
 
-- [gaea 2.3.7 ](docs/performancereport.md)
+- [gaea 2.3.7 ](docs/performance-test-report.md)
 
 ## Roadmap
 
