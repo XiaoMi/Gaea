@@ -639,6 +639,10 @@ func (c *Conn) WriteErrorPacketFromError(err error) error {
 		return c.WriteErrorPacket(se.SQLCode(), se.SQLState(), "%v", se.Message)
 	}
 
+	if err.Error() == ErrClientQpsLimitedMsg {
+		return c.WriteErrorPacket(ErrClientQpsLimited, DefaultMySQLState, "%v", err)
+	}
+
 	return c.WriteErrorPacket(ErrUnknown, DefaultMySQLState, "%v", err)
 }
 

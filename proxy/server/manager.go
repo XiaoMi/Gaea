@@ -353,7 +353,7 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 	}
 
 	// record sql timing
-	if !(err != nil && err.Error() == ErrClientQpsLimited) {
+	if !(err != nil && err.Error() == mysql.ErrClientQpsLimitedMsg) {
 		m.statistics.recordSessionSQLTiming(namespace, operation, startTime)
 	}
 

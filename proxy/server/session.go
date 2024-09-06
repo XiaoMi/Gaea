@@ -401,6 +401,7 @@ func (cc *Session) shouldClearKsAndCloseSession(nsChangeIndex uint32) bool {
 	return cc.executor.IsKeepSession() && cc.executor.isInTransaction() && cc.executor.GetNamespace().namespaceChangeIndex > nsChangeIndex
 }
 
+// execCommand create error response or execute sql
 func (cc *Session) execCommand(cmd byte, data []byte) (rs Response) {
 	if cc.shouldClearKsAndCloseSession(cc.executor.nsChangeIndexOld) {
 		rs = CreateErrorResponse(cc.executor.status, mysql.ErrTxNsChanged)

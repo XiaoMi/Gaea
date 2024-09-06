@@ -47,6 +47,8 @@ var (
 	ErrTxDone = errors.New("sql: Transaction has already been committed or rolled back")
 	// ErrTxNsChanged namespace changed in transaction error
 	ErrTxNsChanged = errors.New("namespace changed in transaction when keep session")
+	// ErrClientQpsLimitedMsg client qps is limited error
+	ErrClientQpsLimitedMsg = "client qps limit"
 )
 
 // SQLError contains error code、SQLSTATE and message string
