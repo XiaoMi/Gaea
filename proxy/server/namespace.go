@@ -85,6 +85,7 @@ type Namespace struct {
 	localSlaveReadPriority int
 	setForKeepSession      bool
 	clientQPSLimit         uint32
+	supportLimitTx         bool
 
 	slowSQLCache            *cache.LRUCache
 	errorSQLCache           *cache.LRUCache
@@ -261,6 +262,7 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 	if namespaceConfig.ClientQPSLimit > 0 {
 		namespace.clientQPSLimit = namespaceConfig.ClientQPSLimit
 		namespace.limiter = rate.NewLimiter(rate.Limit(namespaceConfig.ClientQPSLimit), int(namespaceConfig.ClientQPSLimit))
+		namespace.supportLimitTx = namespaceConfig.SupportLimitTransaction
 	}
 
 	return namespace, nil

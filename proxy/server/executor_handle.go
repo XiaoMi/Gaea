@@ -33,8 +33,6 @@ import (
 	"github.com/XiaoMi/Gaea/util"
 )
 
-const ErrClientQpsLimited = "client qps limited"
-
 // Parse parse sql
 func (se *SessionExecutor) Parse(sql string) (ast.StmtNode, error) {
 	return parser.New().ParseOneStmt(sql, "", "")
@@ -61,15 +59,24 @@ func (se *SessionExecutor) handleQuery(sql string) (r *mysql.Result, err error) 
 	}()
 
 	sql = strings.TrimRight(sql, ";") //删除sql语句最后的分号
-
 	reqCtx := util.NewRequestContext()
-	// check black sql
 	ns := se.GetNamespace()
-
 	startTime := time.Now()
-	// TODO: 统一使用 token 处理
-	if se.GetNamespace().clientQPSLimit > 0 && !se.isInTransaction() && !se.GetNamespace().limiter.Allow() {
-		err = fmt.Errorf(ErrClientQpsLimited)
+
+	// clientQPSLimit: max client queries per second
+	// supportLimitTx: limit transaction queries
+	// qps limit error code: 901
+	if se.GetNamespace().clientQPSLimit > 0 && se.GetNamespace().supportLimitTx && !se.GetNamespace().limiter.Allow() {
+		if se.isInTransaction() {
+			// if client transaction is limited, gaea will actively close client connection
+			err = mysql.NewSessionCloseRespError(mysql.ErrClientQpsLimitedMsg)
+		} else {
+			// if non-transaction connection is limited, gaea will not close client connection
+			err = fmt.Errorf(mysql.ErrClientQpsLimitedMsg)
+		}
+	} else if se.GetNamespace().clientQPSLimit > 0 && !se.GetNamespace().supportLimitTx && !se.isInTransaction() && !se.GetNamespace().limiter.Allow() {
+		// if non-transaction connection is limited, gaea will not close client connection
+		err = fmt.Errorf(mysql.ErrClientQpsLimitedMsg)
 	} else {
 		if ns.supportMultiQuery && se.session.c.capability&mysql.ClientMultiStatements != 0 {
 			r, err = se.doMultiStmts(reqCtx, sql)

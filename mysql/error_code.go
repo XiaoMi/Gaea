@@ -920,6 +920,7 @@ const (
 	ErrWindowNoGroupOrderUnused                                     = 3597
 	ErrWindowExplainJSON                                            = 3598
 	ErrWindowFunctionIgnoresFrame                                   = 3599
+	ErrClientQpsLimited                                             = 901
 )
 
 // IsTableSpaceMissingErr 检查给定的错误是否是缺少表空间

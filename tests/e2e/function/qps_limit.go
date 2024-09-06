@@ -27,7 +27,7 @@ var _ = ginkgo.Describe("client qps limit test", func() {
 		err = e2eMgr.ModifyNamespace(initNs)
 		util.ExpectNoError(err)
 		// wait mysql data  sync and namespace load
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	})
 
 	ginkgo.Context("test client qps limit", func() {
@@ -35,32 +35,73 @@ var _ = ginkgo.Describe("client qps limit test", func() {
 			sqlCases := []struct {
 				limitQPS  uint32
 				actualQPS int
+				limitTx   bool
 			}{
 				{
-					limitQPS:  10,
-					actualQPS: 10,
+					limitQPS:  5,
+					actualQPS: 5,
+					limitTx:   false,
 				},
 				{
 					limitQPS:  0,
-					actualQPS: 100,
+					actualQPS: 20,
+					limitTx:   false,
+				},
+				{
+					limitQPS:  5,
+					actualQPS: 5,
+					limitTx:   true,
+				},
+				{
+					limitQPS:  0,
+					actualQPS: 60,
+					limitTx:   true,
 				},
 			}
 
-			testCount := 100
+			testCount := 20
 			for index, test := range sqlCases {
 				initNs.ClientQPSLimit = test.limitQPS
+				initNs.SupportLimitTransaction = test.limitTx
 				err = e2eMgr.ModifyNamespace(initNs)
 				util.ExpectNoError(err)
-				time.Sleep(10 * time.Millisecond)
-				gaeaTestConn, _ := e2eMgr.GetReadWriteGaeaUserConn()
+				time.Sleep(100 * time.Millisecond)
 				qpsCount := 0
 				now := time.Now()
-				for i := 0; i < testCount; i++ {
-					_, err := gaeaTestConn.Exec("select 1")
-					if err == nil {
-						qpsCount++
+				if test.limitTx {
+					for i := 0; i < testCount; i++ {
+						gaeaTestConn, _ := e2eMgr.GetReadWriteGaeaUserConn()
+						tx, err := gaeaTestConn.Begin()
+						if err == nil {
+							qpsCount++
+						} else {
+							continue
+						}
+						_, err = tx.Exec("select 1")
+						if err == nil {
+							qpsCount++
+						} else {
+							continue
+						}
+						err = tx.Commit()
+						if err == nil {
+							qpsCount++
+						}
+					}
+				} else {
+					for i := 0; i < testCount; i++ {
+						gaeaTestConn, err := e2eMgr.GetReadWriteGaeaUserConn()
+						util.ExpectNoError(err)
+						_, err = gaeaTestConn.Exec("select 1")
+						gaeaTestConn.Close()
+						if err == nil {
+							qpsCount++
+						} else {
+							fmt.Printf("********qps limit: %v", err)
+						}
 					}
 				}
+
 				duration := time.Since(now).Milliseconds()
 				util.ExpectEqual(qpsCount, test.actualQPS, fmt.Sprintf("test %d: actual qps not expected, duration: %d", index, duration))
 			}
