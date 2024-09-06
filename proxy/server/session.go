@@ -309,7 +309,7 @@ func (cc *Session) Run() {
 
 		if err = cc.writeResponse(rs); err != nil {
 			log.Warn("Session write response error, connId: %d, err: %v", cc.c.GetConnectionID(), err)
-			if err == mysql.ErrBadConn {
+			if _, ok := err.(mysql.SessionCloseError); ok {
 				log.Notice("Aborted - conn_id=%d, namespace=%s, clientAddr=%s, remoteAddr=%s",
 					cc.c.GetConnectionID(), cc.namespace, cc.executor.clientAddr, cc.c.RemoteAddr())
 			}
@@ -360,16 +360,18 @@ func (cc *Session) writeResponse(r Response) error {
 		}
 		return cc.c.writeFieldList(r.Status, rs)
 	case RespError:
-		rs := r.Data.(error)
+		rs := r.Data
 		if rs == nil {
 			return cc.c.writeOK(r.Status)
 		}
-		err := cc.c.writeErrorPacket(rs)
-		if err != nil {
-			return err
-		}
-		if rs == mysql.ErrBadConn { // 后端连接如果断开, 应该返回通知Session关闭
-			return rs
+		switch rs.(type) {
+		case *mysql.SessionCloseRespError:
+			cc.c.writeErrorPacket(rs.(*mysql.SessionCloseRespError))
+			return rs.(*mysql.SessionCloseRespError)
+		case *mysql.SessionCloseNoRespError:
+			return rs.(*mysql.SessionCloseNoRespError)
+		case error:
+			return cc.c.writeErrorPacket(rs.(error))
 		}
 		return nil
 	case RespOK:

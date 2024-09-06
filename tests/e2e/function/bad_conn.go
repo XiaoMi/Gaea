@@ -64,7 +64,7 @@ var _ = ginkgo.Describe("mysql bad connection test", func() {
 			}{
 				{
 					TestSQL:   `select sleep(100)`,
-					ExpectErr: "Error 1105: connection was bad",
+					ExpectErr: "invalid connection",
 				},
 			}
 
