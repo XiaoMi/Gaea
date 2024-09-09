@@ -378,7 +378,7 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 	if ns.getSessionSlowSQLTime() > 0 && int64(durationFloat) > ns.getSessionSlowSQLTime() {
 		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v",
 			SQLExecStatusSlow, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
-			se.session.c.GetConnectionID(), se.backendConnectionId, se.isInTransaction(), sql, err)
+			se.session.c.GetConnectionID(), se.backendConnectionId, se.isInTransaction(), sql)
 		fingerprint := getSQLFingerprint(reqCtx, sql)
 		md5 := getSQLFingerprintMd5(reqCtx, sql)
 		ns.SetSlowSQLFingerprint(md5, fingerprint)
@@ -387,10 +387,10 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 }
 
 // RecordBackendSQLMetrics record backend SQL metrics, like response time, error
-func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace string, sliceName, sql, backendAddr string, startTime time.Time, err error) {
-	ns := m.GetNamespace(namespace)
+func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, se *SessionExecutor, sliceName, sql, backendAddr string, startTime time.Time, err error) {
+	ns := m.GetNamespace(se.namespace)
 	if ns == nil {
-		log.Warn("record backend SQL metrics error, namespace: %s, backend addr: %s, sql: %s, err: %s", namespace, backendAddr, sql, "namespace not found")
+		log.Warn("record backend SQL metrics error, namespace: %s, backend addr: %s, sql: %s, err: %s", se.namespace, backendAddr, sql, "namespace not found")
 		return
 	}
 
@@ -404,27 +404,29 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace
 	}
 
 	// record sql timing
-	go m.statistics.recordBackendSQLTiming(namespace, operation, sliceName, backendAddr, startTime)
+	go m.statistics.recordBackendSQLTiming(se.namespace, operation, sliceName, backendAddr, startTime)
 
 	// record backend slow sql
-	duration := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
+	duration := time.Since(startTime).Milliseconds()
 	if m.statistics.isBackendSlowSQL(duration) {
-		m.statistics.generalLogger.Warn("%s - %d - ns=%s, addr: %s|%v",
-			SQLBackendExecStatusSlow, duration, namespace, backendAddr, sql)
+		m.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v",
+			SQLBackendExecStatusSlow, duration, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
+			se.session.c.GetConnectionID(), se.backendConnectionId, se.isInTransaction(), sql)
 		fingerprint := getSQLFingerprint(reqCtx, sql)
 		md5 := getSQLFingerprintMd5(reqCtx, sql)
 		ns.SetBackendSlowSQLFingerprint(md5, fingerprint)
-		m.statistics.recordBackendSlowSQLFingerprint(namespace, md5)
+		m.statistics.recordBackendSlowSQLFingerprint(se.namespace, md5)
 	}
 
 	// record backend error sql
 	if err != nil {
-		m.statistics.generalLogger.Warn("%s - %d - ns=%s,addr: %s|%v, err:%s",
-			SQLBackendExecStatusErr, duration, namespace, backendAddr, sql, err)
+		m.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v, error: %v",
+			SQLBackendExecStatusErr, duration, se.user, se.namespace, se.clientAddr, se.backendAddr, se.db,
+			se.session.c.GetConnectionID(), se.backendConnectionId, se.isInTransaction(), sql, err)
 		fingerprint := getSQLFingerprint(reqCtx, sql)
 		md5 := getSQLFingerprintMd5(reqCtx, sql)
 		ns.SetBackendErrorSQLFingerprint(md5, fingerprint)
-		m.statistics.recordBackendErrorSQLFingerprint(namespace, operation, md5)
+		m.statistics.recordBackendErrorSQLFingerprint(se.namespace, operation, md5)
 	}
 }
 

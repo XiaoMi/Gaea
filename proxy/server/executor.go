@@ -649,7 +649,7 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 			for _, v := range sqls {
 				startTime := time.Now()
 				r, err := pc.Execute(v, se.manager.GetNamespace(se.namespace).GetMaxResultSize())
-				se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, sliceName, v, pc.GetAddr(), startTime, err)
+				se.manager.RecordBackendSQLMetrics(reqCtx, se, sliceName, v, pc.GetAddr(), startTime, err)
 				if err != nil {
 					rs[i] = err
 				} else {
@@ -745,7 +745,7 @@ func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backen
 		startTime := time.Now()
 		rs, err = pc.Execute(sql, se.GetNamespace().GetMaxResultSize())
 
-		se.manager.RecordBackendSQLMetrics(reqCtx, se.namespace, "slice0", sql, pc.GetAddr(), startTime, err)
+		se.manager.RecordBackendSQLMetrics(reqCtx, se, "slice0", sql, pc.GetAddr(), startTime, err)
 		done <- struct{}{}
 	}()
 
