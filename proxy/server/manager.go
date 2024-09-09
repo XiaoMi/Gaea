@@ -18,6 +18,8 @@ import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
+	"github.com/XiaoMi/Gaea/log/zap"
+	"math"
 	"net/http"
 	"os"
 	"runtime"
@@ -26,8 +28,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/XiaoMi/Gaea/log/zap"
 
 	"github.com/XiaoMi/Gaea/backend"
 	"go.uber.org/atomic"
@@ -855,6 +855,15 @@ func initGeneralLogger(cfg *models.Proxy) (log.Logger, error) {
 	c["service"] = cfg.Service
 	c["runtime"] = "false"
 
+	// LogKeepDays 或者 LogKeepCounts 只配置一个且大于默认值，实际日志保留天数为配置的天数
+	if cfg.LogKeepDays > log.DefaultLogKeepDays && cfg.LogKeepCounts == 0 {
+		cfg.LogKeepCounts = cfg.LogKeepDays * 24
+	}
+	if cfg.LogKeepCounts > log.DefaultLogKeepCounts && cfg.LogKeepDays == 0 {
+		cfg.LogKeepDays = int(math.Ceil(float64(cfg.LogKeepCounts) / 24))
+	}
+
+	// 若配置的保留天数小于默认值，实际日志保留天数为配置的天数
 	c["log_keep_days"] = strconv.Itoa(log.DefaultLogKeepDays)
 	if cfg.LogKeepDays != 0 {
 		c["log_keep_days"] = strconv.Itoa(cfg.LogKeepDays)
