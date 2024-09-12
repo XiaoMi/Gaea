@@ -98,6 +98,8 @@ func getTestFunc(info *PlanInfo, test SQLTestcase) func(t *testing.T) {
 			actualSQLs = plan.sqls
 		case *ExplainPlan:
 			actualSQLs = plan.sqls
+		case *SelectLastInsertIDPlan:
+			actualSQLs = make(map[string]map[string][]string)
 		case *UnshardPlan:
 			actualSQLs = make(map[string]map[string][]string)
 			dbSQLs := make(map[string][]string)
