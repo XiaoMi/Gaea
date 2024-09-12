@@ -15,6 +15,8 @@
 package zap
 
 import (
+	"github.com/stretchr/testify/assert"
+	"io"
 	"os"
 	"sync"
 	"testing"
@@ -63,4 +65,63 @@ func BenchmarkAsyncLoggerWriter(b *testing.B) {
 	}
 	g.Wait()
 	l.Sync()
+}
+
+func TestCreateLogManager(t *testing.T) {
+	config := map[string]string{
+		"path":            "/tmp",
+		"filename":        "test",
+		"level":           "debug",
+		"log_keep_days":   "7",
+		"log_keep_counts": "30",
+	}
+
+	loggerManager, err := CreateLogManager(config)
+	assert.NoError(t, err)
+	assert.NotNil(t, loggerManager)
+	assert.NotNil(t, loggerManager.logger)
+	assert.Len(t, loggerManager.writers, 2)
+}
+
+func TestGetZapLevelFromStr(t *testing.T) {
+	assert.Equal(t, zap.DebugLevel, getZapLevelFromStr("debug"))
+	assert.Equal(t, zap.DebugLevel, getZapLevelFromStr("TRACE"))
+	assert.Equal(t, zap.InfoLevel, getZapLevelFromStr("notice"))
+	assert.Equal(t, zap.WarnLevel, getZapLevelFromStr("warn"))
+	assert.Equal(t, zap.FatalLevel, getZapLevelFromStr("fatal"))
+	assert.Equal(t, zapcore.Level(99), getZapLevelFromStr("none"))
+	assert.Equal(t, zap.InfoLevel, getZapLevelFromStr("unknown"))
+}
+
+func TestSetLevel(t *testing.T) {
+	loggerManager := &ZapLoggerManager{}
+	err := loggerManager.SetLevel("test", "debug")
+	assert.NoError(t, err)
+}
+
+func TestLoggerClose(t *testing.T) {
+	loggerManager := &ZapLoggerManager{
+		logger: zap.NewExample(),
+		writers: []io.WriteCloser{
+			&mockWriter{},
+			&mockWriter{},
+		},
+	}
+	loggerManager.Close()
+	assert.Nil(t, loggerManager.logger)
+	for _, writer := range loggerManager.writers {
+		assert.Implements(t, (*io.WriteCloser)(nil), writer)
+	}
+}
+
+type mockWriter struct{}
+
+func (mw *mockWriter) Write(_ []byte) (n int, err error) { return }
+func (mw *mockWriter) Close() error                      { return nil }
+
+func TestMain(m *testing.M) {
+	// 初始化一些全局资源，例如临时目录等
+	code := m.Run()
+	// 清理资源
+	os.Exit(code)
 }

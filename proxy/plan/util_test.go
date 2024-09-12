@@ -29,6 +29,8 @@
 package plan
 
 import (
+	"github.com/stretchr/testify/assert"
+	"reflect"
 	"sort"
 	"testing"
 )
@@ -168,4 +170,76 @@ func TestMakeGtList(t *testing.T) {
 	testCheckList(t, l3, []int{}...)
 	l4 := makeGtList(20150828, l1)
 	testCheckList(t, l4, []int{}...)
+}
+
+func TestMakeBetweenList(t *testing.T) {
+	// 测试正常情况
+	t.Run("Normal Case", func(t *testing.T) {
+		indexs := []int{10, 20, 30, 40, 50}
+		expected := []int{20, 30, 40}
+		result := makeBetweenList(20, 40, indexs)
+		if !reflect.DeepEqual(result, expected) {
+			t.Errorf("Expected %v but got %v", expected, result)
+		}
+	})
+
+	// 测试反转的情况
+	t.Run("Reversed Range", func(t *testing.T) {
+		indexs := []int{10, 20, 30, 40, 50}
+		expected := []int{20, 30, 40}
+		result := makeBetweenList(40, 20, indexs)
+		if !reflect.DeepEqual(result, expected) {
+			t.Errorf("Expected %v but got %v", expected, result)
+		}
+	})
+
+	// 测试没有找到起始或结束索引的情况
+	t.Run("Not Found Start or End Index", func(t *testing.T) {
+		indexs := []int{10, 20, 30, 40, 50}
+		expected := ([]int)(nil)
+		result := makeBetweenList(25, 35, indexs)
+		if !reflect.DeepEqual(result, expected) {
+			t.Errorf("Expected %v but got %v", expected, result)
+		}
+	})
+
+	// 测试空列表的情况
+	t.Run("Empty List", func(t *testing.T) {
+		indexs := []int{}
+		expected := ([]int)(nil)
+		result := makeBetweenList(10, 20, indexs)
+		if !reflect.DeepEqual(result, expected) {
+			t.Errorf("Expected %v but got %v", expected, result)
+		}
+	})
+
+	// 测试包含重复元素的情况
+	t.Run("Duplicate Elements", func(t *testing.T) {
+		indexs := []int{10, 20, 30, 20, 50}
+		expected := []int{20, 30}
+		result := makeBetweenList(20, 30, indexs)
+		if !reflect.DeepEqual(result, expected) {
+			t.Errorf("Expected %v but got %v", expected, result)
+		}
+	})
+}
+
+func TestRemoveDuplicatesString(t *testing.T) {
+	testCases := []struct {
+		arr1     []string
+		arr2     []string
+		expected []string
+	}{
+		{[]string{}, []string{}, []string{}},
+		{[]string{"a"}, []string{"b"}, []string{"a", "b"}},
+		{[]string{"a", "b", "c"}, []string{"d", "e", "f"}, []string{"a", "b", "c", "d", "e", "f"}},
+		{[]string{"a", "a", "b", "c"}, []string{"b", "d", "d", "e"}, []string{"a", "b", "c", "d", "e"}},
+		{[]string{"a", "b", "b", "c", "c", "c"}, []string{"a", "a", "d", "d", "d", "d"}, []string{"a", "b", "c", "d"}},
+		{[]string{"a", "a", "a", "a", "a"}, []string{"b", "b", "b", "b", "b"}, []string{"a", "b"}},
+	}
+
+	for _, tc := range testCases {
+		output := removeDuplicatesString(tc.arr1, tc.arr2)
+		assert.Equal(t, len(output), len(tc.expected))
+	}
 }
