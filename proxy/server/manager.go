@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
-	"github.com/XiaoMi/Gaea/log/zap"
 	"net/http"
 	"os"
 	"runtime"
@@ -27,6 +26,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/XiaoMi/Gaea/log/zap"
 
 	"github.com/XiaoMi/Gaea/backend"
 	"go.uber.org/atomic"
@@ -46,6 +47,7 @@ import (
 const (
 	MasterRole               = "master"
 	SlaveRole                = "slave"
+	StatisticSlaveRole       = "statistic-slave"
 	SQLExecTimeSize          = 5000
 	DefaultDatacenter        = "default"
 	SQLExecStatusOk          = "OK"
@@ -483,21 +485,27 @@ func (m *Manager) recordBackendConnectPoolMetrics(namespace string) {
 
 	for sliceName, slice := range ns.slices {
 		m.statistics.recordInstanceDownCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), getStatusDownCounts(slice.Master.StatusMap, 0), MasterRole)
-		m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].InUse())
-		m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].Available())
-		m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].WaitCount())
+		m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].InUse(), MasterRole)
+		m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].Available(), MasterRole)
+		m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].WaitCount(), MasterRole)
+		m.statistics.recordConnectPoolActiveCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].Active(), MasterRole)
+		m.statistics.recordConnectPoolCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].Capacity(), MasterRole)
 
 		for i, slave := range slice.Slave.ConnPool {
 			m.statistics.recordInstanceDownCount(namespace, sliceName, slave.Addr(), getStatusDownCounts(slice.Slave.StatusMap, i), SlaveRole)
-			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slave.Addr(), slave.InUse())
-			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slave.Addr(), slave.Available())
-			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slave.Addr(), slave.WaitCount())
+			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slave.Addr(), slave.InUse(), SlaveRole)
+			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slave.Addr(), slave.Available(), SlaveRole)
+			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slave.Addr(), slave.WaitCount(), SlaveRole)
+			m.statistics.recordConnectPoolActiveCount(namespace, sliceName, slave.Addr(), slave.Active(), SlaveRole)
+			m.statistics.recordConnectPoolCount(namespace, sliceName, slave.Addr(), slave.Capacity(), SlaveRole)
 		}
 		for i, statisticSlave := range slice.StatisticSlave.ConnPool {
-			m.statistics.recordInstanceDownCount(namespace, sliceName, statisticSlave.Addr(), getStatusDownCounts(slice.StatisticSlave.StatusMap, i), SlaveRole)
-			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.InUse())
-			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.Available())
-			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.WaitCount())
+			m.statistics.recordInstanceDownCount(namespace, sliceName, statisticSlave.Addr(), getStatusDownCounts(slice.StatisticSlave.StatusMap, i), StatisticSlaveRole)
+			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.InUse(), StatisticSlaveRole)
+			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.Available(), StatisticSlaveRole)
+			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.WaitCount(), StatisticSlaveRole)
+			m.statistics.recordConnectPoolActiveCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.Active(), StatisticSlaveRole)
+			m.statistics.recordConnectPoolCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.Capacity(), StatisticSlaveRole)
 		}
 	}
 }
@@ -757,10 +765,12 @@ type StatisticManager struct {
 	backendSQLFingerprintSlowCounts  *stats.CountersWithMultiLabels // 后端慢SQL指纹数量统计
 	backendSQLErrorCounts            *stats.CountersWithMultiLabels // 后端SQL错误数统计
 	backendSQLFingerprintErrorCounts *stats.CountersWithMultiLabels // 后端SQL指纹错误数统计
-	backendConnectPoolIdleCounts     *stats.GaugesWithMultiLabels   //后端空闲连接数统计
-	backendConnectPoolInUseCounts    *stats.GaugesWithMultiLabels   //后端正在使用连接数统计
-	backendConnectPoolWaitCounts     *stats.GaugesWithMultiLabels   //后端等待队列统计
-	backendInstanceDownCounts        *stats.GaugesWithMultiLabels   //后端实例状态统计
+	backendConnectPoolIdleCounts     *stats.GaugesWithMultiLabels   // 后端空闲连接数统计
+	backendConnectPoolInUseCounts    *stats.GaugesWithMultiLabels   // 后端正在使用连接数统计
+	backendConnectPoolActiveCounts   *stats.GaugesWithMultiLabels   // 后端活跃连接数统计
+	backendConnectPoolWaitCounts     *stats.GaugesWithMultiLabels   // 后端等待队列统计
+	backendConnectPoolCapacityCounts *stats.GaugesWithMultiLabels   // 当前连接池大小
+	backendInstanceDownCounts        *stats.GaugesWithMultiLabels   // 后端实例状态统计
 	uptimeCounts                     *stats.GaugesWithMultiLabels   // 启动时间记录
 	backendSQLResponse99MaxCounts    *stats.GaugesWithMultiLabels   // 后端 SQL 耗时 P99 最大响应时间
 	backendSQLResponse99AvgCounts    *stats.GaugesWithMultiLabels   // 后端 SQL 耗时 P99 平均响应时间
@@ -910,11 +920,15 @@ func (s *StatisticManager) Init(cfg *models.Proxy) error {
 	s.backendSQLFingerprintErrorCounts = stats.NewCountersWithMultiLabels("BackendSqlFingerprintErrorCounts",
 		"gaea proxy backend sql fingerprint error counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelFingerprint})
 	s.backendConnectPoolIdleCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolIdleCounts",
-		"gaea proxy backend idle connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
+		"gaea proxy backend idle connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr, statsLabelRole})
 	s.backendConnectPoolInUseCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolInUseCounts",
-		"gaea proxy backend in-use connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
+		"gaea proxy backend in-use connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr, statsLabelRole})
 	s.backendConnectPoolWaitCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolWaitCounts",
-		"gaea proxy backend wait connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
+		"gaea proxy backend wait connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr, statsLabelRole})
+	s.backendConnectPoolActiveCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolActiveCounts",
+		"gaea proxy backend active connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr, statsLabelRole})
+	s.backendConnectPoolCapacityCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolCapacityCounts",
+		"gaea proxy backend capacity connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr, statsLabelRole})
 	s.backendInstanceDownCounts = stats.NewGaugesWithMultiLabels("backendInstanceDownCounts",
 		"gaea proxy backend DB status down counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr, statsLabelRole})
 	s.backendSQLResponse99MaxCounts = stats.NewGaugesWithMultiLabels("backendSQLResponse99MaxCounts",
@@ -1080,21 +1094,33 @@ func (s *StatisticManager) AddWriteFlowCount(namespace string, byteCount int) {
 }
 
 // record idle connect count
-func (s *StatisticManager) recordConnectPoolIdleCount(namespace string, slice string, addr string, count int64) {
-	statsKey := []string{s.clusterName, namespace, slice, addr}
+func (s *StatisticManager) recordConnectPoolIdleCount(namespace string, slice string, addr string, count int64, role string) {
+	statsKey := []string{s.clusterName, namespace, slice, addr, role}
 	s.backendConnectPoolIdleCounts.Set(statsKey, count)
 }
 
 // record in-use connect count
-func (s *StatisticManager) recordConnectPoolInuseCount(namespace string, slice string, addr string, count int64) {
-	statsKey := []string{s.clusterName, namespace, slice, addr}
+func (s *StatisticManager) recordConnectPoolInuseCount(namespace string, slice string, addr string, count int64, role string) {
+	statsKey := []string{s.clusterName, namespace, slice, addr, role}
 	s.backendConnectPoolInUseCounts.Set(statsKey, count)
 }
 
 // record wait queue length
-func (s *StatisticManager) recordConnectPoolWaitCount(namespace string, slice string, addr string, count int64) {
-	statsKey := []string{s.clusterName, namespace, slice, addr}
+func (s *StatisticManager) recordConnectPoolWaitCount(namespace string, slice string, addr string, count int64, role string) {
+	statsKey := []string{s.clusterName, namespace, slice, addr, role}
 	s.backendConnectPoolWaitCounts.Set(statsKey, count)
+}
+
+// recordConnectPoolActive records the count of active connections in a connection pool for a specific server role within a namespace and slice context.
+func (s *StatisticManager) recordConnectPoolActiveCount(namespace string, slice string, addr string, count int64, role string) {
+	statsKey := []string{s.clusterName, namespace, slice, addr, role}
+	s.backendConnectPoolActiveCounts.Set(statsKey, count)
+}
+
+// recordConnectPoolCount records the total capacity of a connection pool for a specific server role within a namespace and slice context.
+func (s *StatisticManager) recordConnectPoolCount(namespace string, slice string, addr string, count int64, role string) {
+	statsKey := []string{s.clusterName, namespace, slice, addr, role}
+	s.backendConnectPoolCapacityCounts.Set(statsKey, count)
 }
 
 // record wait queue length
