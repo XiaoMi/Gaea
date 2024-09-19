@@ -18,6 +18,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -117,7 +118,8 @@ func (c *Client) ListWithValues(path string) (map[string]string, error) {
 		return r, err
 	}
 	for _, file := range files {
-		data, err := ioutil.ReadFile(file.Name())
+		// concatenate the path and file name to ensure that the full path is used to read the file
+		data, err := ioutil.ReadFile(filepath.Join(path, file.Name()))
 		if err != nil {
 			return r, err
 		}
