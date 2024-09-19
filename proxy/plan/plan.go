@@ -175,7 +175,7 @@ type TableAliasStmtInfo struct {
 // BuildPlan build plan for ast
 func BuildPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string, router *router.Router, seq *sequence.SequenceManager, hintPlan Plan) (Plan, error) {
 	if IsSelectLastInsertIDStmt(stmt) {
-		return CreateSelectLastInsertIDPlan(), nil
+		return CreateSelectLastInsertIDPlan(stmt.(*ast.SelectStmt)), nil
 	}
 
 	if IsSetStmt(stmt) {

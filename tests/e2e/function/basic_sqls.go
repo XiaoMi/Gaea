@@ -134,9 +134,10 @@ var _ = ginkgo.Describe("simple sql test", func() {
 			util.ExpectNoError(err)
 
 			sqlCases := []struct {
-				GaeaSQL   string
-				CheckSQL  string
-				ExpectRes [][]string
+				GaeaSQL          string
+				CheckSQL         string
+				ExpectRes        [][]string
+				ExceptColumnName []string
 			}{
 				{
 					GaeaSQL:  fmt.Sprintf("INSERT INTO %s.%s (id, name) VALUES (10001, 'Alex')", db, table),
@@ -144,6 +145,7 @@ var _ = ginkgo.Describe("simple sql test", func() {
 					ExpectRes: [][]string{
 						{"10001"},
 					},
+					ExceptColumnName: []string{"last_insert_id()"},
 				},
 				{
 					GaeaSQL:  fmt.Sprintf("INSERT INTO %s.%s (id, name) VALUES (10002, 'Alex')", db, table),
@@ -151,6 +153,7 @@ var _ = ginkgo.Describe("simple sql test", func() {
 					ExpectRes: [][]string{
 						{"10002"},
 					},
+					ExceptColumnName: []string{"last_insert_id()"},
 				},
 				{
 					GaeaSQL:  fmt.Sprintf("INSERT INTO %s.%s (id, name) VALUES (10003, 'Alex')", db, table),
@@ -158,13 +161,30 @@ var _ = ginkgo.Describe("simple sql test", func() {
 					ExpectRes: [][]string{
 						{"10003"},
 					},
+					ExceptColumnName: []string{"last_insert_id()"},
+				},
+				{
+					GaeaSQL:  fmt.Sprintf("INSERT INTO %s.%s (id, name) VALUES (10004, 'Alex')", db, table),
+					CheckSQL: "select last_insert_id() as id",
+					ExpectRes: [][]string{
+						{"10004"},
+					},
+					ExceptColumnName: []string{"id"},
+				},
+				{
+					GaeaSQL:  fmt.Sprintf("INSERT INTO %s.%s (id, name) VALUES (10005, 'Alex')", db, table),
+					CheckSQL: "SELECT LAST_INSERT_ID () as id",
+					ExpectRes: [][]string{
+						{"10005"},
+					},
+					ExceptColumnName: []string{"id"},
 				},
 			}
 
 			for _, sqlCase := range sqlCases {
 				_, err := gaeaConn.Exec(sqlCase.GaeaSQL)
 				util.ExpectNoError(err)
-				err = checkFunc(gaeaConn, sqlCase.CheckSQL, sqlCase.ExpectRes)
+				err = checkFuncWithColumn(gaeaConn, sqlCase.CheckSQL, sqlCase.ExpectRes, sqlCase.ExceptColumnName)
 				util.ExpectNoError(err)
 			}
 		})
@@ -194,6 +214,41 @@ func checkFunc(db *sql.DB, sqlStr string, values [][]string) error {
 	}
 	if !reflect.DeepEqual(values, res) {
 		return fmt.Errorf("mismatch. Actual: %v, Expect: %v", res, values)
+	}
+	return nil
+}
+
+func checkFuncWithColumn(db *sql.DB, sqlStr string, values [][]string, exceptColumnNames []string) error {
+	rows, err := db.Query(sqlStr)
+	if err != nil {
+		if err == sql.ErrNoRows && len(values) == 0 {
+			return nil
+		}
+		return fmt.Errorf("db Exec Error %v", err)
+	}
+	defer rows.Close()
+	columns, res, err := util.GetColumnAbdDataFromRows(rows)
+	if err != nil {
+		return fmt.Errorf("get data from rows error:%v", err)
+	}
+	// res为空代表没有查到数据
+	if (len(res) == 0 || res == nil) && len(values) == 0 {
+		return nil
+	}
+	if !reflect.DeepEqual(values, res) {
+		return fmt.Errorf("mismatch. Actual: %v, Expect: %v", res, values)
+	}
+	if len(columns) == 0 {
+		return fmt.Errorf("empty column")
+	}
+	if len(columns) != len(exceptColumnNames) {
+		return fmt.Errorf("err columns Actual: %v, Expect: %v", columns, exceptColumnNames)
+	}
+	for i := 0; i < len(columns); i++ {
+		fetchField := columns[i]
+		if fetchField != exceptColumnNames[i] {
+			return fmt.Errorf("err columns Actual: %s, Expect: %s", fetchField, exceptColumnNames[i])
+		}
 	}
 	return nil
 }
