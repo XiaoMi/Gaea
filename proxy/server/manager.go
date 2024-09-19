@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
-	"github.com/XiaoMi/Gaea/log/zap"
 	"math"
 	"net/http"
 	"os"
@@ -28,6 +27,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/XiaoMi/Gaea/log/zap"
 
 	"github.com/XiaoMi/Gaea/backend"
 	"go.uber.org/atomic"
@@ -84,6 +85,9 @@ func loadAllNamespace(cfg *models.Proxy) (map[string]*models.Namespace, error) {
 	}
 
 	client := models.NewClient(cfg.ConfigType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, root)
+	if client == nil {
+		return map[string]*models.Namespace{}, fmt.Errorf("client is nil")
+	}
 	store := models.NewStore(client)
 	defer store.Close()
 	var err error

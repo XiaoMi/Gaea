@@ -47,7 +47,7 @@ var _ = ginkgo.Describe("test backend auth plugin", func() {
 		err = util.SetupDatabaseAndInsertData(masterAdminConn, db, table)
 		util.ExpectNoError(err, "setup database and insert data")
 		// namespace prepare
-		err = e2eMgr.DeleteNamespace(initNs)
+		err = e2eMgr.DeleteNamespace(initNs.Name)
 		util.ExpectNoError(err, "delete namespace")
 		initNs.Name = "test_auth_plugin"
 		for i := 0; i < len(initNs.Users); i++ {

@@ -213,7 +213,7 @@ func (s *Server) modifyNamespace(c *gin.Context) {
 	if err != nil {
 		log.Warn("modifyNamespace failed, err: %v", err)
 		h.RetMessage = err.Error()
-		c.JSON(http.StatusOK, h)
+		c.JSON(http.StatusBadRequest, h)
 		return
 	}
 

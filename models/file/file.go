@@ -110,6 +110,22 @@ func (c *Client) List(path string) ([]string, error) {
 	return r, nil
 }
 
+func (c *Client) ListWithValues(path string) (map[string]string, error) {
+	files, err := ioutil.ReadDir(path)
+	r := make(map[string]string, len(files))
+	if err != nil {
+		return r, err
+	}
+	for _, file := range files {
+		data, err := ioutil.ReadFile(file.Name())
+		if err != nil {
+			return r, err
+		}
+		r[file.Name()] = string(data)
+	}
+	return r, nil
+}
+
 // BasePrefix return base prefix
 func (c *Client) BasePrefix() string {
 	return c.Prefix
