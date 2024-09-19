@@ -15,11 +15,12 @@
 package config
 
 import (
-	"bytes"
 	"database/sql"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+
 	"net/http"
 	"os"
 	"path/filepath"
@@ -27,9 +28,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/XiaoMi/Gaea/tests/e2e/util"
-
+	"github.com/XiaoMi/Gaea/cc"
 	"github.com/XiaoMi/Gaea/models"
+	"github.com/XiaoMi/Gaea/tests/e2e/util"
+	"github.com/XiaoMi/Gaea/util/requests"
 )
 
 const (
@@ -333,18 +335,20 @@ func (e *E2eManager) ModifyNamespace(m *models.Namespace) error {
 	return e.NsManager.modifyNamespace(m)
 }
 
-func (e *E2eManager) DeleteNamespace(m *models.Namespace) error {
-	return e.NsManager.DeleteNamespace(m)
+func (e *E2eManager) DeleteNamespace(name string) error {
+	return e.NsManager.DeleteNamespace(name)
+}
+
+func (e *E2eManager) ListNamespace() ([]string, error) {
+	return e.NsManager.ListNamespaces()
 }
 
 type NamespaceRegisterManager struct {
-	Namespaces    map[string]*models.Namespace
 	GaeaCCManager *GaeaCCManager
 }
 
 func NewNamespaceRegisterManger() *NamespaceRegisterManager {
 	return &NamespaceRegisterManager{
-		Namespaces: map[string]*models.Namespace{},
 		GaeaCCManager: &GaeaCCManager{
 			GaeaCCAdminUser:     gaeaCCAdminUsername,
 			GaeaCCAdminPassword: gaeaCCAdminPassword,
@@ -359,7 +363,6 @@ func (nr *NamespaceRegisterManager) modifyNamespace(m *models.Namespace) error {
 	if err != nil {
 		return err
 	}
-	nr.Namespaces[m.Name] = m
 	err = nr.GaeaCCManager.modifyNamespace(m)
 	if err != nil {
 		return fmt.Errorf("modify Namespace error:%v", err)
@@ -367,29 +370,12 @@ func (nr *NamespaceRegisterManager) modifyNamespace(m *models.Namespace) error {
 	return nil
 }
 
-func (nr *NamespaceRegisterManager) DeleteNamespace(m *models.Namespace) error {
-	return nr.GaeaCCManager.deleteNamespace(m.Name)
+func (nr *NamespaceRegisterManager) DeleteNamespace(name string) error {
+	return nr.GaeaCCManager.deleteNamespace(name)
 }
 
-func (nr *NamespaceRegisterManager) unRegisterNamespaceByKey(key string) error {
-	// 在 ETCD 中删除 key
-	err := nr.GaeaCCManager.deleteNamespace(key)
-	delete(nr.Namespaces, key)
-	if err != nil {
-		return fmt.Errorf("error deleting from ETCD: %v", err)
-	}
-	return nil
-}
-
-// Unregister namespaces by gaeacc
-func (nr *NamespaceRegisterManager) unRegisterNamespaces() error {
-	for _, namespace := range nr.Namespaces {
-		err := nr.unRegisterNamespaceByKey(namespace.Name)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
+func (nr *NamespaceRegisterManager) ListNamespaces() ([]string, error) {
+	return nr.GaeaCCManager.listNamespaces()
 }
 
 type GaeaCCManager struct {
@@ -399,53 +385,49 @@ type GaeaCCManager struct {
 }
 
 func (g *GaeaCCManager) modifyNamespace(n *models.Namespace) error {
-	// 将命名空间对象转换为 JSON
+	// Serialize the namespace object into JSON
 	data, err := json.Marshal(n)
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest("PUT", g.GaeaCCBaseRouter+"modify", bytes.NewBuffer(data))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
+	req := requests.NewRequest(g.GaeaCCBaseRouter+"modify", requests.Put, map[string]string{"Content-Type": "application/json"}, nil, data)
 	req.SetBasicAuth(g.GaeaCCAdminUser, g.GaeaCCAdminPassword)
-	client := &http.Client{
-		Timeout: time.Second * 10,
-	}
-	resp, err := client.Do(req)
+	// Send the request
+	resp, err := requests.Send(req)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	// Check response status code
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return errors.New(string(resp.Body))
 	}
 	return nil
 }
 
+// deleteNamespace delete Namespace by name
 func (g *GaeaCCManager) deleteNamespace(key string) error {
-	router := g.GaeaCCBaseRouter + "delete/" + key
-	req, err := http.NewRequest("PUT", router, nil)
-	if err != nil {
-		return fmt.Errorf("create http request %s error: %w", router, err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth(g.GaeaCCAdminUser, g.GaeaCCAdminPassword)
-	client := &http.Client{
-		Timeout: time.Second * 5,
-	}
+	// Build the full URL for the DELETE request
+	url := g.GaeaCCBaseRouter + "delete/" + key
+	// Send the request
+	return requests.SendPut(url, g.GaeaCCAdminUser, g.GaeaCCAdminPassword)
+}
 
-	resp, err := client.Do(req)
+// listNamespace queries the GaeaCC for a list of namespaces.
+func (g *GaeaCCManager) listNamespaces() ([]string, error) {
+	// Build the full URL for the DELETE request
+	url := g.GaeaCCBaseRouter + "list"
+	// Send the request
+	resp, err := requests.SendGet(url, g.GaeaCCAdminUser, g.GaeaCCAdminPassword)
 	if err != nil {
-		return fmt.Errorf("create http request %s error: %w", router, err)
+		return []string{}, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	var listResp cc.ListNamespaceResp
+	err = json.Unmarshal(resp.Body, &listResp)
+	if err != nil {
+		return nil, fmt.Errorf("error decoding response: %v", err)
 	}
-	return nil
+	// Check if the list namespaces was successful
+	return listResp.Data, nil
 }
 
 // SearchSqlLog function in the provided code is designed to search through SQL log files for specific entries.

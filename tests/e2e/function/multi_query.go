@@ -61,7 +61,7 @@ var _ = ginkgo.Describe("test unshard multi query", func() {
 
 		// namespace prepare
 		initNs.SupportMultiQuery = true
-		err = e2eMgr.DeleteNamespace(initNs)
+		err = e2eMgr.DeleteNamespace(initNs.Name)
 		util.ExpectNoError(err)
 		initNs.Name = "test_unshard_multi_query"
 		for i := 0; i < len(initNs.Users); i++ {

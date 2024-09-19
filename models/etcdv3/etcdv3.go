@@ -20,11 +20,12 @@ package etcdclientv3
 import (
 	"context"
 	"errors"
-	"github.com/XiaoMi/Gaea/log"
-	"github.com/coreos/etcd/clientv3"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/XiaoMi/Gaea/log"
+	"github.com/coreos/etcd/clientv3"
 )
 
 // ErrClosedEtcdClient means etcd client closed
@@ -282,7 +283,7 @@ func (c *EtcdClientV3) Read(path string) ([]byte, error) {
 			return r.Kvs[0].Value, nil
 		}
 	}
-	return []byte{}, nil
+	return nil, nil
 }
 
 // List list path, return slice of all paths
@@ -306,6 +307,29 @@ func (c *EtcdClientV3) List(path string) ([]string, error) {
 			files = append(files, string(node.Key))
 		}
 		return files, nil
+	}
+}
+
+func (c *EtcdClientV3) ListWithValues(path string) (map[string]string, error) {
+	if c.closed {
+		return nil, ErrClosedEtcdClient
+	}
+
+	ctx, canceller := c.contextWithTimeout()
+	defer canceller()
+
+	_ = log.Debug("etcd list node %s", path)
+	r, err := c.kapi.Get(ctx, path, clientv3.WithPrefix())
+	if err != nil {
+		return nil, err
+	} else if r == nil {
+		return nil, nil
+	} else {
+		results := make(map[string]string)
+		for _, kv := range r.Kvs {
+			results[string(kv.Key)] = string(kv.Value)
+		}
+		return results, nil
 	}
 }
 

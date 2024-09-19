@@ -168,9 +168,17 @@ func init() {
 	fmt.Printf("basePath: %s\n", basePath)
 }
 
-func (e *E2eManager) Clean() {
+func (e *E2eManager) Clean() error {
 	// 删除所有的namespace
-	_ = e.NsManager.unRegisterNamespaces()
+	namespaces, err := e.ListNamespace()
+	if err != nil {
+		return err
+	}
+	for _, name := range namespaces {
+		if err = e.DeleteNamespace(name); err != nil {
+			return err
+		}
+	}
 	if e.GCluster != nil {
 		if e.GCluster.readWriteConn != nil {
 			_ = e.GCluster.readWriteConn.Close()
@@ -190,6 +198,7 @@ func (e *E2eManager) Clean() {
 	}
 	// Clear the list to avoid repeated closings
 	e.openConnections = []*sql.DB{}
+	return nil
 }
 
 func GetJSONFilesFromDir(dir string) ([]string, error) {

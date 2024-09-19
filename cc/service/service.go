@@ -21,6 +21,7 @@ import (
 	"github.com/XiaoMi/Gaea/cc/proxy"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/models"
+	etcdclient "github.com/XiaoMi/Gaea/models/etcd"
 )
 
 const (
@@ -80,7 +81,14 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig, cluster 
 	storeConn := models.NewStore(client)
 	defer storeConn.Close()
 
-	existNamespace, _ := storeConn.LoadNamespace(cfg.EncryptKey, namespace.Name)
+	if err = checkForDuplicateUsernameAndPassword(cfg.EncryptKey, storeConn, *namespace); err != nil {
+		return fmt.Errorf("duplicate username and password in another namespace: %v", err)
+	}
+
+	existNamespace, err := storeConn.LoadNamespace(cfg.EncryptKey, namespace.Name)
+	if err != nil && !etcdclient.IsErrNoNode(err) {
+		return err
+	}
 
 	if err := storeConn.UpdateNamespace(namespace); err != nil {
 		log.Warn("update namespace failed, %s", string(namespace.Encode()))
@@ -118,7 +126,7 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig, cluster 
 	// check prepare res and rollback
 	for err := range prepareErrs {
 		if err != nil {
-			if err2 := rollbackNamespace(existNamespace, cfg, storeConn); err2 != nil {
+			if err2 := rollbackNamespace(existNamespace, namespace, cfg, storeConn); err2 != nil {
 				return fmt.Errorf("prepareConfig error:%s, rollback error:%s", err, err2)
 			}
 			return fmt.Errorf("prepareConfig error:%s, rollback success", err)
@@ -146,7 +154,7 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig, cluster 
 	// check commit res and rollback
 	for err := range commitErrs {
 		if err != nil {
-			if err2 := rollbackNamespace(existNamespace, cfg, storeConn); err2 != nil {
+			if err2 := rollbackNamespace(existNamespace, namespace, cfg, storeConn); err2 != nil {
 				return fmt.Errorf("commitConfig error:%s, rollback error:%s", err, err2)
 			}
 			return fmt.Errorf("commitConfig error:%s, rollback success", err)
@@ -184,7 +192,16 @@ func DelNamespace(name string, cfg *models.CCConfig, cluster string) error {
 	return nil
 }
 
-func rollbackNamespace(existNamespace *models.Namespace, cfg *models.CCConfig, storeConn *models.Store) (err error) {
+func rollbackNamespace(existNamespace *models.Namespace, newNamespace *models.Namespace, cfg *models.CCConfig, storeConn *models.Store) (err error) {
+	if existNamespace == nil {
+		if err := storeConn.DelNamespace(newNamespace.Name); err != nil {
+			log.Notice("rollback delete new namespace: %s failed, err: %s", newNamespace.Name, err)
+			return fmt.Errorf("rollback delete new namespace: %s failed, err: %s", newNamespace.Name, err)
+		}
+		log.Warn("rollback delete new namespace: %s success", newNamespace.Name)
+		return nil
+	}
+
 	if err = existNamespace.Verify(); err != nil {
 		return fmt.Errorf("verify existNamespace error: %v", err)
 	}
@@ -287,4 +304,38 @@ func ProxyConfigFingerprint(cfg *models.CCConfig, cluster string) (r map[string]
 		}
 	}
 	return
+}
+
+// checkForDuplicateUsernameAndPassword checks if the given newNamespace has any user
+// whose username and password combination already exists in any of the namespaces
+// stored in the provided storeConn. This function is used to prevent duplicate usernames
+// and passwords across different namespaces.
+// The function iterates over all namespaces retrieved from the store. If a namespace's data
+// is not already encrypted, it encrypts it using the provided encryptKey. It then adds each
+// username and password combination from all namespaces to a map to check for duplicates.
+func checkForDuplicateUsernameAndPassword(encryptKey string, storeConn *models.Store, newNamespace models.Namespace) error {
+	allNamespaces, err := storeConn.ListNamespaces()
+	if err != nil {
+		return fmt.Errorf("list Namespaces Error:%v", err)
+	}
+	existingUsers := make(map[string]string)
+	for _, ns := range allNamespaces {
+		if !ns.IsEncrypt {
+			if err := ns.Encrypt(encryptKey); err != nil {
+				return fmt.Errorf("encrypt Namespace Error:%v", err)
+			}
+		}
+		for _, user := range ns.Users {
+			key := user.UserName + "|" + user.Password
+			existingUsers[key] = ns.Name
+		}
+	}
+
+	for _, user := range newNamespace.Users {
+		key := user.UserName + "|" + user.Password
+		if nsName, exists := existingUsers[key]; exists && nsName != newNamespace.Name {
+			return fmt.Errorf("a user with the same username and password already exists in namespace '%s'", nsName)
+		}
+	}
+	return nil
 }

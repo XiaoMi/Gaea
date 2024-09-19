@@ -44,7 +44,7 @@ var _ = ginkgo.Describe("Test client connection limit", func() {
 		initNs, err := config.ParseNamespaceTmpl(config.DefaultNamespaceTmpl, slice)
 		util.ExpectNoError(err, "parse namespace template")
 		initNs.MaxClientConnections = maxConnections
-		e2eMgr.DeleteNamespace(initNs)
+		e2eMgr.DeleteNamespace(initNs.Name)
 		initNs.Name = "test_client_limit"
 		for i := 0; i < len(initNs.Users); i++ {
 			initNs.Users[i].Namespace = initNs.Name
