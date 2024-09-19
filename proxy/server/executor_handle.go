@@ -310,8 +310,10 @@ func (se *SessionExecutor) preBuildUnshardPlan(reqCtx *util.RequestContext, db s
 	}
 
 	// select last_insert_id() not in UnshardPlan 使用长度判断，进一步降低命中的概率
-	if len(tokens[1]) > 13 && len(tokens[1]) < 17 {
-		if compressSQL := strings.Join(tokens, ""); util.UpperEqual(compressSQL, lastInsetIdMark) {
+	if len(tokens) > 1 && len(tokens[1]) > 13 && len(tokens[1]) < 17 {
+		// select last_insert_id(); select last_insert_id (); select last_insert_id ( );select last_insert_id( );
+		// select last_insert_id() as last_id; select last_insert_id ()  as last_id; select last_insert_id ( )  as last_id; select last_insert_id( )  as last_id;
+		if compressSQL := strings.Join(tokens, ""); util.HasUpperPrefix(compressSQL, lastInsetIdMark) {
 			return nil, false
 		}
 	}

@@ -80,6 +80,62 @@ func GetDataFromRows(rows *sql.Rows) ([][]string, error) {
 	return converts, nil
 }
 
+// This function does not call rows.Close()
+// so the release of resources should be managed by external code that calls this function.
+// When using this function, be sure to call rows.Close() externally to avoid leaking database resources.
+func GetColumnAbdDataFromRows(rows *sql.Rows) ([]string, [][]string, error) {
+	pr := func(t interface{}) (r string) {
+		r = "\\N"
+		switch v := t.(type) {
+		case *sql.NullBool:
+			if v.Valid {
+				r = strconv.FormatBool(v.Bool)
+			}
+		case *sql.NullString:
+			if v.Valid {
+				r = v.String
+			}
+		case *sql.NullInt64:
+			if v.Valid {
+				r = fmt.Sprintf("%v", v.Int64)
+			}
+		case *sql.NullFloat64:
+			if v.Valid {
+				r = fmt.Sprintf("%v", v.Float64)
+			}
+		case *time.Time:
+			if v.Year() > 1900 {
+				r = v.Format("2006-01-02 15:04:05")
+			}
+		default:
+			r = fmt.Sprintf("%#v", t)
+		}
+		return
+	}
+	c, _ := rows.Columns()
+	n := len(c)
+	field := make([]interface{}, 0, n)
+	for i := 0; i < n; i++ {
+		field = append(field, new(sql.NullString))
+	}
+	var converts [][]string
+	for rows.Next() {
+		if err := rows.Scan(field...); err != nil {
+			return nil, nil, err
+		}
+		row := make([]string, 0, n)
+		for i := 0; i < n; i++ {
+			col := pr(field[i])
+			if col == "\\N" {
+				col = "NULL" // 或者期望的其他值
+			}
+			row = append(row, col)
+		}
+		converts = append(converts, row)
+	}
+	return c, converts, nil
+}
+
 // GetDataFromRow retrieves data from a single SQL row and returns it as a slice of strings.
 // It handles various SQL data types and converts them into a readable string format.
 // If the row contains SQL null values, they are converted to a readable format.

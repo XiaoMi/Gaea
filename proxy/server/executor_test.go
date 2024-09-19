@@ -1059,6 +1059,98 @@ func TestUnshardPlan(t *testing.T) {
 				expectSql:         "/*!40101 SET @@SQL_MODE := @OLD_SQL_MODE, @@SQL_QUOTE_SHOW_CREATE := @OLD_QUOTE */;",
 				expectPlan:        &plan.IgnorePlan{},
 			},
+			{
+				name: "test select last_insert_id()",
+				sql:  "select last_insert_id()",
+				mnFunc: func(nsConfig *models.Namespace) {
+					nsConfig.AllowedDBS = map[string]bool{"db_unshard": true}
+					nsConfig.DefaultPhyDBS = map[string]string{"db_unshard": "db_unshard"}
+					nsConfig.ShardRules = nil
+				},
+				expectUnshardPlan: true,
+				expectDB:          defaltDb,
+				expectSql:         "select last_insert_id()",
+				expectPlan:        &plan.SelectLastInsertIDPlan{},
+			},
+			{
+				name: "test select last_insert_id( )",
+				sql:  "select last_insert_id( )",
+				mnFunc: func(nsConfig *models.Namespace) {
+					nsConfig.AllowedDBS = map[string]bool{"db_unshard": true}
+					nsConfig.DefaultPhyDBS = map[string]string{"db_unshard": "db_unshard"}
+					nsConfig.ShardRules = nil
+				},
+				expectUnshardPlan: true,
+				expectDB:          defaltDb,
+				expectSql:         "select last_insert_id( )",
+				expectPlan:        &plan.SelectLastInsertIDPlan{},
+			},
+			{
+				name: "test select last_insert_id ()",
+				sql:  "select last_insert_id ()",
+				mnFunc: func(nsConfig *models.Namespace) {
+					nsConfig.AllowedDBS = map[string]bool{"db_unshard": true}
+					nsConfig.DefaultPhyDBS = map[string]string{"db_unshard": "db_unshard"}
+					nsConfig.ShardRules = nil
+				},
+				expectUnshardPlan: true,
+				expectDB:          defaltDb,
+				expectSql:         "select last_insert_id ()",
+				expectPlan:        &plan.SelectLastInsertIDPlan{},
+			},
+			{
+				name: "test select last_insert_id() as id",
+				sql:  "select last_insert_id() as id",
+				mnFunc: func(nsConfig *models.Namespace) {
+					nsConfig.AllowedDBS = map[string]bool{"db_unshard": true}
+					nsConfig.DefaultPhyDBS = map[string]string{"db_unshard": "db_unshard"}
+					nsConfig.ShardRules = nil
+				},
+				expectUnshardPlan: true,
+				expectDB:          defaltDb,
+				expectSql:         "select last_insert_id()  as id",
+				expectPlan:        &plan.SelectLastInsertIDPlan{},
+			},
+			{
+				name: "test select last_insert_id( ) as id",
+				sql:  "select last_insert_id( ) as id",
+				mnFunc: func(nsConfig *models.Namespace) {
+					nsConfig.AllowedDBS = map[string]bool{"db_unshard": true}
+					nsConfig.DefaultPhyDBS = map[string]string{"db_unshard": "db_unshard"}
+					nsConfig.ShardRules = nil
+				},
+				expectUnshardPlan: true,
+				expectDB:          defaltDb,
+				expectSql:         "select last_insert_id( ) as id",
+				expectPlan:        &plan.SelectLastInsertIDPlan{},
+			},
+			{
+				name: "test select last_insert_id () as id",
+				sql:  "select last_insert_id () as id",
+				mnFunc: func(nsConfig *models.Namespace) {
+					nsConfig.AllowedDBS = map[string]bool{"db_unshard": true}
+					nsConfig.DefaultPhyDBS = map[string]string{"db_unshard": "db_unshard"}
+					nsConfig.ShardRules = nil
+				},
+				expectUnshardPlan: true,
+				expectDB:          defaltDb,
+				expectSql:         "select last_insert_id () as id",
+				expectPlan:        &plan.SelectLastInsertIDPlan{},
+			},
+			// 带参数的 laster insert id 直接转发 mysql
+			{
+				name: "test select last_insert_id(1)",
+				sql:  "select last_insert_id(1)",
+				mnFunc: func(nsConfig *models.Namespace) {
+					nsConfig.AllowedDBS = map[string]bool{"db_unshard": true}
+					nsConfig.DefaultPhyDBS = map[string]string{"db_unshard": "db_unshard"}
+					nsConfig.ShardRules = nil
+				},
+				expectUnshardPlan: true,
+				expectDB:          defaltDb,
+				expectSql:         "select last_insert_id(1)",
+				expectPlan:        &plan.UnshardPlan{},
+			},
 		}
 	)
 	for _, tt := range testCases {

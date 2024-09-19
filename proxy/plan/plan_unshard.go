@@ -43,6 +43,7 @@ type UnshardPlan struct {
 // to a non-“magic” value (that is, a value that is not NULL and not 0).
 type SelectLastInsertIDPlan struct {
 	basePlan
+	asName string
 }
 
 type SetPlan struct {
@@ -138,8 +139,12 @@ func generateUnshardingSQL(stmt ast.StmtNode) (string, error) {
 }
 
 // CreateSelectLastInsertIDPlan constructor of SelectLastInsertIDPlan
-func CreateSelectLastInsertIDPlan() *SelectLastInsertIDPlan {
-	return &SelectLastInsertIDPlan{}
+func CreateSelectLastInsertIDPlan(stmt *ast.SelectStmt) *SelectLastInsertIDPlan {
+	asName := ""
+	if len(stmt.Fields.Fields) > 0 && stmt.Fields.Fields[0].AsName.String() != "" {
+		asName = stmt.Fields.Fields[0].AsName.String()
+	}
+	return &SelectLastInsertIDPlan{asName: asName}
 }
 
 // CreateSetPlan constructor of SetPlan
@@ -170,7 +175,7 @@ func (p *UnshardPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysq
 
 // ExecuteIn implement Plan
 func (p *SelectLastInsertIDPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysql.Result, error) {
-	r := createLastInsertIDResult(se.GetLastInsertID())
+	r := createLastInsertIDResult(se.GetLastInsertID(), p.asName)
 	return r, nil
 }
 
@@ -188,8 +193,11 @@ func (p *IgnorePlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysql
 	return mysql.ResultPool.GetWithoutResultSet(), nil
 }
 
-func createLastInsertIDResult(lastInsertID uint64) *mysql.Result {
+func createLastInsertIDResult(lastInsertID uint64, asName string) *mysql.Result {
 	name := "last_insert_id()"
+	if asName != "" {
+		name = asName
+	}
 	var column = 1
 	var rows [][]uint64
 	var names = []string{
