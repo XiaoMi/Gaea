@@ -15,9 +15,10 @@ package util
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"net"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseIP(t *testing.T) {
@@ -140,9 +141,10 @@ func TestGetInstanceDatacenter(t *testing.T) {
 		},
 	}
 
-	for _, tt := range testCases {
+	for k, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			dc, err := GetInstanceDatacenter(tt.addr)
+			t.Logf("Testing Case:%d addr: %s, dc: %v, err: %v", k, tt.addr, dc, err)
 			if tt.hasErr {
 				assert.NotNil(t, err)
 				return
@@ -198,9 +200,10 @@ func TestGetHostDatacenter(t *testing.T) {
 		},
 	}
 
-	for _, tt := range testCases {
+	for k, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			dc, err := GetHostDatacenter(tt.host)
+			t.Logf("Testing Case:%d addr: %s, dc: %v, err: %v", k, tt.host, dc, err)
 			if tt.hasErr {
 				assert.NotNil(t, err)
 				return
