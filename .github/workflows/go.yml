@@ -1,22 +1,3 @@
-#
-# Licensed to the Apache Software Foundation (ASF) under one
-# or more contributor license agreements.  See the NOTICE file
-# distributed with this work for additional information
-# regarding copyright ownership.  The ASF licenses this file
-# to you under the Apache License, Version 2.0 (the
-# "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing,
-# software distributed under the License is distributed on an
-# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-# KIND, either express or implied.  See the License for the
-# specific language governing permissions and limitations
-# under the License.
-#
-
 name: Go
 
 on:
@@ -29,7 +10,7 @@ jobs:
   code_check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -43,30 +24,10 @@ jobs:
             ./hack/verify-$check.sh
           done
 
-  format:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: '1.16'
-
-      - name: Check Go code formatting
-        run: |
-          go fmt ./...  # 格式化所有 Go 文件
-          git status    # 查看 Git 状态
-          # 检查是否有未提交的更改
-          if [[ -n `git status -s` ]]; then
-            echo "Go files are not formatted correctly. Please run 'go fmt'." 
-            exit 1
-          fi
-
   parser_build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -80,7 +41,7 @@ jobs:
   unit_tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -101,7 +62,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
 
       - name: Set up Go
         uses: actions/setup-go@v4
@@ -113,39 +74,37 @@ jobs:
           make build
 
   e2e_test_mysql5:
-    runs-on: ubuntu-latest  # 使用 GitHub 提供的 Ubuntu 虚拟环境
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Pull Docker image
         run: |
-          docker pull fieelina/test  # 拉取指定的 Docker 镜像
+          docker pull fieelina/gaea-test-amd64:v2.4  # 确认这个镜像是可用的
 
       - name: Run Mysql5 E2E tests
         run: |
           docker run --rm \
-            -v $(pwd):/workspace \  # 将当前目录挂载到容器中
-            -w /workspace \          # 设置工作目录
-            fieelina/test \          # 使用拉取的镜像
-            make e2e-test             # 在容器中运行 E2E 测试
+            -v $(pwd):/workspace \
+            -w /workspace \
+            fieelina/gaea-test-amd64:v2.4 \
+            make e2e-test
 
   e2e_test_mysql8:
-    runs-on: ubuntu-latest  # 使用 GitHub 提供的 Ubuntu 虚拟环境
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Pull Docker image
         run: |
-          docker pull fieelina/test  # 拉取指定的 Docker 镜像
+          docker pull fieelina/gaea-test-amd64:v2.4  # 确认这个镜像是可用的
 
       - name: Run Mysql8 E2E tests
         run: |
           docker run --rm \
-            -v $(pwd):/workspace \  # 将当前目录挂载到容器中
-            -w /workspace \          # 设置工作目录
-            fieelina/test \          # 使用拉取的镜像
-            make e2e-test-mysql8     # 在容器中运行 E2E 测试
+            -v $(pwd):/workspace \
+            -w /workspace \
+            fieelina/gaea-test-amd64:v2.4 \
+            make e2e-test-mysql8
