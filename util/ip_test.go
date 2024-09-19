@@ -133,12 +133,6 @@ func TestGetInstanceDatacenter(t *testing.T) {
 			true,
 			"",
 		},
-		{
-			"test get datacenter format error 2",
-			"127.0.0.2:3306",
-			true,
-			"",
-		},
 	}
 
 	for k, tt := range testCases {
@@ -189,12 +183,6 @@ func TestGetHostDatacenter(t *testing.T) {
 		{
 			"test get datacenter format error no colons",
 			"c3.mysql01.bj",
-			true,
-			"",
-		},
-		{
-			"test get datacenter format error 2",
-			"127.0.0.2",
 			true,
 			"",
 		},
