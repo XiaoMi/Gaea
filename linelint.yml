@@ -1,0 +1,20 @@
+# 'true' will fix files
+autofix: false
+
+# list of paths to ignore, uses gitignore syntaxes (executes before any rule)
+ignore:
+  - tests/e2e/shard/case/join/mycat/long/unsupport.sql
+  - tests/e2e/shard/case/join/mycat/mod/unsupport.sql
+  - tests/e2e/shard/case/join/mycat/murmur/unsupport.sql
+  - tests/e2e/shard/case/join/mycat/string/unsupport.sql
+rules:
+  # checks if file ends in a newline character
+  end-of-file:
+    # set to true to enable this rule
+    enable: true
+
+    # set to true to disable autofix (if enabled globally)
+    disable-autofix: false
+
+    # if true also checks if file ends in a single newline character
+    single-new-line: true
