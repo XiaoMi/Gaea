@@ -670,4 +670,3 @@ SELECT 5 DIV 2, -5 DIV 2, 5 DIV -2, -5 DIV -2;
 ## other
 SELECT INSERT('Quadratic', 3, 4, 'What');
 SELECT CHAR(65);
-

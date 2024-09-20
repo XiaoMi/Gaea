@@ -117,5 +117,3 @@ select id,t_id,name,pad from test1 where pad !=any(select id from test1 where pa
 select a.id,b.id,b.pad,a.t_id from (select test1.id,test1.pad,test1.t_id from test1 join sbtest.test3 where test1.pad=sbtest.test3.pad ) a,(select sbtest.test2.id,sbtest.test2.pad from test1 join sbtest.test2 where test1.pad=sbtest.test2.pad) b where a.pad=b.pad;
 select id,t_id,name,pad from test1 where pad>(select pad from test1 where pad=2);
 select (select name from test1 limit 1);
-
-

@@ -237,5 +237,3 @@ select * from (select m.id,n.pad from test1 m,sbtest.test2 n where m.id=n.id AND
 select a.id,b.id,b.pad,a.t_id from (select id,t_id from test1) a,(select * from sbtest.test2) b where a.t_id=b.o_id;
 select co1,co2,co3 from (select id as co1,name as co2,pad as co3 from test1)as tb where co1>1;
 select CURRENT_USER FROM test5;
-
-

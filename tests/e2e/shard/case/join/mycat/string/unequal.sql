@@ -33,5 +33,3 @@ select group_concat(col2,col1 SEPARATOR ';') from t group by col1;
 select * from t full, t1 `row`, t2 abs;
 select * from t use index for group by (idx1) use index for order by (idx2), t2;
 select (select name from test1 limit 1);
-
-

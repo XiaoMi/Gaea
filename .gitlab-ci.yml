@@ -118,4 +118,3 @@ release:
     - fusion-cli fds --endpoint ${CD_FDS_ENDPOINT} copy bin/gaea fds://${CD_FDS_BUCKET}/${CI_COMMIT_TAG}/gaea
     - fusion-cli fds --endpoint ${CD_FDS_ENDPOINT} copy bin/gaea-cc fds://${CD_FDS_BUCKET}/${CI_COMMIT_TAG}/gaea-cc
     - fusion-cli fds --endpoint ${CD_FDS_ENDPOINT} copy etc/gaea_online.ini fds://${CD_FDS_BUCKET}/${CI_COMMIT_TAG}/gaea.ini
-

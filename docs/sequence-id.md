@@ -98,4 +98,3 @@ RETURN mycat_seq_currval(seq_name);
 END $
 DELIMITER ;
 ```
-
