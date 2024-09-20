@@ -1,0 +1,64 @@
+{
+  "open_general_log": false,
+  "is_encrypt": true,
+  "name": "test_namespace_e2e_test",
+  "online": true,
+  "read_only": false,
+  "allowed_dbs": {
+    "db_e2e_test": true
+  },
+  "default_phy_dbs": null,
+  "slow_sql_time": "1000",
+  "black_sql": [],
+  "allowed_ip": null,
+  "slices": [
+        {{- range $index, $slice := .Slices }}
+        {
+            "name": "{{.Name}}",
+            "user_name": "{{.UserName}}",
+            "password": "{{.Password}}",
+            "master": "{{.Master}}",
+            "slaves": [
+                {{- range $index1, $value1 := $slice.Slaves }}
+                "{{$value1}}"{{ if not (lastItem $index1 (len $slice.Slaves) ) }}, {{ end }} 
+                {{- end }}
+            ],
+            "statistic_slaves": [
+                {{- range $index2, $value2 := $slice.StatisticSlaves }}
+                "{{$value2}}"{{ if not (lastItem $index2 (len $slice.StatisticSlaves) ) }}, {{ end }}
+                {{- end }}
+            ],
+            "capacity": {{.Capacity}},
+            "max_capacity": {{.MaxCapacity}},
+            "idle_timeout": {{.IdleTimeout}},
+            "capability": {{.Capability}},
+            "init_connect": "{{.InitConnect}}"
+        }{{ if not (lastItem $index (len $.Slices) ) }}, {{ end }}
+        {{- end}}
+   ],
+  "shard_rules": [],
+  "users": [
+     {{- range $index, $user := .GaeaUsers }}
+        {
+            "user_name": "{{.UserName}}",
+            "password": "{{.Password}}", 
+            "namespace": "test_namespace_e2e_test",
+            "rw_flag": {{.RWFlag}},
+            "rw_split": {{.RWSplit}},
+            "other_property":{{.OtherProperty}}
+        }{{ if not (lastItem $index (len $.GaeaUsers) ) }}, {{ end }}
+        {{- end}}
+  ],
+  "default_slice": "slice-0",
+  "global_sequences": null,
+  "default_charset": "",
+  "default_collation": "",
+  "max_sql_execute_time": 0,
+  "max_sql_result_size": 0,
+  "max_client_connections": 100000,
+  "down_after_no_alive": 0,
+  "seconds_behind_master": 0,
+  "check_select_lock": false,
+  "support_multi_query": false,
+  "local_slave_read_priority": 0
+}

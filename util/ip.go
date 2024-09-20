@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 )
 
@@ -137,4 +138,40 @@ func HostName(ip string) (hostname string, err error) {
 		return "", err
 	}
 	return hostName[0], err
+}
+
+// GetLocalDatacenter return local host datacenter
+func GetLocalDatacenter() (string, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", err
+	}
+	return GetHostDatacenter(hostname)
+}
+
+// GetInstanceDatacenter return datacenter parsed from host like "c3-mysql01.bj:3306" or "127.0.0.1:3306"
+func GetInstanceDatacenter(addr string) (string, error) {
+	splits := strings.Split(addr, ":")
+	if len(splits) != 2 {
+		return "", fmt.Errorf("get unexpected db host:%s", addr)
+	}
+	return GetHostDatacenter(splits[0])
+}
+
+// GetHostDatacenter return datacenter parsed from host like "c3-mysql01.bj" or "127.0.0.1"
+func GetHostDatacenter(host string) (string, error) {
+	var err error
+	hostname := host
+	if ip := net.ParseIP(host); ip != nil {
+		hostname, err = HostName(host)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	prefixSplit := strings.Split(hostname, "-")
+	if len(prefixSplit) < 2 {
+		return "", fmt.Errorf("get hostname prefix error,hostname:%s", hostname)
+	}
+	return prefixSplit[0], nil
 }

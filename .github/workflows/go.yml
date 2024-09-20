@@ -1,0 +1,110 @@
+name: Go
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  code_check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.16'
+
+      - name: Run code check
+        run: |
+          # 执行所有检查
+          for check in EOF spelling; do
+            ./hack/verify-$check.sh
+          done
+
+  parser_build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.16'
+
+      - name: Build parser
+        run: |
+          cd parser && make
+
+  unit_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.16'
+
+      - name: Set timezone
+        run: |
+          sudo ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+          ls -l /etc/localtime
+
+      - name: Run unit tests
+        run: |
+          make test
+          echo "sql parser test"
+          cd parser && make test
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.16'
+
+      - name: Build the project
+        run: |
+          make build
+
+  e2e_test_mysql5:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Pull Docker image
+        run: |
+          docker pull fieelina/gaea-test-amd64:v2.4  # 确认这个镜像是可用的
+
+      - name: Run Mysql5 E2E tests
+        run: |
+          docker run --rm \
+            -v $(pwd):/workspace \
+            -w /workspace \
+            fieelina/gaea-test-amd64:v2.4 \
+            make e2e-test
+
+  e2e_test_mysql8:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Pull Docker image
+        run: |
+          docker pull fieelina/gaea-test-amd64-mysql8:v2.4  # 确认这个镜像是可用的
+
+      - name: Run Mysql8 E2E tests
+        run: |
+          docker run --rm \
+            -v $(pwd):/workspace \
+            -w /workspace \
+            fieelina/gaea-test-amd64-mysql8:v2.4 \
+            make e2e-test-mysql8

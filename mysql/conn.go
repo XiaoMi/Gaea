@@ -32,6 +32,7 @@ package mysql
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -44,13 +45,17 @@ import (
 )
 
 const (
-	// connBufferSize is how much we buffer for reading and
-	// writing. It is also how much we allocate for ephemeral buffers.
-	connBufferSize = 128
-
 	// MaxPacketSize is the maximum payload length of a packet(16MB)
 	// the server supports.
-	MaxPacketSize = (1 << 24) - 1
+	MinPacketSize   = 128
+	MaxPacketSize   = (1 << 24) - 1
+	WritePacketSize = 16 * 1024
+)
+
+var (
+	// connBufferSize is how much we buffer for reading and
+	// writing. It is also how much we allocate for ephemeral buffers.
+	connBufferSize = 16 * 1024
 )
 
 // Constants for how ephemeral buffers were used for reading / writing.
@@ -66,6 +71,19 @@ const (
 	// ephemeralRead means we currently in process of reading into currentEphemeralBuffer
 	ephemeralRead
 )
+
+// InitNetBufferSize should only be set when starting the proxy
+func InitNetBufferSize(buffSize int) {
+	if buffSize < 128 { // min
+		buffSize = 128
+	}
+
+	if buffSize > 16*1024 { // max
+		buffSize = 16 * 1024
+	}
+	// 全局变量
+	connBufferSize = buffSize
+}
 
 // Conn is a connection between a client and a server, using the MySQL
 // binary protocol. It is built on top of an existing net.Conn, that
@@ -105,10 +123,10 @@ type Conn struct {
 }
 
 // bufPool is used to allocate and free buffers in an efficient way.
-var bufPool = bucketpool.New(connBufferSize, MaxPacketSize)
+var bufPool = bucketpool.New(MinPacketSize, MaxPacketSize)
 
 // writersPool is used for pooling bufio.Writer objects.
-var writersPool = sync.Pool{New: func() interface{} { return bufio.NewWriterSize(nil, connBufferSize) }}
+var writersPool = sync.Pool{New: func() interface{} { return bufio.NewWriterSize(nil, WritePacketSize) }}
 
 // NewConn is an internal method to create a Conn. Used by client and server
 // side for common creation code.
@@ -173,13 +191,18 @@ func (c *Conn) readHeaderFrom(r io.Reader) (int, error) {
 		// The special casing of propagating io.EOF up
 		// is used by the server side only, to suppress an error
 		// message if a client just disconnects.
-		if err == io.EOF {
-			return 0, err
-		}
 		if strings.HasSuffix(err.Error(), "read: connection reset by peer") {
-			return 0, io.EOF
+			return 0, ErrResetConn
 		}
-		return 0, fmt.Errorf("io.ReadFull(header size) failed: %v", err)
+
+		// For example, the backend MySQL execution time exceeds the limit and was killed
+		return 0, ErrBadConn
+	}
+
+	length := int(uint32(header[0]) | uint32(header[1])<<8 | uint32(header[2])<<16)
+	if length == 0 {
+		c.sequence++
+		return 0, nil
 	}
 
 	sequence := uint8(header[3])
@@ -189,7 +212,7 @@ func (c *Conn) readHeaderFrom(r io.Reader) (int, error) {
 
 	c.sequence++
 
-	return int(uint32(header[0]) | uint32(header[1])<<8 | uint32(header[2])<<16), nil
+	return length, nil
 }
 
 // ReadEphemeralPacket attempts to read a packet into buffer from sync.Pool.  Do
@@ -215,7 +238,7 @@ func (c *Conn) ReadEphemeralPacket() ([]byte, error) {
 	if length == 0 {
 		// This can be caused by the packet after a packet of
 		// exactly size MaxPacketSize.
-		return nil, nil
+		return []byte{}, nil
 	}
 
 	// Use the bufPool.
@@ -391,21 +414,21 @@ func (c *Conn) WritePacket(data []byte) error {
 		}
 
 		// Compute and write the header.
-		var header [4]byte
+		header := make([]byte, 4)
 		header[0] = byte(packetLength)
 		header[1] = byte(packetLength >> 8)
 		header[2] = byte(packetLength >> 16)
 		header[3] = c.sequence
-		if n, err := w.Write(header[:]); err != nil {
-			return fmt.Errorf("Write(header) failed: %v", err)
-		} else if n != 4 {
-			return fmt.Errorf("Write(header) returned a short write: %v < 4", n)
-		}
 
-		// Write the body.
-		if n, err := w.Write(data[index : index+packetLength]); err != nil {
-			return fmt.Errorf("Write(packet) failed: %v", err)
-		} else if n != packetLength {
+		// 这边合并写入，旧版本分开写入，会多一个 tcp PSH 包和一个 tcp ACK 包
+		buf := bytes.NewBuffer(header)
+		buf.Write(data[index : index+packetLength])
+		if n, err := w.Write(buf.Bytes()); err != nil {
+			if strings.Contains(err.Error(), ErrResetConn.Error()) {
+				return ErrResetConn
+			}
+			return fmt.Errorf("Conn %v:Write(packet) failed: %v", c.GetConnectionID(), err)
+		} else if n != packetLength+4 {
 			return fmt.Errorf("Write(packet) returned a short write: %v < %v", n, packetLength)
 		}
 
@@ -454,7 +477,7 @@ func (c *Conn) WriteEphemeralPacket() error {
 	switch c.currentEphemeralPolicy {
 	case ephemeralWrite:
 		if err := c.WritePacket(*c.currentEphemeralBuffer); err != nil {
-			return fmt.Errorf("Conn %v: %v", c.GetConnectionID(), err)
+			return err
 		}
 	case ephemeralUnused, ephemeralRead:
 		// Programming error.
@@ -545,12 +568,13 @@ func (c *Conn) IsClosed() bool {
 // WriteOKPacket writes an OK packet.
 // Server -> Client.
 // This method returns a generic error, not a SQLError.
-func (c *Conn) WriteOKPacket(affectedRows, lastInsertID uint64, flags uint16, warnings uint16) error {
+func (c *Conn) WriteOKPacket(affectedRows, lastInsertID uint64, flags uint16, warnings uint16, info string) error {
 	length := 1 + // OKHeader
 		LenEncIntSize(affectedRows) +
 		LenEncIntSize(lastInsertID) +
 		2 + // flags
-		2 // warnings
+		2 + // warnings
+		len(info) // info
 	data := c.StartEphemeralPacket(length)
 	pos := 0
 	pos = WriteByte(data, pos, OKHeader)
@@ -558,6 +582,7 @@ func (c *Conn) WriteOKPacket(affectedRows, lastInsertID uint64, flags uint16, wa
 	pos = WriteLenEncInt(data, pos, lastInsertID)
 	pos = WriteUint16(data, pos, flags)
 	pos = WriteUint16(data, pos, warnings)
+	pos = WriteBytes(data, pos, []byte(info))
 
 	return c.WriteEphemeralPacket()
 }
@@ -614,7 +639,11 @@ func (c *Conn) WriteErrorPacketFromError(err error) error {
 		return c.WriteErrorPacket(se.SQLCode(), se.SQLState(), "%v", se.Message)
 	}
 
-	return c.WriteErrorPacket(ErrUnknown, DefaultMySQLState, "unknown error: %v", err)
+	if err.Error() == ErrClientQpsLimitedMsg {
+		return c.WriteErrorPacket(ErrClientQpsLimited, DefaultMySQLState, "%v", err)
+	}
+
+	return c.WriteErrorPacket(ErrUnknown, DefaultMySQLState, "%v", err)
 }
 
 // WriteEOFPacket writes an EOF packet, through the buffer, and

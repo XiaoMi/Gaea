@@ -89,9 +89,9 @@ type resourceWrapper struct {
 // maxCap代表最大资源数量
 // 超过设定空闲时间的连接会被丢弃
 // 资源池会根据传入的factory进行具体资源的初始化，比如建立与mysql的连接
-func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Duration) *ResourcePool {
+func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Duration) (*ResourcePool, error) {
 	if capacity <= 0 || maxCap <= 0 || capacity > maxCap {
-		panic(errors.New("invalid/out of range capacity"))
+		return nil, fmt.Errorf("invalid/out of range capacity")
 	}
 	rp := &ResourcePool{
 		resources:    make(chan resourceWrapper, maxCap),
@@ -105,6 +105,7 @@ func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Dur
 		scaleInTodo:  make(chan int8, 1),
 		Dynamic:      true, // 动态扩展连接池
 	}
+
 	for i := 0; i < capacity; i++ {
 		rp.resources <- resourceWrapper{}
 	}
@@ -115,7 +116,7 @@ func NewResourcePool(factory Factory, capacity, maxCap int, idleTimeout time.Dur
 	}
 	rp.capTimer = timer.NewTimer(5 * time.Second)
 	rp.capTimer.Start(rp.scaleInResources)
-	return rp
+	return rp, nil
 }
 
 // Close empties the pool calling Close on all its resources.
@@ -191,34 +192,54 @@ func (rp *ResourcePool) get(ctx context.Context, wait bool) (resource Resource, 
 	select {
 	case wrapper, ok = <-rp.resources:
 	default:
+		var newWrapper resourceWrapper
 		if rp.Dynamic {
-			rp.scaleOutResources()
+			newWrapper, ok = rp.scaleOutResources()
 		}
-		if !wait {
-			return nil, nil
-		}
-		startTime := time.Now()
-		select {
-		case wrapper, ok = <-rp.resources:
-		case <-ctx.Done():
-			return nil, ErrTimeout
-		}
-		endTime := time.Now()
-		if int64(startTime.UnixNano()/100000) != int64(endTime.UnixNano()/100000) {
-			rp.recordWait(startTime)
+		if ok {
+			wrapper = newWrapper
+		} else {
+			if !wait {
+				return nil, nil
+			}
+			startTime := time.Now()
+			select {
+			case wrapper, ok = <-rp.resources:
+			case <-ctx.Done():
+				return nil, ErrTimeout
+			}
+			endTime := time.Now()
+			if startTime.UnixNano()/100000 != endTime.UnixNano()/100000 {
+				rp.recordWait(startTime)
+			}
 		}
 	}
 	if !ok {
 		return nil, ErrClosed
 	}
 
-	// Unwrap
 	if wrapper.resource == nil {
-		wrapper.resource, err = rp.factory() // 实际建立连接
-		if err != nil {
+		errChan := make(chan error)
+		go func() {
+			wrapper.resource, err = rp.factory()
+			if err != nil {
+				errChan <- err
+				return
+			}
+			errChan <- nil
+		}()
+
+		select {
+		case <-ctx.Done():
 			rp.resources <- resourceWrapper{}
-			return nil, err
+			return nil, ctx.Err()
+		case err1 := <-errChan:
+			if err1 != nil {
+				rp.resources <- resourceWrapper{}
+				return nil, err1
+			}
 		}
+
 		rp.active.Add(1)
 	}
 	rp.available.Add(-1)
@@ -304,13 +325,26 @@ func (rp *ResourcePool) ScaleCapacity(capacity int) error {
 }
 
 // 扩容
-func (rp *ResourcePool) scaleOutResources() {
+func (rp *ResourcePool) scaleOutResources() (resourceWrapper, bool) {
 	rp.lock.Lock()
 	defer rp.lock.Unlock()
 	if rp.capacity.Get() < rp.maxCapacity.Get() {
-		rp.ScaleCapacity(int(rp.capacity.Get()) + 1)
+		wrapper, ok := rp.AddCapacityResource()
 		rp.scaleOutTime = time.Now().Unix()
+		return wrapper, ok
 	}
+	return resourceWrapper{}, false
+}
+
+// 扩容并获取连接, 外层加锁了，所以这边不加锁
+func (rp *ResourcePool) AddCapacityResource() (resourceWrapper, bool) {
+	capacity := int(rp.capacity.Get())
+	if capacity < 0 || capacity >= int(rp.maxCapacity.Get()) {
+		return resourceWrapper{}, false
+	}
+	rp.capacity.Add(1)
+	rp.available.Add(1)
+	return resourceWrapper{}, true
 }
 
 // 缩容

@@ -457,6 +457,11 @@ const (
 	SelectLockNone SelectLockType = iota
 	SelectLockForUpdate
 	SelectLockInShareMode
+	SelectLockForShare
+	SelectLockForUpdateNoWait
+	SelectLockForShareNoWait
+	SelectLockForUpdateSkipLocked
+	SelectLockForShareSkipLocked
 )
 
 // String implements fmt.Stringer.
@@ -468,6 +473,16 @@ func (slt SelectLockType) String() string {
 		return "for update"
 	case SelectLockInShareMode:
 		return "in share mode"
+	case SelectLockForShare:
+		return "for share"
+	case SelectLockForUpdateNoWait:
+		return "for update nowait"
+	case SelectLockForShareNoWait:
+		return "for share nowait"
+	case SelectLockForUpdateSkipLocked:
+		return "for update skip locked"
+	case SelectLockForShareSkipLocked:
+		return "for share skip locked"
 	}
 	return "unsupported select lock type"
 }
@@ -664,7 +679,8 @@ func (n *ByItem) Accept(v Visitor) (Node, bool) {
 // GroupByClause represents group by clause.
 type GroupByClause struct {
 	node
-	Items []*ByItem
+	Items      []*ByItem
+	WithRollup bool
 }
 
 // Restore implements Node interface.
@@ -677,6 +693,9 @@ func (n *GroupByClause) Restore(ctx *format.RestoreCtx) error {
 		if err := v.Restore(ctx); err != nil {
 			return errors.Annotatef(err, "An error occurred while restore GroupByClause.Items[%d]", i)
 		}
+	}
+	if n.WithRollup {
+		ctx.WriteKeyWord(" WITH ROLLUP")
 	}
 	return nil
 }
@@ -903,7 +922,8 @@ func (n *SelectStmt) Restore(ctx *format.RestoreCtx) error {
 	case SelectLockInShareMode:
 		ctx.WriteKeyWord(" LOCK ")
 		ctx.WriteKeyWord(n.LockTp.String())
-	case SelectLockForUpdate:
+	case SelectLockForUpdate, SelectLockForShare, SelectLockForUpdateNoWait, SelectLockForShareNoWait,
+		SelectLockForUpdateSkipLocked, SelectLockForShareSkipLocked:
 		ctx.WritePlain(" ")
 		ctx.WriteKeyWord(n.LockTp.String())
 	}

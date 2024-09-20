@@ -1,10 +1,25 @@
+// Copyright 2024 The Gaea Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//	http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package mysql
 
 import (
 	"bufio"
+	"testing"
+
 	"github.com/XiaoMi/Gaea/util/mocks/pipeTest"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 // TestMariadbConnWithoutDB 为用来测试数据库一开始连线的详细流程，以下测试不使用 MariaDB 的服务器，只是单纯的单元测试
@@ -34,4 +49,16 @@ func TestMariadbConnWithoutDB(t *testing.T) {
 		correct++
 		require.Equal(t, msg1[0], correct)
 	})
+}
+
+func TestInitNetBufferSize(t *testing.T) {
+	connBufferSize = 128
+	InitNetBufferSize(0)
+	require.Equal(t, connBufferSize, 128)
+	InitNetBufferSize(128)
+	require.Equal(t, connBufferSize, 128)
+	InitNetBufferSize(512)
+	require.Equal(t, connBufferSize, 512)
+	InitNetBufferSize(16*1024 + 1)
+	require.Equal(t, connBufferSize, 16*1024)
 }

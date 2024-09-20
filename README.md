@@ -60,6 +60,10 @@ Gaea是小米中国区电商研发部研发的基于mysql协议的数据库中�
 - [gaea proxy后端连接池的设计与实现](docs/connection-pool.md)
 - [prepare的设计与实现](docs/prepare.md)
 
+## 性能测试
+
+- [gaea 2.3.7 ](docs/performance-test-report.md)
+
 ## Roadmap
 
 - [x] 支持配置加密存储，开关
@@ -88,10 +92,11 @@ Gaea是小米中国区电商研发部研发的基于mysql协议的数据库中�
 - stats(google vitess，打点统计)  
 - util(混合)
 
+
 ## 社区
 
 ### gitter
 [![Gitter](https://badges.gitter.im/xiaomi-b2c/Gaea.svg)](https://gitter.im/xiaomi-b2c/Gaea?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
 
-### 钉钉
-![钉钉](docs/assets/gaea_dingtalk.png)
+### 飞书
+![飞书](docs/assets/feishu_talk.jpeg)

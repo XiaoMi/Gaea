@@ -38,11 +38,17 @@ import (
 
 var (
 	// ErrBadConn bad connection error
-	ErrBadConn = errors.New("connection was bad")
+	ErrBadConn = NewSessionCloseError("connection was bad")
+	// ErrResetConn receive tcp RST packet error
+	ErrResetConn = errors.New("connection reset by peer")
 	// ErrMalformPacket packet error
 	ErrMalformPacket = errors.New("Malform packet error")
 	// ErrTxDone transaction done error
 	ErrTxDone = errors.New("sql: Transaction has already been committed or rolled back")
+	// ErrTxNsChanged namespace changed in transaction error
+	ErrTxNsChanged = errors.New("namespace changed in transaction when keep session")
+	// ErrClientQpsLimitedMsg client qps is limited error
+	ErrClientQpsLimitedMsg = "client qps limit"
 )
 
 // SQLError contains error code、SQLSTATE and message string
@@ -116,4 +122,41 @@ func NewErrf(errCode uint16, format string, args ...interface{}) *SQLError {
 	e.Message = fmt.Sprintf(format, args...)
 
 	return e
+}
+
+type SessionCloseError interface {
+	Error() string
+	HasResponse() bool
+}
+
+type SessionCloseNoRespError struct {
+	s string
+}
+
+type SessionCloseRespError struct {
+	s string
+}
+
+func NewSessionCloseError(s string) SessionCloseError {
+	return &SessionCloseNoRespError{s}
+}
+
+func (e *SessionCloseNoRespError) Error() string {
+	return e.s
+}
+
+func (e *SessionCloseNoRespError) HasResponse() bool {
+	return false
+}
+
+func NewSessionCloseRespError(s string) SessionCloseError {
+	return &SessionCloseRespError{s}
+}
+
+func (e *SessionCloseRespError) Error() string {
+	return e.s
+}
+
+func (e *SessionCloseRespError) HasResponse() bool {
+	return true
 }

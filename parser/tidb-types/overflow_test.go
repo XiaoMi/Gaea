@@ -15,19 +15,15 @@ package types
 
 import (
 	"math"
+	"testing"
 
-	. "github.com/pingcap/check"
+	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/util/testleak"
 )
 
-var _ = Suite(&testOverflowSuite{})
-
-type testOverflowSuite struct {
-}
-
-func (s *testOverflowSuite) TestAdd(c *C) {
-	defer testleak.AfterTest(c)()
+func TestAdd(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	tblUint64 := []struct {
 		lsh      uint64
 		rsh      uint64
@@ -39,12 +35,12 @@ func (s *testOverflowSuite) TestAdd(c *C) {
 		{1, 1, 2, false},
 	}
 
-	for _, t := range tblUint64 {
-		ret, err := AddUint64(t.lsh, t.rsh)
-		if t.overflow {
-			c.Assert(err, NotNil)
+	for _, tt := range tblUint64 {
+		ret, err := AddUint64(tt.lsh, tt.rsh)
+		if tt.overflow {
+			require.Error(t, err)
 		} else {
-			c.Assert(ret, Equals, t.ret)
+			require.Equal(t, tt.ret, ret)
 		}
 	}
 
@@ -63,12 +59,12 @@ func (s *testOverflowSuite) TestAdd(c *C) {
 		{1, -1, 0, false},
 	}
 
-	for _, t := range tblInt64 {
-		ret, err := AddInt64(t.lsh, t.rsh)
-		if t.overflow {
-			c.Assert(err, NotNil)
+	for _, tt := range tblInt64 {
+		ret, err := AddInt64(tt.lsh, tt.rsh)
+		if tt.overflow {
+			require.Error(t, err)
 		} else {
-			c.Assert(ret, Equals, t.ret)
+			require.Equal(t, tt.ret, ret)
 		}
 	}
 
@@ -86,18 +82,18 @@ func (s *testOverflowSuite) TestAdd(c *C) {
 		{1, 1, 2, false},
 	}
 
-	for _, t := range tblInt {
-		ret, err := AddInteger(t.lsh, t.rsh)
-		if t.overflow {
-			c.Assert(err, NotNil)
+	for _, tt := range tblInt {
+		ret, err := AddInteger(tt.lsh, tt.rsh)
+		if tt.overflow {
+			require.Error(t, err)
 		} else {
-			c.Assert(ret, Equals, t.ret)
+			require.Equal(t, tt.ret, ret)
 		}
 	}
 }
 
-func (s *testOverflowSuite) TestSub(c *C) {
-	defer testleak.AfterTest(c)()
+func TestSub(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	tblUint64 := []struct {
 		lsh      uint64
 		rsh      uint64
@@ -112,12 +108,12 @@ func (s *testOverflowSuite) TestSub(c *C) {
 		{1, 1, 0, false},
 	}
 
-	for _, t := range tblUint64 {
-		ret, err := SubUint64(t.lsh, t.rsh)
-		if t.overflow {
-			c.Assert(err, NotNil)
+	for _, tt := range tblUint64 {
+		ret, err := SubUint64(tt.lsh, tt.rsh)
+		if tt.overflow {
+			require.Error(t, err)
 		} else {
-			c.Assert(ret, Equals, t.ret)
+			require.Equal(t, tt.ret, ret)
 		}
 	}
 
@@ -138,12 +134,12 @@ func (s *testOverflowSuite) TestSub(c *C) {
 		{1, 1, 0, false},
 	}
 
-	for _, t := range tblInt64 {
-		ret, err := SubInt64(t.lsh, t.rsh)
-		if t.overflow {
-			c.Assert(err, NotNil)
+	for _, tt := range tblInt64 {
+		ret, err := SubInt64(tt.lsh, tt.rsh)
+		if tt.overflow {
+			require.Error(t, err)
 		} else {
-			c.Assert(ret, Equals, t.ret)
+			require.Equal(t, tt.ret, ret)
 		}
 	}
 
@@ -162,12 +158,12 @@ func (s *testOverflowSuite) TestSub(c *C) {
 		{1, 1, 0, false},
 	}
 
-	for _, t := range tblInt {
-		ret, err := SubUintWithInt(t.lsh, t.rsh)
-		if t.overflow {
-			c.Assert(err, NotNil)
+	for _, tt := range tblInt {
+		ret, err := SubUintWithInt(tt.lsh, tt.rsh)
+		if tt.overflow {
+			require.Error(t, err)
 		} else {
-			c.Assert(ret, Equals, t.ret)
+			require.Equal(t, tt.ret, ret)
 		}
 	}
 
@@ -185,18 +181,18 @@ func (s *testOverflowSuite) TestSub(c *C) {
 		{1, 1, 0, false},
 	}
 
-	for _, t := range tblInt2 {
-		ret, err := SubIntWithUint(t.lsh, t.rsh)
-		if t.overflow {
-			c.Assert(err, NotNil)
+	for _, tt := range tblInt2 {
+		ret, err := SubIntWithUint(tt.lsh, tt.rsh)
+		if tt.overflow {
+			require.Error(t, err)
 		} else {
-			c.Assert(ret, Equals, t.ret)
+			require.Equal(t, tt.ret, ret)
 		}
 	}
 }
 
-func (s *testOverflowSuite) TestMul(c *C) {
-	defer testleak.AfterTest(c)()
+func TestMul(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	tblUint64 := []struct {
 		lsh      uint64
 		rsh      uint64
@@ -209,12 +205,12 @@ func (s *testOverflowSuite) TestMul(c *C) {
 		{1, 1, 1, false},
 	}
 
-	for _, t := range tblUint64 {
-		ret, err := MulUint64(t.lsh, t.rsh)
-		if t.overflow {
-			c.Assert(err, NotNil)
+	for _, tt := range tblUint64 {
+		ret, err := MulUint64(tt.lsh, tt.rsh)
+		if tt.overflow {
+			require.Error(t, err)
 		} else {
-			c.Assert(ret, Equals, t.ret)
+			require.Equal(t, tt.ret, ret)
 		}
 	}
 
@@ -236,12 +232,12 @@ func (s *testOverflowSuite) TestMul(c *C) {
 		{1, 1, 1, false},
 	}
 
-	for _, t := range tblInt64 {
-		ret, err := MulInt64(t.lsh, t.rsh)
-		if t.overflow {
-			c.Assert(err, NotNil)
+	for _, tt := range tblInt64 {
+		ret, err := MulInt64(tt.lsh, tt.rsh)
+		if tt.overflow {
+			require.Error(t, err)
 		} else {
-			c.Assert(ret, Equals, t.ret)
+			require.Equal(t, tt.ret, ret)
 		}
 	}
 
@@ -259,18 +255,18 @@ func (s *testOverflowSuite) TestMul(c *C) {
 		{1, 1, 1, false},
 	}
 
-	for _, t := range tblInt {
-		ret, err := MulInteger(t.lsh, t.rsh)
-		if t.overflow {
-			c.Assert(err, NotNil)
+	for _, tt := range tblInt {
+		ret, err := MulInteger(tt.lsh, tt.rsh)
+		if tt.overflow {
+			require.Error(t, err)
 		} else {
-			c.Assert(ret, Equals, t.ret)
+			require.Equal(t, tt.ret, ret)
 		}
 	}
 }
 
-func (s *testOverflowSuite) TestDiv(c *C) {
-	defer testleak.AfterTest(c)()
+func TestDiv(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	tblInt64 := []struct {
 		lsh      int64
 		rsh      int64
@@ -287,12 +283,12 @@ func (s *testOverflowSuite) TestDiv(c *C) {
 		{math.MinInt64, 2, math.MinInt64 / 2, false},
 	}
 
-	for _, t := range tblInt64 {
-		ret, err := DivInt64(t.lsh, t.rsh)
-		if t.overflow {
-			c.Assert(err, NotNil)
+	for _, tt := range tblInt64 {
+		ret, err := DivInt64(tt.lsh, tt.rsh)
+		if tt.overflow {
+			require.Error(t, err)
 		} else {
-			c.Assert(ret, Equals, t.ret)
+			require.Equal(t, tt.ret, ret)
 		}
 	}
 
@@ -308,12 +304,12 @@ func (s *testOverflowSuite) TestDiv(c *C) {
 		{math.MaxInt64, -1, 0, true},
 	}
 
-	for _, t := range tblInt {
-		ret, err := DivUintWithInt(t.lsh, t.rsh)
-		if t.overflow {
-			c.Assert(err, NotNil)
+	for _, tt := range tblInt {
+		ret, err := DivUintWithInt(tt.lsh, tt.rsh)
+		if tt.overflow {
+			require.Error(t, err)
 		} else {
-			c.Assert(ret, Equals, t.ret)
+			require.Equal(t, tt.ret, ret)
 		}
 	}
 
@@ -328,12 +324,12 @@ func (s *testOverflowSuite) TestDiv(c *C) {
 		{-1, math.MaxInt64, 0, false},
 	}
 
-	for _, t := range tblInt2 {
-		ret, err := DivIntWithUint(t.lsh, t.rsh)
-		if t.overflow {
-			c.Assert(err, NotNil)
+	for _, tt := range tblInt2 {
+		ret, err := DivIntWithUint(tt.lsh, tt.rsh)
+		if tt.overflow {
+			require.Error(t, err)
 		} else {
-			c.Assert(ret, Equals, t.ret)
+			require.Equal(t, tt.ret, ret)
 		}
 	}
 }

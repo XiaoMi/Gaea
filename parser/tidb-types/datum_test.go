@@ -18,19 +18,14 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/pingcap/check"
+	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/stmtctx"
 	"github.com/XiaoMi/Gaea/parser/tidb-types/json"
 )
 
-var _ = Suite(&testDatumSuite{})
-
-type testDatumSuite struct {
-}
-
-func (ts *testDatumSuite) TestDatum(c *C) {
+func TestDatum(t *testing.T) {
 	values := []interface{}{
 		int64(1),
 		uint64(1),
@@ -43,55 +38,55 @@ func (ts *testDatumSuite) TestDatum(c *C) {
 		var d Datum
 		d.SetValue(val)
 		x := d.GetValue()
-		c.Assert(x, DeepEquals, val)
+		require.Equal(t, val, x)
 	}
 }
 
-func testDatumToBool(c *C, in interface{}, res int) {
+func testDatumToBool(t *testing.T, in interface{}, res int) {
 	datum := NewDatum(in)
 	res64 := int64(res)
 	sc := new(stmtctx.StatementContext)
 	sc.IgnoreTruncate = true
 	b, err := datum.ToBool(sc)
-	c.Assert(err, IsNil)
-	c.Assert(b, Equals, res64)
+	require.NoError(t, err)
+	require.Equal(t, res64, b)
 }
 
-func (ts *testDatumSuite) TestToBool(c *C) {
-	testDatumToBool(c, int(0), 0)
-	testDatumToBool(c, int64(0), 0)
-	testDatumToBool(c, uint64(0), 0)
-	testDatumToBool(c, float32(0.1), 0)
-	testDatumToBool(c, float64(0.1), 0)
-	testDatumToBool(c, "", 0)
-	testDatumToBool(c, "0.1", 0)
-	testDatumToBool(c, []byte{}, 0)
-	testDatumToBool(c, []byte("0.1"), 0)
-	testDatumToBool(c, NewBinaryLiteralFromUint(0, -1), 0)
-	testDatumToBool(c, Enum{Name: "a", Value: 1}, 1)
-	testDatumToBool(c, Set{Name: "a", Value: 1}, 1)
+func TestToBool(t *testing.T) {
+	testDatumToBool(t, int(0), 0)
+	testDatumToBool(t, int64(0), 0)
+	testDatumToBool(t, uint64(0), 0)
+	testDatumToBool(t, float32(0.1), 0)
+	testDatumToBool(t, float64(0.1), 0)
+	testDatumToBool(t, "", 0)
+	testDatumToBool(t, "0.1", 0)
+	testDatumToBool(t, []byte{}, 0)
+	testDatumToBool(t, []byte("0.1"), 0)
+	testDatumToBool(t, NewBinaryLiteralFromUint(0, -1), 0)
+	testDatumToBool(t, Enum{Name: "a", Value: 1}, 1)
+	testDatumToBool(t, Set{Name: "a", Value: 1}, 1)
 
-	t, err := ParseTime(&stmtctx.StatementContext{TimeZone: time.UTC}, "2011-11-10 11:11:11.999999", mysql.TypeTimestamp, 6)
-	c.Assert(err, IsNil)
-	testDatumToBool(c, t, 1)
+	t1, err := ParseTime(&stmtctx.StatementContext{TimeZone: time.UTC}, "2011-11-10 11:11:11.999999", mysql.TypeTimestamp, 6)
+	require.NoError(t, err)
+	testDatumToBool(t, t1, 1)
 
 	td, err := ParseDuration(nil, "11:11:11.999999", 6)
-	c.Assert(err, IsNil)
-	testDatumToBool(c, td, 1)
+	require.NoError(t, err)
+	testDatumToBool(t, td, 1)
 
 	ft := NewFieldType(mysql.TypeNewDecimal)
 	ft.Decimal = 5
 	v, err := Convert(0.1415926, ft)
-	c.Assert(err, IsNil)
-	testDatumToBool(c, v, 0)
+	require.NoError(t, err)
+	testDatumToBool(t, v, 0)
 	d := NewDatum(&invalidMockType{})
 	sc := new(stmtctx.StatementContext)
 	sc.IgnoreTruncate = true
 	_, err = d.ToBool(sc)
-	c.Assert(err, NotNil)
+	require.Error(t, err)
 }
 
-func (ts *testDatumSuite) TestEqualDatums(c *C) {
+func TestEqualDatums(t *testing.T) {
 	tests := []struct {
 		a    []interface{}
 		b    []interface{}
@@ -115,84 +110,85 @@ func (ts *testDatumSuite) TestEqualDatums(c *C) {
 		{[]interface{}{nil}, []interface{}{1}, false},
 	}
 	for _, tt := range tests {
-		testEqualDatums(c, tt.a, tt.b, tt.same)
+		testEqualDatums(t, tt.a, tt.b, tt.same)
 	}
 }
 
-func testEqualDatums(c *C, a []interface{}, b []interface{}, same bool) {
+func testEqualDatums(t *testing.T, a []interface{}, b []interface{}, same bool) {
 	sc := new(stmtctx.StatementContext)
 	sc.IgnoreTruncate = true
 	res, err := EqualDatums(sc, MakeDatums(a...), MakeDatums(b...))
-	c.Assert(err, IsNil)
-	c.Assert(res, Equals, same, Commentf("a: %v, b: %v", a, b))
+	require.NoError(t, err)
+	require.Equal(t, same, res)
 }
 
-func testDatumToInt64(c *C, val interface{}, expect int64) {
+func testDatumToInt64(t *testing.T, val interface{}, expect int64) {
 	d := NewDatum(val)
 	sc := new(stmtctx.StatementContext)
 	sc.IgnoreTruncate = true
 	b, err := d.ToInt64(sc)
-	c.Assert(err, IsNil)
-	c.Assert(b, Equals, expect)
+	require.NoError(t, err)
+	require.Equal(t, expect, b)
 }
 
-func (ts *testTypeConvertSuite) TestToInt64(c *C) {
-	testDatumToInt64(c, "0", int64(0))
-	testDatumToInt64(c, int(0), int64(0))
-	testDatumToInt64(c, int64(0), int64(0))
-	testDatumToInt64(c, uint64(0), int64(0))
-	testDatumToInt64(c, float32(3.1), int64(3))
-	testDatumToInt64(c, float64(3.1), int64(3))
-	testDatumToInt64(c, NewBinaryLiteralFromUint(100, -1), int64(100))
-	testDatumToInt64(c, Enum{Name: "a", Value: 1}, int64(1))
-	testDatumToInt64(c, Set{Name: "a", Value: 1}, int64(1))
-	testDatumToInt64(c, json.CreateBinary(int64(3)), int64(3))
+func TestToInt64(t *testing.T) {
+	testDatumToInt64(t, "0", int64(0))
+	testDatumToInt64(t, int(0), int64(0))
+	testDatumToInt64(t, int64(0), int64(0))
+	testDatumToInt64(t, uint64(0), int64(0))
+	testDatumToInt64(t, float32(3.1), int64(3))
+	testDatumToInt64(t, float64(3.1), int64(3))
+	testDatumToInt64(t, NewBinaryLiteralFromUint(100, -1), int64(100))
+	testDatumToInt64(t, Enum{Name: "a", Value: 1}, int64(1))
+	testDatumToInt64(t, Set{Name: "a", Value: 1}, int64(1))
+	testDatumToInt64(t, json.CreateBinary(int64(3)), int64(3))
 
-	t, err := ParseTime(&stmtctx.StatementContext{
+	t1, err := ParseTime(&stmtctx.StatementContext{
 		TimeZone: time.UTC,
 	}, "2011-11-10 11:11:11.999999", mysql.TypeTimestamp, 0)
-	c.Assert(err, IsNil)
-	testDatumToInt64(c, t, int64(20111110111112))
+	require.NoError(t, err)
+	testDatumToInt64(t, t1, int64(20111110111112))
 
 	td, err := ParseDuration(nil, "11:11:11.999999", 6)
-	c.Assert(err, IsNil)
-	testDatumToInt64(c, td, int64(111112))
+	require.NoError(t, err)
+	testDatumToInt64(t, td, int64(111112))
 
 	ft := NewFieldType(mysql.TypeNewDecimal)
 	ft.Decimal = 5
 	v, err := Convert(3.1415926, ft)
-	c.Assert(err, IsNil)
-	testDatumToInt64(c, v, int64(3))
+	require.NoError(t, err)
+	testDatumToInt64(t, v, int64(3))
 
 	binLit, err := ParseHexStr("0x9999999999999999999999999999999999999999999")
-	c.Assert(err, IsNil)
-	testDatumToInt64(c, binLit, -1)
+	require.NoError(t, err)
+	testDatumToInt64(t, binLit, -1)
 }
 
-func (ts *testTypeConvertSuite) TestToFloat32(c *C) {
+func TestToFloat32(t *testing.T) {
 	ft := NewFieldType(mysql.TypeFloat)
 	var datum = NewFloat64Datum(281.37)
 	sc := new(stmtctx.StatementContext)
 	sc.IgnoreTruncate = true
 	converted, err := datum.ConvertTo(sc, ft)
-	c.Assert(err, IsNil)
-	c.Assert(converted.Kind(), Equals, KindFloat32)
-	c.Assert(converted.GetFloat32(), Equals, float32(281.37))
+	require.NoError(t, err)
+	require.Equal(t, KindFloat32, converted.Kind())
+	require.Equal(t, float32(281.37), converted.GetFloat32())
 
 	datum.SetString("281.37")
 	converted, err = datum.ConvertTo(sc, ft)
-	c.Assert(err, IsNil)
-	c.Assert(converted.Kind(), Equals, KindFloat32)
-	c.Assert(converted.GetFloat32(), Equals, float32(281.37))
+	require.NoError(t, err)
+	require.Equal(t, KindFloat32, converted.Kind())
+	require.Equal(t, float32(281.37), converted.GetFloat32())
 
 	ft = NewFieldType(mysql.TypeDouble)
 	datum = NewFloat32Datum(281.37)
 	converted, err = datum.ConvertTo(sc, ft)
-	c.Assert(err, IsNil)
-	c.Assert(converted.Kind(), Equals, KindFloat64)
+	require.NoError(t, err)
+	require.Equal(t, KindFloat64, converted.Kind())
 	// Convert to float32 and convert back to float64, we will get a different value.
-	c.Assert(converted.GetFloat64(), Not(Equals), 281.37)
-	c.Assert(converted.GetFloat64(), Equals, datum.GetFloat64())
+	require.NotEqual(t, 281.37, converted.GetFloat64())
+	require.Equal(t, datum.GetFloat64(), converted.GetFloat64())
+
 }
 
 // mustParseTimeIntoDatum is similar to ParseTime but panic if any error occurs.
@@ -205,7 +201,7 @@ func mustParseTimeIntoDatum(s string, tp byte, fsp int) (d Datum) {
 	return
 }
 
-func (ts *testDatumSuite) TestToJSON(c *C) {
+func TestToJSON(t *testing.T) {
 	ft := NewFieldType(mysql.TypeJSON)
 	sc := new(stmtctx.StatementContext)
 	tests := []struct {
@@ -226,24 +222,24 @@ func (ts *testDatumSuite) TestToJSON(c *C) {
 	for _, tt := range tests {
 		obtain, err := tt.datum.ConvertTo(sc, ft)
 		if tt.success {
-			c.Assert(err, IsNil)
+			require.NoError(t, err)
 
 			sd := NewStringDatum(tt.expected)
 			var expected Datum
 			expected, err = sd.ConvertTo(sc, ft)
-			c.Assert(err, IsNil)
+			require.NoError(t, err)
 
 			var cmp int
 			cmp, err = obtain.CompareDatum(sc, &expected)
-			c.Assert(err, IsNil)
-			c.Assert(cmp, Equals, 0)
+			require.NoError(t, err)
+			require.Equal(t, 0, cmp)
 		} else {
-			c.Assert(err, NotNil)
+			require.Error(t, err)
 		}
 	}
 }
 
-func (ts *testDatumSuite) TestIsNull(c *C) {
+func TestIsNull(t *testing.T) {
 	tests := []struct {
 		data   interface{}
 		isnull bool
@@ -256,16 +252,16 @@ func (ts *testDatumSuite) TestIsNull(c *C) {
 		{"", false},
 	}
 	for _, tt := range tests {
-		testIsNull(c, tt.data, tt.isnull)
+		testIsNull(t, tt.data, tt.isnull)
 	}
 }
 
-func testIsNull(c *C, data interface{}, isnull bool) {
+func testIsNull(t *testing.T, data interface{}, isnull bool) {
 	d := NewDatum(data)
-	c.Assert(d.IsNull(), Equals, isnull, Commentf("data: %v, isnull: %v", data, isnull))
+	require.Equal(t, isnull, d.IsNull())
 }
 
-func (ts *testDatumSuite) TestToBytes(c *C) {
+func TestToBytes(t *testing.T) {
 	tests := []struct {
 		a   Datum
 		out []byte
@@ -279,8 +275,8 @@ func (ts *testDatumSuite) TestToBytes(c *C) {
 	sc.IgnoreTruncate = true
 	for _, tt := range tests {
 		bin, err := tt.a.ToBytes()
-		c.Assert(err, IsNil)
-		c.Assert(bin, BytesEquals, tt.out)
+		require.NoError(t, err)
+		require.Equal(t, tt.out, bin)
 	}
 }
 
@@ -292,7 +288,7 @@ func mustParseDurationDatum(str string, fsp int) Datum {
 	return NewDurationDatum(dur)
 }
 
-func (ts *testDatumSuite) TestComputePlusAndMinus(c *C) {
+func TestComputePlusAndMinus(t *testing.T) {
 	sc := &stmtctx.StatementContext{TimeZone: time.UTC}
 	tests := []struct {
 		a      Datum
@@ -313,14 +309,14 @@ func (ts *testDatumSuite) TestComputePlusAndMinus(c *C) {
 
 	for ith, tt := range tests {
 		got, err := ComputePlus(tt.a, tt.b)
-		c.Assert(err != nil, Equals, tt.hasErr)
+		require.Equal(t, tt.hasErr, err != nil)
 		v, err := got.CompareDatum(sc, &tt.plus)
-		c.Assert(err, IsNil)
-		c.Assert(v, Equals, 0, Commentf("%dth got:%#v, expect:%#v", ith, got, tt.plus))
+		require.NoError(t, err)
+		require.Equalf(t, 0, v, "%dth got:%#v, %#v, expect:%#v, %#v", ith, got, got.x, tt.plus, tt.plus.x)
 	}
 }
 
-func (ts *testDatumSuite) TestCopyDatum(c *C) {
+func TestCopyDatum(t *testing.T) {
 	var raw Datum
 	raw.b = []byte("raw")
 	raw.k = KindRaw
@@ -337,10 +333,10 @@ func (ts *testDatumSuite) TestCopyDatum(c *C) {
 	for _, tt := range tests {
 		tt1 := CopyDatum(tt)
 		res, err := tt.CompareDatum(sc, &tt1)
-		c.Assert(err, IsNil)
-		c.Assert(res, Equals, 0)
+		require.NoError(t, err)
+		require.Equal(t, 0, res)
 		if tt.b != nil {
-			c.Assert(&tt.b[0], Not(Equals), &tt1.b[0])
+			require.NotSame(t, &tt1.b[0], &tt.b[0])
 		}
 	}
 }

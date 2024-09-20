@@ -17,6 +17,8 @@ package backend
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,8 +27,9 @@ import (
 )
 
 const (
-	getConnTimeout = 2 * time.Second
-	PING_PEROID    = 5 * time.Second
+	ExecTimeOut    = 2 * time.Second
+	GetConnTimeout = 2 * time.Second
+	pingPeriod     = 4 * time.Second
 )
 
 var (
@@ -40,24 +43,42 @@ var (
 type connectionPoolImpl struct {
 	mu          sync.RWMutex
 	connections *util.ResourcePool
+	checkConn   *pooledConnectImpl
 
-	addr     string
-	user     string
-	password string
-	db       string
+	addr       string
+	datacenter string
+	user       string
+	password   string
+	db         string
 
 	charset     string
 	collationID mysql.CollationID
 
-	capacity    int // capacity of pool
-	maxCapacity int // max capacity of pool
-	idleTimeout time.Duration
+	capacity         int // capacity of pool
+	maxCapacity      int // max capacity of pool
+	idleTimeout      time.Duration
+	clientCapability uint32
+	initConnect      string
+	lastChecked      int64
 }
 
 // NewConnectionPool create connection pool
-func NewConnectionPool(addr, user, password, db string, capacity, maxCapacity int, idleTimeout time.Duration, charset string, collationID mysql.CollationID) ConnectionPool {
-	cp := &connectionPoolImpl{addr: addr, user: user, password: password, db: db, capacity: capacity, maxCapacity: maxCapacity, idleTimeout: idleTimeout, charset: charset, collationID: collationID}
-	return cp
+func NewConnectionPool(addr, user, password, db string, capacity, maxCapacity int, idleTimeout time.Duration, charset string, collationID mysql.CollationID, clientCapability uint32, initConnect string, dc string) ConnectionPool {
+	return &connectionPoolImpl{
+		addr:             addr,
+		datacenter:       dc,
+		user:             user,
+		password:         password,
+		db:               db,
+		capacity:         capacity,
+		maxCapacity:      maxCapacity,
+		idleTimeout:      idleTimeout,
+		charset:          charset,
+		collationID:      collationID,
+		clientCapability: clientCapability,
+		initConnect:      strings.Trim(strings.TrimSpace(initConnect), ";"),
+		lastChecked:      time.Now().Unix(),
+	}
 }
 
 func (cp *connectionPoolImpl) pool() (p *util.ResourcePool) {
@@ -68,7 +89,7 @@ func (cp *connectionPoolImpl) pool() (p *util.ResourcePool) {
 }
 
 // Open open connection pool without error, should be called before use the pool
-func (cp *connectionPoolImpl) Open() {
+func (cp *connectionPoolImpl) Open() error {
 	if cp.capacity == 0 {
 		cp.capacity = DefaultCapacity
 	}
@@ -78,15 +99,24 @@ func (cp *connectionPoolImpl) Open() {
 	}
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
-	cp.connections = util.NewResourcePool(cp.connect, cp.capacity, cp.maxCapacity, cp.idleTimeout)
-	return
+	var err error = nil
+	cp.connections, err = util.NewResourcePool(cp.connect, cp.capacity, cp.maxCapacity, cp.idleTimeout)
+	return err
 }
 
 // connect is used by the resource pool to create new resource.It's factory method
 func (cp *connectionPoolImpl) connect() (util.Resource, error) {
-	c, err := NewDirectConnection(cp.addr, cp.user, cp.password, cp.db, cp.charset, cp.collationID)
+	c, err := NewDirectConnection(cp.addr, cp.user, cp.password, cp.db, cp.charset, cp.collationID, cp.clientCapability)
 	if err != nil {
 		return nil, err
+	}
+	if cp.initConnect != "" {
+		for _, sql := range strings.Split(cp.initConnect, ";") {
+			_, err := c.Execute(sql, 0)
+			if err != nil {
+				return nil, err
+			}
+		}
 	}
 	return &pooledConnectImpl{directConnection: c, pool: cp}, nil
 }
@@ -94,6 +124,11 @@ func (cp *connectionPoolImpl) connect() (util.Resource, error) {
 // Addr return addr of connection pool
 func (cp *connectionPoolImpl) Addr() string {
 	return cp.addr
+}
+
+// Datacenter return datacenter of connection pool
+func (cp *connectionPoolImpl) Datacenter() string {
+	return cp.datacenter
 }
 
 // Close close connection pool
@@ -104,6 +139,11 @@ func (cp *connectionPoolImpl) Close() {
 	}
 	p.Close()
 	cp.mu.Lock()
+	// close check conn
+	if cp.checkConn != nil {
+		cp.checkConn.Close()
+		cp.checkConn = nil
+	}
 	cp.connections = nil
 	cp.mu.Unlock()
 	return
@@ -121,7 +161,7 @@ func (cp *connectionPoolImpl) Get(ctx context.Context) (pc PooledConnect, err er
 		return nil, ErrConnectionPoolClosed
 	}
 
-	getCtx, cancel := context.WithTimeout(ctx, getConnTimeout)
+	getCtx, cancel := context.WithTimeout(ctx, GetConnTimeout)
 	defer cancel()
 	r, err := p.Get(getCtx)
 	if err != nil {
@@ -129,14 +169,53 @@ func (cp *connectionPoolImpl) Get(ctx context.Context) (pc PooledConnect, err er
 	}
 
 	pc = r.(*pooledConnectImpl)
-	
+
 	//do ping when over the ping time. if error happen, create new one
-	if !pc.GetReturnTime().IsZero() && time.Until(pc.GetReturnTime().Add(PING_PEROID)) < 0 { 
-		if err = pc.Ping(); err != nil {
+	if !pc.GetReturnTime().IsZero() && time.Until(pc.GetReturnTime().Add(pingPeriod)) < 0 {
+		if err = pc.PingWithTimeout(GetConnTimeout); err != nil {
 			err = pc.Reconnect()
 		}
 	}
+
 	return pc, err
+}
+
+// GetCheck return a check backend db connection, which independent with connection pool
+func (cp *connectionPoolImpl) GetCheck(ctx context.Context) (PooledConnect, error) {
+	if cp.checkConn != nil && !cp.checkConn.IsClosed() {
+		return cp.checkConn, nil
+	}
+
+	getCtx, cancel := context.WithTimeout(ctx, GetConnTimeout)
+	defer cancel()
+
+	getConnChan := make(chan error)
+	go func() {
+		// connect timeout will be in 2s
+		checkConn, err := cp.connect()
+		if err != nil {
+			return
+		}
+		cp.checkConn = checkConn.(*pooledConnectImpl)
+
+		if cp.checkConn.IsClosed() {
+			if err := cp.checkConn.Reconnect(); err != nil {
+				return
+			}
+		}
+		getConnChan <- err
+	}()
+
+	select {
+	case <-getCtx.Done():
+		return nil, fmt.Errorf("get conn timeout")
+	case err1 := <-getConnChan:
+		if err1 != nil {
+			return nil, err1
+		}
+		return cp.checkConn, nil
+	}
+
 }
 
 // Put recycle a connection into the pool
@@ -268,4 +347,24 @@ func (cp *connectionPoolImpl) IdleClosed() int64 {
 		return 0
 	}
 	return p.IdleClosed()
+}
+
+// SetLastChecked set last checked time
+func (cp *connectionPoolImpl) SetLastChecked() {
+	cp.mu.Lock()
+	defer cp.mu.Unlock()
+	if cp == nil {
+		return
+	}
+	cp.lastChecked = time.Now().Unix()
+}
+
+// GetLastChecked get last checked time
+func (cp *connectionPoolImpl) GetLastChecked() int64 {
+	cp.mu.RLock()
+	defer cp.mu.RUnlock()
+	if cp == nil {
+		return 0
+	}
+	return cp.lastChecked
 }

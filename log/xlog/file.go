@@ -15,9 +15,11 @@
 package xlog
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -37,18 +39,20 @@ type XFileLog struct {
 	service  string
 	split    sync.Once
 	mu       sync.Mutex
+	Cancel   context.CancelFunc
 }
 
 // constants of XFileLog
 const (
 	XFileLogDefaultLogID = "900000001"
 	SpliterDelay         = 5
-	CleanDays            = -3
+	DefaultLogKeepDays   = 3
+	DefaultLogKeepCounts = 72
 )
 
 // NewXFileLog is the constructor of XFileLog
-//生成一个日志实例，service用来标识业务的服务名。
-//比如：logger := xlog.NewXFileLog("gaea")
+// 生成一个日志实例，service用来标识业务的服务名。
+// 比如：logger := xlog.NewXFileLog("gaea")
 func NewXFileLog() XLogger {
 	return &XFileLog{
 		skip: XLogDefSkipNum,
@@ -57,7 +61,6 @@ func NewXFileLog() XLogger {
 
 // Init implements XLogger
 func (p *XFileLog) Init(config map[string]string) (err error) {
-
 	path, ok := config["path"]
 	if !ok {
 		err = fmt.Errorf("init XFileLog failed, not found path")
@@ -82,7 +85,7 @@ func (p *XFileLog) Init(config map[string]string) (err error) {
 	}
 
 	runtime, ok := config["runtime"]
-	if !ok || runtime == "true" || runtime == "TRUE" {
+	if (!ok || runtime == "true" || runtime == "TRUE") && LevelFromStr(config["level"]) == DebugLevel {
 		p.runtime = true
 	} else {
 		p.runtime = false
@@ -110,8 +113,20 @@ func (p *XFileLog) Init(config map[string]string) (err error) {
 
 	hostname, _ := os.Hostname()
 	p.hostname = hostname
+
+	logKeepDays := DefaultLogKeepDays
+	if days, err := strconv.Atoi(config["log_keep_days"]); err == nil && days != 0 {
+		logKeepDays = days
+	}
+
+	logKeepCounts := DefaultLogKeepCounts
+	if counts, err := strconv.Atoi(config["log_keep_counts"]); err == nil && counts != 0 {
+		logKeepCounts = counts
+	}
+	var ctx context.Context
+	ctx, p.Cancel = context.WithCancel(context.Background())
 	body := func() {
-		go p.spliter()
+		go p.spliter(ctx, logKeepDays, logKeepCounts)
 	}
 	doSplit, ok := config["dosplit"]
 	if !ok {
@@ -124,17 +139,22 @@ func (p *XFileLog) Init(config map[string]string) (err error) {
 }
 
 // split the log file
-func (p *XFileLog) spliter() {
+func (p *XFileLog) spliter(ctx context.Context, keepDays int, logKeepCounts int) {
 	preHour := time.Now().Hour()
 	splitTime := time.Now().Format("2006010215")
 	defer p.Close()
 	for {
-		time.Sleep(time.Second * SpliterDelay)
-		if time.Now().Hour() != preHour {
-			p.clean()
-			p.rename(splitTime)
-			preHour = time.Now().Hour()
-			splitTime = time.Now().Format("2006010215")
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(time.Second * SpliterDelay):
+			p.clean(keepDays, logKeepCounts)
+			if time.Now().Hour() != preHour {
+				p.clean(keepDays, logKeepCounts)
+				p.rename(splitTime)
+				preHour = time.Now().Hour()
+				splitTime = time.Now().Format("2006010215")
+			}
 		}
 	}
 }
@@ -170,19 +190,32 @@ func delayClose(fp *os.File) {
 	fp.Close()
 }
 
-func (p *XFileLog) clean() (err error) {
-	deadline := time.Now().AddDate(0, 0, CleanDays)
+func (p *XFileLog) clean(keepDays int, logKeepCounts int) (err error) {
+	deadline := time.Now().AddDate(0, 0, -1*keepDays)
+	fileTypeMap := make(map[string]int)
 	var files []string
 	files, err = filepath.Glob(fmt.Sprintf("%s/%s.log*", p.path, p.filename))
 	if err != nil {
 		return
 	}
 	var fileInfo os.FileInfo
-	for _, file := range files {
-		if filepath.Base(file) == fmt.Sprintf("%s.log", p.filename) {
+	for i := len(files) - 1; i >= 0; i-- {
+		file := files[i]
+		if canSkipClean(filepath.Base(file), p.filename) {
 			continue
 		}
-		if filepath.Base(file) == fmt.Sprintf("%s.log.wf", p.filename) {
+
+		reg := regexp.MustCompile("[0-9]+")
+		fileType := reg.ReplaceAllString(file, "")
+		fileTypeMap[fileType]++
+		if fileTypeMap[fileType] > logKeepCounts {
+			_ = os.Remove(file)
+			fileTypeMap[fileType]--
+		}
+	}
+
+	for _, file := range files {
+		if canSkipClean(filepath.Base(file), p.filename) {
 			continue
 		}
 		if fileInfo, err = os.Stat(file); err == nil {
@@ -196,37 +229,29 @@ func (p *XFileLog) clean() (err error) {
 	return
 }
 
-func (p *XFileLog) rename(shuffix string) (err error) {
+func (p *XFileLog) rename(suffix string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	defer p.ReOpen()
 	if p.file == nil {
 		return
 	}
-	var fileInfo os.FileInfo
 	normalLog := p.path + "/" + p.filename + ".log"
 	warnLog := normalLog + ".wf"
-	newLog := fmt.Sprintf("%s/%s.log-%s.log", p.path, p.filename, shuffix)
-	newWarnLog := fmt.Sprintf("%s/%s.log.wf-%s.log.wf", p.path, p.filename, shuffix)
-	if fileInfo, err = os.Stat(normalLog); err == nil && fileInfo.Size() == 0 {
-		return
+	newLog := fmt.Sprintf("%s/%s.log-%s.log", p.path, p.filename, suffix)
+	newWarnLog := fmt.Sprintf("%s/%s.log.wf-%s.log.wf", p.path, p.filename, suffix)
+	_ = removeFile(normalLog, newLog)
+	_ = removeFile(warnLog, newWarnLog)
+}
+
+func removeFile(oldFile string, newFile string) (err error) {
+	if fileInfo, err := os.Stat(oldFile); err == nil && fileInfo.Size() == 0 {
+		return nil
 	}
-	if _, err = os.Stat(newLog); err == nil {
-		return
+	if _, err = os.Stat(newFile); err == nil {
+		return nil
 	}
-	if err = os.Rename(normalLog, newLog); err != nil {
-		return
-	}
-	if fileInfo, err = os.Stat(warnLog); err == nil && fileInfo.Size() == 0 {
-		return
-	}
-	if _, err = os.Stat(newWarnLog); err == nil {
-		return
-	}
-	if err = os.Rename(warnLog, newWarnLog); err != nil {
-		return
-	}
-	return
+	return os.Rename(oldFile, newFile)
 }
 
 // ReOpen implements XLogger
@@ -388,6 +413,8 @@ func (p *XFileLog) Close() {
 		p.errFile.Close()
 		p.errFile = nil
 	}
+
+	p.Cancel()
 }
 
 // GetHost getter of hostname
@@ -397,9 +424,9 @@ func (p *XFileLog) GetHost() string {
 
 func (p *XFileLog) write(level int, msg *string, logID string) error {
 	levelText := levelTextArray[level]
-	time := time.Now().Format("2006-01-02 15:04:05")
+	time := time.Now().Format("2006-01-02 15:04:05.000")
 
-	logText := formatLog(msg, time, p.service, p.hostname, levelText, logID)
+	logText := formatLog(msg, time, levelText, logID)
 	file := p.file
 	if level >= WarnLevel {
 		file = p.errFile
@@ -415,4 +442,21 @@ func isDir(path string) (bool, error) {
 		return false, err
 	}
 	return stat.IsDir(), nil
+}
+
+// canSkipClean check if filename can be skipped by log clean
+func canSkipClean(file string, filePrefix string) bool {
+	skipList := []string{
+		filePrefix + ".log",
+		filePrefix + "_sql.log",
+		filePrefix + ".log.wf",
+		filePrefix + "_sql.log.wf",
+	}
+
+	for _, s := range skipList {
+		if file == s {
+			return true
+		}
+	}
+	return false
 }

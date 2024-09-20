@@ -29,24 +29,24 @@
 package server
 
 import (
+	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"math"
-	"strconv"
-
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util"
+	"math"
+	"strconv"
 )
 
 var p = &mysql.Field{Name: []byte("?")}
 var c = &mysql.Field{}
 
-func calcParams(sql string) (paramCount int, offsets []int, err error) {
-	count := 0
+func CalcParams(sql string) (count int, offsets []int, sqlItems []string, err error) {
 	quoteChar := ""
-	paramCount = 0
 	offsets = make([]int, 0)
+	sqlItems = make([]string, 0)
+	subBeginIndex := 0
 
 	for i, elem := range []byte(sql) {
 		if elem == '\\' {
@@ -60,15 +60,21 @@ func calcParams(sql string) (paramCount int, offsets []int, err error) {
 		} else if quoteChar == "" && elem == '?' {
 			count++
 			offsets = append(offsets, i)
+			sqlItems = append(sqlItems, sql[subBeginIndex:i], "?")
+			subBeginIndex = i + 1
 		}
-
 	}
+
+	// sub string behind the last "?", eg: select * from t where id = ? limit 1
+	if subBeginIndex != len(sql) {
+		sqlItems = append(sqlItems, sql[subBeginIndex:])
+	}
+
+	// quote char not match
 	if quoteChar != "" {
 		err = fmt.Errorf("fatal situation")
 		return
 	}
-
-	paramCount = count
 
 	return
 }
@@ -93,6 +99,7 @@ type Stmt struct {
 	paramCount  int
 	paramTypes  []byte
 	offsets     []int
+	sqlItems    []string
 }
 
 // ResetParams reset args
@@ -110,24 +117,24 @@ func (s *Stmt) GetParamTypes() []byte {
 
 // GetRewriteSQL get rewrite sql
 func (s *Stmt) GetRewriteSQL() (string, error) {
-	sql := s.sql
-	var tmp = ""
-	var pos = 0
-	var offset = 0
-	var quote = false
-	for i := 0; i < s.paramCount; i++ {
-		quote, tmp = util.ItoString(s.args[i])
-		tmp = escapeSQL(tmp)
-		pos = s.offsets[i]
-		if quote {
-			sql = util.Concat(sql[:pos+offset], "'", tmp, "'", sql[pos+offset+1:])
-			offset = offset + len(tmp) - 1 + 2
+	var buffer bytes.Buffer
+	index := 0
+
+	for i := 0; i < len(s.sqlItems); i++ {
+		if s.sqlItems[i] == "?" {
+			quote, tmp := util.ItoString(s.args[index])
+			index++
+			tmp = escapeSQL(tmp)
+			if quote {
+				tmp = "'" + tmp + "'"
+			}
+			buffer.WriteString(tmp)
 		} else {
-			sql = util.Concat(sql[:pos+offset], tmp, sql[pos+offset+1:])
-			offset = offset + len(tmp) - 1
+			buffer.WriteString(s.sqlItems[i])
 		}
 	}
-	return sql, nil
+
+	return buffer.String(), nil
 }
 
 func (se *SessionExecutor) handleStmtExecute(data []byte) (*mysql.Result, error) {
@@ -198,25 +205,9 @@ func (se *SessionExecutor) handleStmtExecute(data []byte) (*mysql.Result, error)
 	} else {
 		executeSQL = s.sql
 	}
-
 	defer s.ResetParams()
-
 	// execute sql using ComQuery
-	r, err := se.handleQuery(executeSQL)
-	if err != nil {
-		return nil, err
-	}
-
-	// build binary result set
-	if r != nil && r.Resultset != nil {
-		resultSet, err := mysql.BuildBinaryResultset(r.Fields, r.Values)
-		if err != nil {
-			return nil, err
-		}
-		r.Resultset = resultSet
-	}
-
-	return r, nil
+	return se.handleQuery(executeSQL)
 }
 
 // long data and generic args are all in s.args
@@ -226,6 +217,7 @@ func (se *SessionExecutor) bindStmtArgs(s *Stmt, nullBitmap, paramTypes, paramVa
 	pos := 0
 
 	var v []byte
+	n := 0
 	var isNull bool
 
 	for i := 0; i < s.paramCount; i++ {
@@ -320,12 +312,56 @@ func (se *SessionExecutor) bindStmtArgs(s *Stmt, nullBitmap, paramTypes, paramVa
 			pos += 8
 			continue
 
+		case mysql.TypeDate, mysql.TypeNewDate:
+			if len(paramValues) < (pos + 1) {
+				return mysql.ErrMalformPacket
+			}
+
+			n = int(paramValues[pos])
+			pos++
+			tVal, err := mysql.FormatBinaryDate(n, paramValues[pos:pos+n])
+			pos += n
+			if err != nil {
+				return err
+			}
+			args[i] = tVal
+			continue
+
+		case mysql.TypeDuration:
+			if len(paramValues) < (pos + 1) {
+				return mysql.ErrMalformPacket
+			}
+
+			n = int(paramValues[pos])
+			pos++
+			tVal, err := mysql.FormatBinaryTime(n, paramValues[pos:pos+n])
+			pos += n
+			if err != nil {
+				return err
+			}
+			args[i] = tVal
+			continue
+
+		case mysql.TypeTimestamp, mysql.TypeDatetime:
+			if len(paramValues) < (pos + 1) {
+				return mysql.ErrMalformPacket
+			}
+
+			n := int(paramValues[pos])
+			pos++
+			tVal, err := mysql.FormatBinaryDateTime(n, paramValues[pos:pos+n])
+			pos += n
+			if err != nil {
+				return err
+			}
+			args[i] = tVal
+			continue
+
 		case mysql.TypeDecimal, mysql.TypeNewDecimal, mysql.TypeVarchar,
 			mysql.TypeBit, mysql.TypeEnum, mysql.TypeSet, mysql.TypeTinyBlob,
 			mysql.TypeMediumBlob, mysql.TypeLongBlob, mysql.TypeBlob,
 			mysql.TypeVarString, mysql.TypeString, mysql.TypeGeometry,
-			mysql.TypeDate, mysql.TypeNewDate,
-			mysql.TypeTimestamp, mysql.TypeDatetime, mysql.TypeDuration, mysql.TypeJSON:
+			mysql.TypeJSON:
 			if len(paramValues) < (pos + 1) {
 				return mysql.ErrMalformPacket
 			}

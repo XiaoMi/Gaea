@@ -27,6 +27,7 @@ import (
 const (
 	ShardTypeUnshard = "unshard"
 	ShardTypeShard   = "shard"
+	ExplainKey       = "explain"
 )
 
 // ExplainPlan is the plan for explain statement
@@ -35,13 +36,13 @@ type ExplainPlan struct {
 	sqls      map[string]map[string][]string
 }
 
-func buildExplainPlan(stmt *ast.ExplainStmt, phyDBs map[string]string, db, sql string, r *router.Router, seq *sequence.SequenceManager) (*ExplainPlan, error) {
+func buildExplainPlan(stmt *ast.ExplainStmt, phyDBs map[string]string, db, sql string, r *router.Router, seq *sequence.SequenceManager, hintPlan Plan) (*ExplainPlan, error) {
 	stmtToExplain := stmt.Stmt
 	if _, ok := stmtToExplain.(*ast.ExplainStmt); ok {
 		return nil, fmt.Errorf("nested explain")
 	}
 
-	p, err := BuildPlan(stmtToExplain, phyDBs, db, sql, r, seq)
+	p, err := BuildPlan(stmtToExplain, phyDBs, db, sql, r, seq, hintPlan)
 	if err != nil {
 		return nil, fmt.Errorf("build plan to explain error: %v", err)
 	}
@@ -69,9 +70,6 @@ func buildExplainPlan(stmt *ast.ExplainStmt, phyDBs map[string]string, db, sql s
 		ep.shardType = ShardTypeUnshard
 		ep.sqls = make(map[string]map[string][]string)
 		dbSQLs := make(map[string][]string)
-		if phyDB, ok := phyDBs[pl.db]; ok {
-			pl.db = phyDB
-		}
 		dbSQLs[pl.db] = []string{pl.sql}
 		ep.sqls[r.GetDefaultRule().GetSlice(0)] = dbSQLs
 		return ep, nil
@@ -81,32 +79,41 @@ func buildExplainPlan(stmt *ast.ExplainStmt, phyDBs map[string]string, db, sql s
 }
 
 // ExecuteIn implement Plan
-func (p *ExplainPlan) ExecuteIn(*util.RequestContext, Executor) (*mysql.Result, error) {
-	return createExplainResult(p.shardType, p.sqls), nil
-}
-
-// Size implement Plan
-func (p *ExplainPlan) Size() int {
-	return 1
-}
-
-func createExplainResult(shardType string, sqls map[string]map[string][]string) *mysql.Result {
+func (p *ExplainPlan) ExecuteIn(reqCtx *util.RequestContext, se Executor) (*mysql.Result, error) {
 	var rows [][]interface{}
-	var names = []string{"type", "slice", "db", "sql"}
+	var names = []string{"shard_type", "slice", "db", "sql", "select_type", "table", "partitions", "type",
+		"possible_keys", "key", "key_len", "ref", "rows", "filtered", "Extra"}
 
-	for slice, dbSQLs := range sqls {
+	for slice, dbSQLs := range p.sqls {
 		for db, tableSQLs := range dbSQLs {
 			for _, sql := range tableSQLs {
-				row := []interface{}{shardType, slice, db, sql}
-				rows = append(rows, row)
+				s, err := se.ExecuteSQL(reqCtx, slice, db, ExplainKey+" "+sql)
+				if err != nil {
+					return nil, err
+				}
+
+				for i := 0; i < len(s.Resultset.Values); i++ {
+					row := []interface{}{p.shardType, slice, db, sql}
+					for j := 1; j < len(s.Resultset.Values[i]); j++ {
+						if s.Resultset.Values[i][j] == nil {
+							s.Resultset.Values[i][j] = "NULL"
+						}
+						row = append(row, s.Resultset.Values[i][j])
+					}
+					rows = append(rows, row)
+				}
 			}
 		}
 	}
 
 	r, _ := mysql.BuildResultset(nil, names, rows)
-	ret := &mysql.Result{
-		Resultset: r,
-	}
+	ret := mysql.ResultPool.Get()
+	ret.Resultset = r
 
-	return ret
+	return ret, nil
+}
+
+// Size implement Plan
+func (p *ExplainPlan) Size() int {
+	return 1
 }

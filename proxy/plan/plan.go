@@ -16,6 +16,7 @@ package plan
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 
 	"github.com/XiaoMi/Gaea/mysql"
@@ -35,6 +36,7 @@ var _ Plan = &DeletePlan{}
 var _ Plan = &UpdatePlan{}
 var _ Plan = &InsertPlan{}
 var _ Plan = &SelectLastInsertIDPlan{}
+var _ Plan = &SetPlan{}
 
 // Plan is a interface for select/insert etc.
 type Plan interface {
@@ -57,6 +59,8 @@ type Executor interface {
 	SetLastInsertID(uint64)
 
 	GetLastInsertID() uint64
+
+	HandleSet(*util.RequestContext, string, *ast.SetStmt) (*mysql.Result, error)
 }
 
 // Checker 用于检查SelectStmt是不是分表的Visitor, 以及是否包含DB信息
@@ -169,13 +173,17 @@ type TableAliasStmtInfo struct {
 }
 
 // BuildPlan build plan for ast
-func BuildPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string, router *router.Router, seq *sequence.SequenceManager) (Plan, error) {
+func BuildPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string, router *router.Router, seq *sequence.SequenceManager, hintPlan Plan) (Plan, error) {
 	if IsSelectLastInsertIDStmt(stmt) {
-		return CreateSelectLastInsertIDPlan(), nil
+		return CreateSelectLastInsertIDPlan(stmt.(*ast.SelectStmt)), nil
+	}
+
+	if IsSetStmt(stmt) {
+		return CreateSetPlan(sql, stmt), nil
 	}
 
 	if estmt, ok := stmt.(*ast.ExplainStmt); ok {
-		return buildExplainPlan(estmt, phyDBs, db, sql, router, seq)
+		return buildExplainPlan(estmt, phyDBs, db, sql, router, seq, hintPlan)
 	}
 
 	checker := NewChecker(db, router)
@@ -186,15 +194,25 @@ func BuildPlan(stmt ast.StmtNode, phyDBs map[string]string, db, sql string, rout
 	}
 
 	if checker.IsShard() {
-		return buildShardPlan(stmt, db, sql, router, seq)
+		return buildShardPlan(stmt, db, sql, router, seq, hintPlan)
 	}
 	return CreateUnshardPlan(stmt, phyDBs, db, checker.GetUnshardTableNames())
 }
 
-func buildShardPlan(stmt ast.StmtNode, db string, sql string, router *router.Router, seq *sequence.SequenceManager) (Plan, error) {
+func buildShardPlan(stmt ast.StmtNode, db string, sql string, router *router.Router, seq *sequence.SequenceManager, hintPlan Plan) (Plan, error) {
 	switch s := stmt.(type) {
 	case *ast.SelectStmt:
 		plan := NewSelectPlan(db, sql, router)
+		// convert MyCat hint Plan to hint DB
+		if p, ok := hintPlan.(*SelectPlan); ok {
+			hintSelectPlan := p
+			for _, v := range hintSelectPlan.sqls {
+				for db := range v {
+					plan.TableAliasStmtInfo.hintPhyDB = db
+				}
+			}
+
+		}
 		if err := HandleSelectStmt(plan, s); err != nil {
 			return nil, err
 		}
@@ -338,7 +356,7 @@ func (s *StmtInfo) getSettedRuleByColumnName(column string) (router.Rule, bool, 
 }
 
 // 处理SELECT只含有全局表的情况
-// 这种情况只路由到默认分片
+// 这种情况会随机路由到各个分片表
 // 如果有多个全局表, 则只取第一个全局表的配置, 因此需要业务上保证这些全局表的配置是一致的.
 func postHandleGlobalTableRouteResultInQuery(p *StmtInfo) error {
 	if len(p.tableRules) == 0 && len(p.globalTableRules) != 0 {
@@ -351,7 +369,10 @@ func postHandleGlobalTableRouteResultInQuery(p *StmtInfo) error {
 		}
 		p.result.db = rule.GetDB()
 		p.result.table = tableName
-		p.result.indexes = []int{0} // 全局表SELECT只取默认分片
+
+		// 全局表SELECT随机分片
+		tableLen := len(rule.GetSubTableIndexes())
+		p.result.indexes = []int{rand.Intn(tableLen)}
 	}
 	return nil
 }
@@ -495,6 +516,7 @@ func (t *TableAliasStmtInfo) getAliasTable(alias string) (string, bool) {
 	return table, ok
 }
 
+// TODO: 删除该函数
 // 根据StmtNode和路由信息生成分片SQL
 func generateShardingSQLs(stmt ast.StmtNode, result *RouteResult, router *router.Router) (map[string]map[string][]string, error) {
 	ret := make(map[string]map[string][]string)
@@ -506,6 +528,41 @@ func generateShardingSQLs(stmt ast.StmtNode, result *RouteResult, router *router
 			return nil, err
 		}
 
+		index := result.Next()
+		rule, ok := router.GetShardRule(result.db, result.table)
+		if !ok {
+			return nil, fmt.Errorf("cannot find shard rule, db: %s, table: %s", result.db, result.table)
+		}
+		sliceIndex := rule.GetSliceIndexFromTableIndex(index)
+		sliceName := rule.GetSlice(sliceIndex)
+		dbName, _ := rule.GetDatabaseNameByTableIndex(index)
+		sliceSQLs, ok := ret[sliceName]
+		if !ok {
+			sliceSQLs = make(map[string][]string)
+			ret[sliceName] = sliceSQLs
+		}
+
+		ret[sliceName][dbName] = append(ret[sliceName][dbName], sb.String())
+	}
+
+	result.Reset() // must reset the cursor for next call
+
+	return ret, nil
+}
+
+// 根据多个StmtNode和路由信息生成分片SQL，适用于 batch insert
+func generateMultiShardingSQLs(stmts []ast.StmtNode, result *RouteResult, router *router.Router) (map[string]map[string][]string, error) {
+	if len(stmts) != len(result.GetShardIndexes()) {
+		return nil, fmt.Errorf("stmt not equal result")
+	}
+	ret := make(map[string]map[string][]string)
+
+	for result.HasNext() {
+		sb := &strings.Builder{}
+		ctx := format.NewRestoreCtx(format.EscapeRestoreFlags, sb)
+		if err := stmts[result.currentIndex].Restore(ctx); err != nil {
+			return nil, err
+		}
 		index := result.Next()
 		rule, ok := router.GetShardRule(result.db, result.table)
 		if !ok {

@@ -19,18 +19,23 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 
 	"github.com/XiaoMi/Gaea/core"
 	"github.com/XiaoMi/Gaea/log"
-	"github.com/XiaoMi/Gaea/log/xlog"
 	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/proxy/server"
 )
 
 var configFile = flag.String("config", "etc/gaea.ini", "gaea config file")
 var info = flag.Bool("info", false, "show info of gaea")
+var numCPU = flag.Int("num-cpu", 0, "how many operating systems threads attempt to execute simultaneously")
+
+const (
+	defaultCPUNum = 4 //best practise
+)
 
 func main() {
 	flag.Parse()
@@ -48,7 +53,22 @@ func main() {
 		return
 	}
 
-	if err = initXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service); err != nil {
+	var cpuNums int
+	if *numCPU > 0 && *numCPU <= runtime.NumCPU() {
+		// best practice -num-cpu=4
+		fmt.Printf("max use cpu : %d(from command-line)", *numCPU)
+		cpuNums = *numCPU
+	} else if cfg.NumCPU > 0 && *numCPU <= runtime.NumCPU() {
+		fmt.Printf("max use cpu : %d(from cfg)", cfg.NumCPU)
+		cpuNums = cfg.NumCPU
+	} else {
+		fmt.Printf("max use cpu : %d(default)", defaultCPUNum)
+		cpuNums = defaultCPUNum
+	}
+	runtime.GOMAXPROCS(cpuNums)
+	cfg.NumCPU = cpuNums
+
+	if err = models.InitXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service, cfg.LogKeepDays, cfg.LogKeepCounts); err != nil {
 		fmt.Printf("init xlog error: %v\n", err.Error())
 		return
 	}
@@ -58,6 +78,7 @@ func main() {
 	mgr, err := server.LoadAndCreateManager(cfg)
 	if err != nil {
 		log.Fatal("init manager failed, error: %v", err)
+		fmt.Printf("init manager failed, error: %v\n", err)
 		return
 	}
 
@@ -83,33 +104,21 @@ func main() {
 		for {
 			sig := <-sc
 			if sig == syscall.SIGINT || sig == syscall.SIGTERM || sig == syscall.SIGQUIT {
-				log.Notice("Got signal %d, quit", sig)
+				log.Notice("got signal %d, quit", sig)
 				svr.Close()
 				break
 			} else if sig == syscall.SIGPIPE {
-				log.Notice("Ignore broken pipe signal")
+				log.Notice("ignore broken pipe signal")
 			} else if sig == syscall.SIGUSR1 {
-				log.Notice("Got update config signal")
+				log.Notice("reload proxy config,out old config:%#v", cfg)
+				if err := svr.ReloadProxyConfig(); err != nil {
+					log.Notice("reload proxy confi error:%s", err)
+				} else {
+					log.Notice("reload proxy config success")
+				}
 			}
 		}
 	}()
 	svr.Run()
 	wg.Wait()
-}
-
-func initXLog(output, path, filename, level, service string) error {
-	cfg := make(map[string]string)
-	cfg["path"] = path
-	cfg["filename"] = filename
-	cfg["level"] = level
-	cfg["service"] = service
-	cfg["skip"] = "5" // 设置xlog打印方法堆栈需要跳过的层数, 5目前为调用log.Debug()等方法的方法名, 比xlog默认值多一层.
-
-	logger, err := xlog.CreateLogManager(output, cfg)
-	if err != nil {
-		return err
-	}
-
-	log.SetGlobalLogger(logger)
-	return nil
 }

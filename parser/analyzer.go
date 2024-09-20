@@ -44,6 +44,24 @@ const (
 	StmtUnknown
 	StmtComment
 	StmtSavepoint
+	StmtPriv
+	StmtExplain
+	StmeSRollback
+	StmtRelease
+	StmtLockTables
+	StmtUnlockTables
+	StmtFlush
+	StmtCallProc
+	StmtRevert
+	StmtShowMigrationLogs
+	StmtCommentOnly
+	StmtPrepare
+	StmtExecute
+	StmtDeallocate
+	StmtKill
+)
+const (
+	eofChar = 0x100
 )
 
 // Preview analyzes the beginning of the query using a simpler and faster
@@ -51,11 +69,16 @@ const (
 func Preview(sql string) int {
 	trimmed := StripLeadingComments(sql)
 
-	firstWord := trimmed
-	if end := strings.IndexFunc(trimmed, unicode.IsSpace); end != -1 {
-		firstWord = trimmed[:end]
+	if strings.Index(trimmed, "/*!") == 0 {
+		return StmtComment
 	}
-	firstWord = strings.TrimLeftFunc(firstWord, func(r rune) bool { return !unicode.IsLetter(r) })
+
+	isNotLetter := func(r rune) bool { return !unicode.IsLetter(r) }
+	firstWord := strings.TrimLeftFunc(trimmed, isNotLetter)
+
+	if end := strings.IndexFunc(firstWord, unicode.IsSpace); end != -1 {
+		firstWord = firstWord[:end]
+	}
 	// Comparison is done in order of priority.
 	loweredFirstWord := strings.ToLower(firstWord)
 	switch loweredFirstWord {
@@ -71,6 +94,12 @@ func Preview(sql string) int {
 		return StmtUpdate
 	case "delete":
 		return StmtDelete
+	case "savepoint":
+		return StmtSavepoint
+	case "lock":
+		return StmtLockTables
+	case "unlock":
+		return StmtUnlockTables
 	}
 	// For the following statements it is not sufficient to rely
 	// on loweredFirstWord. This is because they are not statements
@@ -81,31 +110,34 @@ func Preview(sql string) int {
 	switch strings.ToLower(trimmedNoComments) {
 	case "begin", "start transaction":
 		return StmtBegin
+	case "commit":
+		return StmtCommit
+	case "rollback":
+		return StmtRollback
 	}
 	switch loweredFirstWord {
-	case "create", "alter", "rename", "drop", "truncate", "flush":
+	case "create", "alter", "rename", "drop", "truncate":
 		return StmtDDL
+	case "flush":
+		return StmtFlush
 	case "set":
 		return StmtSet
 	case "show":
 		return StmtShow
 	case "use":
 		return StmtUse
-	case "analyze", "describe", "desc", "explain", "repair", "optimize":
+	case "explain":
+		return StmtExplain
+	case "analyze", "describe", "desc", "repair", "optimize":
 		return StmtOther
-	case "commit":
-		return StmtCommit
+	case "release":
+		return StmtRelease
 	case "rollback":
-		return StmtRollback
-	case "savepoint":
-		return StmtSavepoint
+		return StmeSRollback
+	case "kill":
+		return StmtKill
 	}
-	if strings.Index(trimmedNoComments, "release savepoint") == 0 {
-		return StmtSavepoint
-	}
-	if strings.Index(trimmed, "/*!") == 0 {
-		return StmtComment
-	}
+
 	return StmtUnknown
 }
 
@@ -144,5 +176,128 @@ func StmtType(stmtType int) string {
 		return "OTHER"
 	default:
 		return "UNKNOWN"
+	}
+}
+
+// SplitStatementToPieces split raw sql statement that may have multi sql pieces to sql pieces
+// returns the sql pieces blob contains; or error if sql cannot be parsed
+func SplitStatementToPieces(blob string) (pieces []string, err error) {
+	// fast path: the vast majority of SQL statements do not have semicolons in them
+	if blob == "" {
+		return nil, nil
+	}
+	switch strings.IndexByte(blob, ';') {
+	case -1: // if there is no semicolon, return blob as a whole
+		return []string{blob}, nil
+	case len(blob) - 1: // if there's a single semicolon, and it's the last character, return blob without it
+		return []string{blob[:len(blob)-1]}, nil
+	}
+
+	pieces = make([]string, 0, 16)
+	tokenizer := NewScanner(blob)
+
+	stmt := ""
+	emptyStatement := true
+	for stmtBegin := 0; stmtBegin < len(blob); {
+		tkn, pos, _ := tokenizer.scan()
+		switch tkn {
+		case ';':
+			stmt = blob[stmtBegin:pos.Offset]
+			if !emptyStatement {
+				pieces = append(pieces, stmt)
+				emptyStatement = true
+			}
+			stmtBegin = pos.Offset + 1
+		case 0, eofChar:
+			blobTail := pos.Offset - 1
+			if stmtBegin < blobTail {
+				stmt = blob[stmtBegin : blobTail+1]
+				if !emptyStatement {
+					pieces = append(pieces, stmt)
+				}
+			}
+
+			if len(tokenizer.errs) > 0 {
+				err = tokenizer.errs[0]
+			}
+			return
+		default:
+			emptyStatement = false
+		}
+	}
+	return
+}
+
+// Tokenize splits a SQL string into tokens.
+func Tokenize(s string) []string {
+	s = strings.TrimSpace(s)
+	//trim -- comments
+	if strings.HasPrefix(s, "--") {
+		lines := strings.Split(s, "\n")
+		linesNoComment := []string{}
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if !strings.HasPrefix(line, "--") {
+				linesNoComment = append(linesNoComment, line)
+			}
+		}
+		s = strings.Join(linesNoComment, "\n")
+	}
+	tokens := strings.FieldsFunc(s, IsSqlSep)
+	// remove first version comment mark
+	// TODO: 处理 mycat hint: /* !mycat:sql=select 1 from order where order_id = 1 */
+	if strings.HasPrefix(s, "/*!") {
+		if len(tokens) > 1 {
+			return tokens[1:]
+		} else {
+			return tokens
+		}
+	} else if strings.HasPrefix(s, "/*") {
+		masterHint := tokens[0]
+		idx := strings.Index(s, "*/")
+		if idx > 0 {
+			tokens = strings.FieldsFunc(s[idx+2:], IsSqlSep)
+		}
+		if masterHint == "*master*" {
+			tokens = append(tokens, masterHint)
+		}
+	}
+	return tokens
+}
+
+func IsSqlSep(r rune) bool {
+	// '/' for separate comment '/*master*/'
+	return r == ' ' || r == ',' ||
+		r == '\t' || r == '/' ||
+		r == '\n' || r == '\r'
+}
+
+// GetDBTable get the database name from token
+func GetDBTable(token string) (string, string) {
+	if len(token) == 0 {
+		return "", ""
+	}
+
+	vec := strings.SplitN(token, ".", 2)
+	if len(vec) == 2 {
+		return strings.Trim(vec[0], "`"), strings.Trim(vec[1], "`")
+	} else {
+		return "", strings.Trim(vec[0], "`")
+	}
+}
+
+// GetInsertDBTable get the database name from token
+func GetInsertDBTable(token string) (string, string) {
+	if len(token) == 0 {
+		return "", ""
+	}
+
+	vec := strings.SplitN(token, ".", 2)
+	if len(vec) == 2 {
+		table := strings.Split(vec[1], "(")
+		return strings.Trim(vec[0], "`"), strings.Trim(table[0], "`")
+	} else {
+		table := strings.Split(vec[0], "(")
+		return "", strings.Trim(table[0], "`")
 	}
 }

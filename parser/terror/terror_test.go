@@ -17,81 +17,72 @@ import (
 	"encoding/json"
 	"testing"
 
-	. "github.com/pingcap/check"
 	"github.com/pingcap/errors"
+	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/util/testleak"
 )
 
-func TestT(t *testing.T) {
-	CustomVerboseFlag = true
-	TestingT(t)
+func TestErrCode(t *testing.T) {
+	require.Equal(t, ErrCode(1), CodeMissConnectionID)
+	require.Equal(t, ErrCode(2), CodeResultUndetermined)
 }
 
-var _ = Suite(&testTErrorSuite{})
-
-type testTErrorSuite struct {
-}
-
-func (s *testTErrorSuite) TestErrCode(c *C) {
-	c.Assert(CodeMissConnectionID, Equals, ErrCode(1))
-	c.Assert(CodeResultUndetermined, Equals, ErrCode(2))
-}
-
-func (s *testTErrorSuite) TestTError(c *C) {
-	defer testleak.AfterTest(c)()
-	c.Assert(ClassParser.String(), Not(Equals), "")
-	c.Assert(ClassOptimizer.String(), Not(Equals), "")
-	c.Assert(ClassKV.String(), Not(Equals), "")
-	c.Assert(ClassServer.String(), Not(Equals), "")
+func TestTError(t *testing.T) {
+	defer testleak.AfterTestT(t)()
+	require.NotEqual(t, "", ClassParser.String())
+	require.NotEqual(t, "", ClassOptimizer.String())
+	require.NotEqual(t, "", ClassKV.String())
+	require.NotEqual(t, "", ClassServer.String())
 
 	parserErr := ClassParser.New(ErrCode(1), "error 1")
-	c.Assert(parserErr.Error(), Not(Equals), "")
-	c.Assert(ClassParser.EqualClass(parserErr), IsTrue)
-	c.Assert(ClassParser.NotEqualClass(parserErr), IsFalse)
+	require.NotEqual(t, "", parserErr.Error())
+	require.True(t, ClassParser.EqualClass(parserErr))
+	require.False(t, ClassParser.NotEqualClass(parserErr))
+	require.False(t, ClassOptimizer.EqualClass(parserErr))
 
-	c.Assert(ClassOptimizer.EqualClass(parserErr), IsFalse)
 	optimizerErr := ClassOptimizer.New(ErrCode(2), "abc")
-	c.Assert(ClassOptimizer.EqualClass(errors.New("abc")), IsFalse)
-	c.Assert(ClassOptimizer.EqualClass(nil), IsFalse)
-	c.Assert(optimizerErr.Equal(optimizerErr.GenWithStack("def")), IsTrue)
-	c.Assert(optimizerErr.Equal(nil), IsFalse)
-	c.Assert(optimizerErr.Equal(errors.New("abc")), IsFalse)
+	require.False(t, ClassOptimizer.EqualClass(errors.New("abc")))
+	require.True(t, optimizerErr.Equal(optimizerErr.GenWithStack("def")))
+	require.False(t, ClassOptimizer.EqualClass(nil))
+	require.False(t, optimizerErr.Equal(nil))
+	require.False(t, optimizerErr.Equal(errors.New("abc")))
 
 	// Test case for FastGen.
-	c.Assert(optimizerErr.Equal(optimizerErr.FastGen("def")), IsTrue)
-	c.Assert(optimizerErr.Equal(optimizerErr.FastGen("def: %s", "def")), IsTrue)
+	require.True(t, optimizerErr.Equal(optimizerErr.FastGen("def")))
+	require.True(t, optimizerErr.Equal(optimizerErr.FastGen("def: %s", "def")))
+
 	kvErr := ClassKV.New(1062, "key already exist")
 	e := kvErr.FastGen("Duplicate entry '%d' for key 'PRIMARY'", 1)
-	c.Assert(e.Error(), Equals, "[kv:1062]Duplicate entry '1' for key 'PRIMARY'")
+	require.Equal(t, "[kv:1062]Duplicate entry '1' for key 'PRIMARY'", e.Error())
 	kvMySQLErrCodes := map[ErrCode]uint16{
 		1062: uint16(1062),
 	}
 	ErrClassToMySQLCodes[ClassKV] = kvMySQLErrCodes
 	sqlErr := errors.Cause(e).(*Error).ToSQLError()
-	c.Assert(sqlErr.Message, Equals, "Duplicate entry '1' for key 'PRIMARY'")
-	c.Assert(sqlErr.Code, Equals, uint16(1062))
+	require.Equal(t, "Duplicate entry '1' for key 'PRIMARY'", sqlErr.Message)
+	require.Equal(t, uint16(1062), sqlErr.Code)
 
 	err := errors.Trace(ErrCritical.GenWithStackByArgs("test"))
-	c.Assert(ErrCritical.Equal(err), IsTrue)
+	require.True(t, ErrCritical.Equal(err))
 
 	err = errors.Trace(ErrCritical)
-	c.Assert(ErrCritical.Equal(err), IsTrue)
+	require.True(t, ErrCritical.Equal(err))
 }
 
-func (s *testTErrorSuite) TestJson(c *C) {
+func TestJson(t *testing.T) {
 	prevTErr := &Error{
 		class:   ClassTable,
 		code:    CodeExecResultIsEmpty,
 		message: "json test",
 	}
 	buf, err := json.Marshal(prevTErr)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	var curTErr Error
 	err = json.Unmarshal(buf, &curTErr)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	isEqual := prevTErr.Equal(&curTErr)
-	c.Assert(isEqual, IsTrue)
+	require.True(t, isEqual)
 }
 
 var predefinedErr = ClassExecutor.New(ErrCode(123), "predefiend error")
@@ -105,43 +96,43 @@ func call() error {
 	return predefinedErr.GenWithStack("error message:%s", "abc")
 }
 
-func (s *testTErrorSuite) TestErrorEqual(c *C) {
-	defer testleak.AfterTest(c)()
+func TestErrorEqual(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	e1 := errors.New("test error")
-	c.Assert(e1, NotNil)
+	require.NotNil(t, e1)
 
 	e2 := errors.Trace(e1)
-	c.Assert(e2, NotNil)
+	require.NotNil(t, e2)
 
 	e3 := errors.Trace(e2)
-	c.Assert(e3, NotNil)
+	require.NotNil(t, e3)
 
-	c.Assert(errors.Cause(e2), Equals, e1)
-	c.Assert(errors.Cause(e3), Equals, e1)
-	c.Assert(errors.Cause(e2), Equals, errors.Cause(e3))
+	require.Equal(t, e1, errors.Cause(e2))
+	require.Equal(t, e1, errors.Cause(e3))
+	require.Equal(t, errors.Cause(e3), errors.Cause(e2))
 
 	e4 := errors.New("test error")
-	c.Assert(errors.Cause(e4), Not(Equals), e1)
+	require.NotEqual(t, e1, errors.Cause(e4))
 
 	e5 := errors.Errorf("test error")
-	c.Assert(errors.Cause(e5), Not(Equals), e1)
+	require.NotEqual(t, e1, errors.Cause(e5))
 
-	c.Assert(ErrorEqual(e1, e2), IsTrue)
-	c.Assert(ErrorEqual(e1, e3), IsTrue)
-	c.Assert(ErrorEqual(e1, e4), IsTrue)
-	c.Assert(ErrorEqual(e1, e5), IsTrue)
+	require.True(t, ErrorEqual(e1, e2))
+	require.True(t, ErrorEqual(e1, e3))
+	require.True(t, ErrorEqual(e1, e4))
+	require.True(t, ErrorEqual(e1, e5))
 
 	var e6 error
 
-	c.Assert(ErrorEqual(nil, nil), IsTrue)
-	c.Assert(ErrorNotEqual(e1, e6), IsTrue)
+	require.True(t, ErrorEqual(nil, nil))
+	require.True(t, ErrorNotEqual(e1, e6))
 	code1 := ErrCode(1)
 	code2 := ErrCode(2)
 	te1 := ClassParser.New(code1, "abc")
 	te2 := ClassParser.New(code1, "def")
 	te3 := ClassKV.New(code1, "abc")
 	te4 := ClassKV.New(code2, "abc")
-	c.Assert(ErrorEqual(te1, te2), IsTrue)
-	c.Assert(ErrorEqual(te1, te3), IsFalse)
-	c.Assert(ErrorEqual(te3, te4), IsFalse)
+	require.True(t, ErrorEqual(te1, te2))
+	require.False(t, ErrorEqual(te1, te3))
+	require.False(t, ErrorEqual(te3, te4))
 }

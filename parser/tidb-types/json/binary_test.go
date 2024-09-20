@@ -17,31 +17,28 @@ import (
 	"testing"
 
 	. "github.com/pingcap/check"
+	"github.com/stretchr/testify/require"
 )
-
-var _ = Suite(&testJSONSuite{})
-
-type testJSONSuite struct{}
 
 func TestT(t *testing.T) {
 	TestingT(t)
 }
 
-func (s *testJSONSuite) TestBinaryJSONMarshalUnmarshal(c *C) {
+func TestBinaryJSONMarshalUnmarshal(t *testing.T) {
 	strs := []string{
 		`{"a": [1, "2", {"aa": "bb"}, 4, null], "b": true, "c": null}`,
 		`{"aaaaaaaaaaa": [1, "2", {"aa": "bb"}, 4.1], "bbbbbbbbbb": true, "ccccccccc": "d"}`,
 		`[{"a": 1, "b": true}, 3, 3.5, "hello, world", null, true]`,
 	}
 	for _, str := range strs {
-		parsedBJ := mustParseBinaryFromString(c, str)
-		c.Assert(parsedBJ.String(), Equals, str)
+		parsedBJ := mustParseBinaryFromString(t, str)
+		require.Equal(t, str, parsedBJ.String())
 	}
 }
 
-func (s *testJSONSuite) TestBinaryJSONExtract(c *C) {
-	bj1 := mustParseBinaryFromString(c, `{"\"hello\"": "world", "a": [1, "2", {"aa": "bb"}, 4.0, {"aa": "cc"}], "b": true, "c": ["d"]}`)
-	bj2 := mustParseBinaryFromString(c, `[{"a": 1, "b": true}, 3, 3.5, "hello, world", null, true]`)
+func TestBinaryJSONExtract(t *testing.T) {
+	bj1 := mustParseBinaryFromString(t, `{"\"hello\"": "world", "a": [1, "2", {"aa": "bb"}, 4.0, {"aa": "cc"}], "b": true, "c": ["d"]}`)
+	bj2 := mustParseBinaryFromString(t, `[{"a": 1, "b": true}, 3, 3.5, "hello, world", null, true]`)
 
 	var tests = []struct {
 		bj              BinaryJSON
@@ -51,39 +48,39 @@ func (s *testJSONSuite) TestBinaryJSONExtract(c *C) {
 		err             error
 	}{
 		// test extract with only one path expression.
-		{bj1, []string{"$.a"}, mustParseBinaryFromString(c, `[1, "2", {"aa": "bb"}, 4.0, {"aa": "cc"}]`), true, nil},
-		{bj2, []string{"$.a"}, mustParseBinaryFromString(c, "null"), false, nil},
+		{bj1, []string{"$.a"}, mustParseBinaryFromString(t, `[1, "2", {"aa": "bb"}, 4.0, {"aa": "cc"}]`), true, nil},
+		{bj2, []string{"$.a"}, mustParseBinaryFromString(t, "null"), false, nil},
 		{bj1, []string{"$[0]"}, bj1, true, nil}, // in Extract, autowraped bj1 as an array.
-		{bj2, []string{"$[0]"}, mustParseBinaryFromString(c, `{"a": 1, "b": true}`), true, nil},
-		{bj1, []string{"$.a[2].aa"}, mustParseBinaryFromString(c, `"bb"`), true, nil},
-		{bj1, []string{"$.a[*].aa"}, mustParseBinaryFromString(c, `["bb", "cc"]`), true, nil},
-		{bj1, []string{"$.*[0]"}, mustParseBinaryFromString(c, `["world", 1, true, "d"]`), true, nil},
-		{bj1, []string{`$.a[*]."aa"`}, mustParseBinaryFromString(c, `["bb", "cc"]`), true, nil},
-		{bj1, []string{`$."\"hello\""`}, mustParseBinaryFromString(c, `"world"`), true, nil},
-		{bj1, []string{`$**[1]`}, mustParseBinaryFromString(c, `"2"`), true, nil},
+		{bj2, []string{"$[0]"}, mustParseBinaryFromString(t, `{"a": 1, "b": true}`), true, nil},
+		{bj1, []string{"$.a[2].aa"}, mustParseBinaryFromString(t, `"bb"`), true, nil},
+		{bj1, []string{"$.a[*].aa"}, mustParseBinaryFromString(t, `["bb", "cc"]`), true, nil},
+		{bj1, []string{"$.*[0]"}, mustParseBinaryFromString(t, `["world", 1, true, "d"]`), true, nil},
+		{bj1, []string{`$.a[*]."aa"`}, mustParseBinaryFromString(t, `["bb", "cc"]`), true, nil},
+		{bj1, []string{`$."\"hello\""`}, mustParseBinaryFromString(t, `"world"`), true, nil},
+		{bj1, []string{`$**[1]`}, mustParseBinaryFromString(t, `"2"`), true, nil},
 
 		// test extract with multi path expressions.
-		{bj1, []string{"$.a", "$[5]"}, mustParseBinaryFromString(c, `[[1, "2", {"aa": "bb"}, 4.0, {"aa": "cc"}]]`), true, nil},
-		{bj2, []string{"$.a", "$[0]"}, mustParseBinaryFromString(c, `[{"a": 1, "b": true}]`), true, nil},
+		{bj1, []string{"$.a", "$[5]"}, mustParseBinaryFromString(t, `[[1, "2", {"aa": "bb"}, 4.0, {"aa": "cc"}]]`), true, nil},
+		{bj2, []string{"$.a", "$[0]"}, mustParseBinaryFromString(t, `[{"a": 1, "b": true}]`), true, nil},
 	}
 
 	for _, tt := range tests {
 		var pathExprList = make([]PathExpression, 0)
 		for _, peStr := range tt.pathExprStrings {
 			pe, err := ParseJSONPathExpr(peStr)
-			c.Assert(err, IsNil)
+			require.NoError(t, err)
 			pathExprList = append(pathExprList, pe)
 		}
 
 		result, found := tt.bj.Extract(pathExprList)
-		c.Assert(found, Equals, tt.found)
+		require.Equal(t, tt.found, found, found)
 		if found {
-			c.Assert(result.String(), Equals, tt.expected.String())
+			require.Equal(t, tt.expected.String(), result.String())
 		}
 	}
 }
 
-func (s *testJSONSuite) TestBinaryJSONType(c *C) {
+func TestBinaryJSONType(t *testing.T) {
 	var tests = []struct {
 		In  string
 		Out string
@@ -96,15 +93,15 @@ func (s *testJSONSuite) TestBinaryJSONType(c *C) {
 		{`true`, "BOOLEAN"},
 	}
 	for _, tt := range tests {
-		bj := mustParseBinaryFromString(c, tt.In)
-		c.Assert(bj.Type(), Equals, tt.Out)
+		bj := mustParseBinaryFromString(t, tt.In)
+		require.Equal(t, tt.Out, bj.Type())
 	}
 	// we can't parse '9223372036854775808' to JSON::Uint64 now,
 	// because go builtin JSON parser treats that as DOUBLE.
-	c.Assert(CreateBinary(uint64(1<<63)).Type(), Equals, "UNSIGNED INTEGER")
+	require.Equal(t, "UNSIGNED INTEGER", CreateBinary(uint64(1<<63)).Type())
 }
 
-func (s *testJSONSuite) TestBinaryJSONUnquote(c *C) {
+func TestBinaryJSONUnquote(t *testing.T) {
 	var tests = []struct {
 		j        string
 		unquoted string
@@ -122,14 +119,14 @@ func (s *testJSONSuite) TestBinaryJSONUnquote(c *C) {
 		{j: `""`, unquoted: ``},
 	}
 	for _, tt := range tests {
-		bj := mustParseBinaryFromString(c, tt.j)
+		bj := mustParseBinaryFromString(t, tt.j)
 		unquoted, err := bj.Unquote()
-		c.Assert(err, IsNil)
-		c.Assert(unquoted, Equals, tt.unquoted)
+		require.NoError(t, err)
+		require.Equal(t, tt.unquoted, unquoted)
 	}
 }
 
-func (s *testJSONSuite) TestBinaryJSONModify(c *C) {
+func TestBinaryJSONModify(t *testing.T) {
 	var tests = []struct {
 		base     string
 		setField string
@@ -167,22 +164,22 @@ func (s *testJSONSuite) TestBinaryJSONModify(c *C) {
 	}
 	for _, tt := range tests {
 		pathExpr, err := ParseJSONPathExpr(tt.setField)
-		c.Assert(err, IsNil)
+		require.NoError(t, err)
 
-		base := mustParseBinaryFromString(c, tt.base)
-		value := mustParseBinaryFromString(c, tt.setValue)
-		expected := mustParseBinaryFromString(c, tt.expected)
+		base := mustParseBinaryFromString(t, tt.base)
+		value := mustParseBinaryFromString(t, tt.setValue)
+		expected := mustParseBinaryFromString(t, tt.expected)
 		obtain, err := base.Modify([]PathExpression{pathExpr}, []BinaryJSON{value}, tt.mt)
 		if tt.success {
-			c.Assert(err, IsNil)
-			c.Assert(obtain.String(), Equals, expected.String())
+			require.NoError(t, err)
+			require.Equal(t, expected.String(), obtain.String())
 		} else {
-			c.Assert(err, NotNil)
+			require.Error(t, err)
 		}
 	}
 }
 
-func (s *testJSONSuite) TestBinaryJSONRemove(c *C) {
+func TestBinaryJSONRemove(t *testing.T) {
 	var tests = []struct {
 		base     string
 		path     string
@@ -203,31 +200,31 @@ func (s *testJSONSuite) TestBinaryJSONRemove(c *C) {
 	}
 	for _, tt := range tests {
 		pathExpr, err := ParseJSONPathExpr(tt.path)
-		c.Assert(err, IsNil)
+		require.NoError(t, err)
 
-		base := mustParseBinaryFromString(c, tt.base)
-		expected := mustParseBinaryFromString(c, tt.expected)
+		base := mustParseBinaryFromString(t, tt.base)
+		expected := mustParseBinaryFromString(t, tt.expected)
 		obtain, err := base.Remove([]PathExpression{pathExpr})
 		if tt.success {
-			c.Assert(err, IsNil)
-			c.Assert(obtain.String(), Equals, expected.String())
+			require.NoError(t, err)
+			require.Equal(t, expected.String(), obtain.String())
 		} else {
-			c.Assert(err, NotNil)
+			require.Error(t, err)
 		}
 	}
 }
 
-func (s *testJSONSuite) TestCompareBinary(c *C) {
-	jNull := mustParseBinaryFromString(c, `null`)
-	jBoolTrue := mustParseBinaryFromString(c, `true`)
-	jBoolFalse := mustParseBinaryFromString(c, `false`)
+func TestCompareBinary(t *testing.T) {
+	jNull := mustParseBinaryFromString(t, `null`)
+	jBoolTrue := mustParseBinaryFromString(t, `true`)
+	jBoolFalse := mustParseBinaryFromString(t, `false`)
 	jIntegerLarge := CreateBinary(uint64(1 << 63))
-	jIntegerSmall := mustParseBinaryFromString(c, `3`)
-	jStringLarge := mustParseBinaryFromString(c, `"hello, world"`)
-	jStringSmall := mustParseBinaryFromString(c, `"hello"`)
-	jArrayLarge := mustParseBinaryFromString(c, `["a", "c"]`)
-	jArraySmall := mustParseBinaryFromString(c, `["a", "b"]`)
-	jObject := mustParseBinaryFromString(c, `{"a": "b"}`)
+	jIntegerSmall := mustParseBinaryFromString(t, `3`)
+	jStringLarge := mustParseBinaryFromString(t, `"hello, world"`)
+	jStringSmall := mustParseBinaryFromString(t, `"hello"`)
+	jArrayLarge := mustParseBinaryFromString(t, `["a", "c"]`)
+	jArraySmall := mustParseBinaryFromString(t, `["a", "b"]`)
+	jObject := mustParseBinaryFromString(t, `{"a": "b"}`)
 
 	var tests = []struct {
 		left  BinaryJSON
@@ -245,11 +242,11 @@ func (s *testJSONSuite) TestCompareBinary(c *C) {
 	}
 	for _, tt := range tests {
 		cmp := CompareBinary(tt.left, tt.right)
-		c.Assert(cmp < 0, IsTrue)
+		require.True(t, cmp < 0)
 	}
 }
 
-func (s *testJSONSuite) TestBinaryJSONMerge(c *C) {
+func TestBinaryJSONMerge(t *testing.T) {
 	var tests = []struct {
 		suffixes []string
 		expected string
@@ -269,17 +266,17 @@ func (s *testJSONSuite) TestBinaryJSONMerge(c *C) {
 	for _, tt := range tests {
 		suffixes := make([]BinaryJSON, 0, len(tt.suffixes)+1)
 		for _, s := range tt.suffixes {
-			suffixes = append(suffixes, mustParseBinaryFromString(c, s))
+			suffixes = append(suffixes, mustParseBinaryFromString(t, s))
 		}
 		result := MergeBinary(suffixes)
-		cmp := CompareBinary(result, mustParseBinaryFromString(c, tt.expected))
-		c.Assert(cmp, Equals, 0)
+		cmp := CompareBinary(result, mustParseBinaryFromString(t, tt.expected))
+		require.Equal(t, 0, cmp)
 	}
 }
 
-func mustParseBinaryFromString(c *C, s string) BinaryJSON {
+func mustParseBinaryFromString(t *testing.T, s string) BinaryJSON {
 	bj, err := ParseBinaryFromString(s)
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	return bj
 }
 
@@ -294,7 +291,7 @@ func BenchmarkBinaryMarshal(b *testing.B) {
 	}
 }
 
-func (s *testJSONSuite) TestBinaryJSONContains(c *C) {
+func TestBinaryJSONContains(t *testing.T) {
 	var tests = []struct {
 		input    string
 		target   string
@@ -319,13 +316,13 @@ func (s *testJSONSuite) TestBinaryJSONContains(c *C) {
 	}
 
 	for _, tt := range tests {
-		obj := mustParseBinaryFromString(c, tt.input)
-		target := mustParseBinaryFromString(c, tt.target)
-		c.Assert(ContainsBinary(obj, target), Equals, tt.expected)
+		obj := mustParseBinaryFromString(t, tt.input)
+		target := mustParseBinaryFromString(t, tt.target)
+		require.Equal(t, tt.expected, ContainsBinary(obj, target))
 	}
 }
 
-func (s *testJSONSuite) TestBinaryJSONDepth(c *C) {
+func TestBinaryJSONDepth(t *testing.T) {
 	var tests = []struct {
 		input    string
 		expected int
@@ -340,7 +337,7 @@ func (s *testJSONSuite) TestBinaryJSONDepth(c *C) {
 	}
 
 	for _, tt := range tests {
-		obj := mustParseBinaryFromString(c, tt.input)
-		c.Assert(obj.GetElemDepth(), Equals, tt.expected)
+		obj := mustParseBinaryFromString(t, tt.input)
+		require.Equal(t, tt.expected, obj.GetElemDepth())
 	}
 }

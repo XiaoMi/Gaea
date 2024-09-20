@@ -16,7 +16,6 @@ package plan
 
 import (
 	"fmt"
-
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/ast"
 	"github.com/XiaoMi/Gaea/parser/opcode"
@@ -67,9 +66,8 @@ func (s *SelectPlan) ExecuteIn(reqCtx *util.RequestContext, sess Executor) (*mys
 
 	if len(sqls) == 0 {
 		r := newEmptyResultset(s, s.GetStmt())
-		ret := &mysql.Result{
-			Resultset: r,
-		}
+		ret := mysql.ResultPool.Get()
+		ret.Resultset = r
 		return ret, nil
 	}
 
@@ -77,16 +75,17 @@ func (s *SelectPlan) ExecuteIn(reqCtx *util.RequestContext, sess Executor) (*mys
 	if err != nil {
 		return nil, fmt.Errorf("execute in SelectPlan error: %v", err)
 	}
-
-	if s.isExecOnSingleNode() {
+	// fix: 修复全局表或分片表 order by/group by等情况下单分片执行时多一列的问题, 修复由于 limit offset 语句改写导致结果行数不正确问题
+	if s.isExecOnSingleNode() && s.noAddColumns() && !s.HasLimit() {
 		return rs[0], nil
-	} else {
-		r, err := MergeSelectResult(s, s.stmt, rs)
-		if err != nil {
-			return nil, fmt.Errorf("merge select result error: %v", err)
-		}
-		return r, nil
 	}
+
+	r, err := MergeSelectResult(s, s.stmt, rs)
+	if err != nil {
+		return nil, fmt.Errorf("merge select result error: %v", err)
+	}
+	return r, nil
+
 }
 
 // GetStmt SelectStmt
@@ -149,13 +148,13 @@ func (s *SelectPlan) GetSQLs() map[string]map[string][]string {
 	return s.sqls
 }
 
-//执行计划是否仅仅涉及一个分片
+// 执行计划是否仅仅涉及一个分片
 func (s *SelectPlan) isExecOnSingleNode() bool {
-	if len(s.result.indexes) == 1 {
-		return true
-	} else {
-		return false
-	}
+	return len(s.result.indexes) == 1
+}
+
+func (s *SelectPlan) noAddColumns() bool {
+	return s.originColumnCount == s.columnCount
 }
 
 // HandleSelectStmt build a SelectPlan
@@ -213,6 +212,11 @@ func HandleSelectStmt(p *SelectPlan, stmt *ast.SelectStmt) error {
 
 		if err := handleLimit(p, stmt); err != nil {
 			return fmt.Errorf("handle Limit error: %v", err)
+		}
+	} else {
+		// 即使在单个分片执行，也会产生加列的情况
+		if stmt.Fields != nil {
+			p.columnCount = len(stmt.Fields.Fields)
 		}
 	}
 
@@ -332,8 +336,13 @@ func createSelectFieldsFromByItems(p *SelectPlan, items []*ast.ByItem) ([]*ast.S
 }
 
 func createSelectFieldFromByItem(p *SelectPlan, item *ast.ByItem) (*ast.SelectField, error) {
-	// 特殊处理DATABASE()这种情况
-	if funcExpr, ok := item.Expr.(*ast.FuncCallExpr); ok {
+	var columnExpr *ast.ColumnNameExpr
+
+	// support order by null/order by 1/order by max/order by min
+	switch item.Expr.(type) {
+	case *ast.FuncCallExpr:
+		// 特殊处理DATABASE()这种情况
+		funcExpr := item.Expr.(*ast.FuncCallExpr)
 		if funcExpr.FnName.L == "database" {
 			ret := &ast.SelectField{
 				Expr: item.Expr,
@@ -341,10 +350,16 @@ func createSelectFieldFromByItem(p *SelectPlan, item *ast.ByItem) (*ast.SelectFi
 			return ret, nil
 		}
 		return nil, fmt.Errorf("ByItem.Expr is a FuncCallExpr but not DATABASE()")
-	}
-
-	columnExpr, ok := item.Expr.(*ast.ColumnNameExpr)
-	if !ok {
+	case *driver.ValueExpr:
+		return &ast.SelectField{Expr: item.Expr}, nil
+	case *ast.PositionExpr:
+		return &ast.SelectField{Expr: item.Expr}, nil
+	case *ast.AggregateFuncExpr:
+		// 处理 order by max()/min() 等情况
+		return &ast.SelectField{Expr: item.Expr}, nil
+	case *ast.ColumnNameExpr:
+		columnExpr = item.Expr.(*ast.ColumnNameExpr)
+	default:
 		return nil, fmt.Errorf("ByItem.Expr is not a ColumnNameExpr")
 	}
 
@@ -359,7 +374,7 @@ func createSelectFieldFromByItem(p *SelectPlan, item *ast.ByItem) (*ast.SelectFi
 	}
 
 	ret := &ast.SelectField{
-		Expr: item.Expr,
+		Expr: columnExpr,
 	}
 	return ret, nil
 }
@@ -602,7 +617,7 @@ func handleFieldList(p *SelectPlan, stmt *ast.SelectStmt) (err error) {
 	for i, f := range fields.Fields {
 		switch field := f.Expr.(type) {
 		case *ast.AggregateFuncExpr:
-			merger, err := CreateAggregateFunctionMerger(field.F, i)
+			merger, err := CreateAggregateFunctionMerger(field, i)
 			if err != nil {
 				return fmt.Errorf("create aggregate function merger error, column index: %d, err: %v", i, err)
 			}

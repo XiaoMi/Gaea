@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 
@@ -40,6 +41,15 @@ func initXLog(ccConfig *models.CCConfig) error {
 	cfg["level"] = ccConfig.LogLevel
 	cfg["service"] = "gaea-cc"
 	cfg["skip"] = "5"
+	cfg["log_keep_days"] = strconv.Itoa(log.DefaultLogKeepDays)
+	if ccConfig.LogKeepDays != 0 {
+		cfg["log_keep_days"] = strconv.Itoa(ccConfig.LogKeepDays)
+	}
+
+	cfg["log_keep_counts"] = strconv.Itoa(log.DefaultLogKeepCounts)
+	if ccConfig.LogKeepCounts != 0 {
+		cfg["log_keep_counts"] = strconv.Itoa(ccConfig.LogKeepCounts)
+	}
 
 	logger, err := xlog.CreateLogManager(ccConfig.LogOutput, cfg)
 	if err != nil {

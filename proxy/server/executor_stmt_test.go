@@ -24,18 +24,20 @@ func Test_calcParams(t *testing.T) {
 		"order_id in ('1321989216361392') and\n" +
 		"project_id = 371 and\n" +
 		"order_status = 2"
-	paramCount, offsets, err := calcParams(sql)
+	paramCount, offsets, sqlItems, err := CalcParams(sql)
 	t.Log(paramCount)
 	t.Log(offsets)
+	t.Log(sqlItems)
 	t.Log(err)
 	if err != nil {
 		t.Logf("test calcParams failed, %v\n", err)
 	}
 
 	sql = "select * from t1 where id = ? and col = ?"
-	paramCount, offsets, err = calcParams(sql)
+	paramCount, offsets, sqlItems, err = CalcParams(sql)
 	t.Log(paramCount)
 	t.Log(offsets)
+	t.Log(sqlItems)
 	t.Log(err)
 	if err != nil || paramCount != 2 {
 		t.Logf("test calcParams failed, %v\n", err)

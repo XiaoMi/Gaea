@@ -16,8 +16,9 @@ package ast_test
 import (
 	"fmt"
 	"strings"
+	"testing"
 
-	. "github.com/pingcap/check"
+	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/parser"
 	. "github.com/XiaoMi/Gaea/parser/ast"
@@ -25,30 +26,25 @@ import (
 	driver "github.com/XiaoMi/Gaea/parser/tidb-types/parser_driver"
 )
 
-var _ = Suite(&testCacheableSuite{})
-
-type testCacheableSuite struct {
-}
-
-func (s *testCacheableSuite) TestCacheable(c *C) {
+func TestCacheable(t *testing.T) {
 	// test non-SelectStmt
 	var stmt Node = &DeleteStmt{}
-	c.Assert(IsReadOnly(stmt), IsFalse)
+	require.False(t, IsReadOnly(stmt))
 
 	stmt = &InsertStmt{}
-	c.Assert(IsReadOnly(stmt), IsFalse)
+	require.False(t, IsReadOnly(stmt))
 
 	stmt = &UpdateStmt{}
-	c.Assert(IsReadOnly(stmt), IsFalse)
+	require.False(t, IsReadOnly(stmt))
 
 	stmt = &ExplainStmt{}
-	c.Assert(IsReadOnly(stmt), IsTrue)
+	require.True(t, IsReadOnly(stmt))
 
 	stmt = &ExplainStmt{}
-	c.Assert(IsReadOnly(stmt), IsTrue)
+	require.True(t, IsReadOnly(stmt))
 
 	stmt = &DoStmt{}
-	c.Assert(IsReadOnly(stmt), IsTrue)
+	require.True(t, IsReadOnly(stmt))
 }
 
 // CleanNodeText set the text of node and all child node empty.
@@ -103,25 +99,29 @@ type NodeRestoreTestCase struct {
 	expectSQL string
 }
 
-func RunNodeRestoreTest(c *C, nodeTestCases []NodeRestoreTestCase, template string, extractNodeFunc func(node Node) Node) {
-	parser := parser.New()
-	parser.EnableWindowFunc(true)
+func runNodeRestoreTest(t *testing.T, nodeTestCases []NodeRestoreTestCase, template string, extractNodeFunc func(node Node) Node) {
+	runNodeRestoreTestWithFlags(t, nodeTestCases, template, extractNodeFunc, DefaultRestoreFlags)
+}
+
+func runNodeRestoreTestWithFlags(t *testing.T, nodeTestCases []NodeRestoreTestCase, template string, extractNodeFunc func(node Node) Node, flags RestoreFlags) {
+	p := parser.New()
+	p.EnableWindowFunc(true)
 	for _, testCase := range nodeTestCases {
 		sourceSQL := fmt.Sprintf(template, testCase.sourceSQL)
 		expectSQL := fmt.Sprintf(template, testCase.expectSQL)
-		stmt, err := parser.ParseOneStmt(sourceSQL, "", "")
-		comment := Commentf("source %#v", testCase)
-		c.Assert(err, IsNil, comment)
+		stmt, err := p.ParseOneStmt(sourceSQL, "", "")
+		comment := fmt.Sprintf("source %#v", testCase)
+		require.NoError(t, err, comment)
 		var sb strings.Builder
-		err = extractNodeFunc(stmt).Restore(NewRestoreCtx(DefaultRestoreFlags, &sb))
-		c.Assert(err, IsNil, comment)
-		restoreSQL := fmt.Sprintf(template, sb.String())
-		comment = Commentf("source %#v; restore %v", testCase, restoreSQL)
-		c.Assert(restoreSQL, Equals, expectSQL, comment)
-		stmt2, err := parser.ParseOneStmt(restoreSQL, "", "")
-		c.Assert(err, IsNil, comment)
+		err = extractNodeFunc(stmt).Restore(NewRestoreCtx(flags, &sb))
+		require.NoError(t, err, comment)
+		restoreSql := fmt.Sprintf(template, sb.String())
+		comment = fmt.Sprintf("source %#v; restore %v", testCase, restoreSql)
+		require.Equal(t, expectSQL, restoreSql, comment)
+		stmt2, err := p.ParseOneStmt(restoreSql, "", "")
+		require.NoError(t, err, comment)
 		CleanNodeText(stmt)
 		CleanNodeText(stmt2)
-		c.Assert(stmt2, DeepEquals, stmt, comment)
+		require.Equal(t, stmt, stmt2, comment)
 	}
 }

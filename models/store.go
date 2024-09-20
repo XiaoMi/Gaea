@@ -17,14 +17,15 @@ package models
 import (
 	"encoding/json"
 	"fmt"
-	etcdclientv3 "github.com/XiaoMi/Gaea/models/etcdv3"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/XiaoMi/Gaea/log"
 	etcdclient "github.com/XiaoMi/Gaea/models/etcd"
+	etcdclientv3 "github.com/XiaoMi/Gaea/models/etcdv3"
 	fileclient "github.com/XiaoMi/Gaea/models/file"
+	"github.com/coreos/etcd/client"
 )
 
 // config type
@@ -42,6 +43,7 @@ type Client interface {
 	Delete(path string) error
 	Read(path string) ([]byte, error)
 	List(path string) ([]string, error)
+	ListWithValues(path string) (map[string]string, error)
 	Close() error
 	BasePrefix() string
 }
@@ -149,9 +151,11 @@ func (s *Store) LoadNamespace(key, name string) (*Namespace, error) {
 	}
 
 	if b == nil {
-		return nil, fmt.Errorf("node %s not exists", s.NamespacePath(name))
+		return nil, client.Error{
+			Code:    client.ErrorCodeKeyNotFound,
+			Message: fmt.Sprintf("node %s not exists", s.NamespacePath(name)),
+		}
 	}
-
 	p := &Namespace{}
 	if err = json.Unmarshal(b, p); err != nil {
 		return nil, err
@@ -197,4 +201,24 @@ func (s *Store) ListProxyMonitorMetrics() (map[string]*ProxyMonitorMetric, error
 		proxy[p.Token] = p
 	}
 	return proxy, nil
+}
+
+func (s *Store) ListNamespaces() (map[string]*Namespace, error) {
+	values, err := s.client.ListWithValues(s.NamespaceBase())
+	if err != nil {
+		return nil, err
+	}
+	// 初始化结果map
+	res := make(map[string]*Namespace, len(values))
+	for key, value := range values {
+		ns := &Namespace{}
+		// 反序列化每个值到Namespace结构体
+		if err := json.Unmarshal([]byte(value), ns); err != nil {
+			// 如果出现错误，处理错误，例如记录或返回错误
+			return nil, err
+		}
+		// 将反序列化的Namespace添加到结果map
+		res[key] = ns
+	}
+	return res, nil
 }

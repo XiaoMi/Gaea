@@ -19,15 +19,13 @@ fi
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 GIT_DIRTY=$(git diff --no-ext-diff 2> /dev/null | wc -l)
 
-# XXX This needs to be updated to accomodate tags added after building, rather than prior to builds
-RELEASE_TAG=$(git describe --match '[0-9]*\.[0-9]*\.[0-9]*' --exact-match --tags 2> /dev/null || echo "")
+# XXX This needs to be updated to accommodate tags added after building, rather than prior to builds
+RELEASE_TAG=$(git describe)
 
 # security wanted VERSION='unknown'
 VERSION="${BUILD_GIT_REVISION}"
 if [[ -n "${RELEASE_TAG}" ]]; then
   VERSION="${RELEASE_TAG}"
-elif [[ -n ${MY_VERSION} ]]; then
-  VERSION="${MY_VERSION}"
 fi
 
 # used by core/version

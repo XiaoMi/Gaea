@@ -16,6 +16,7 @@ package router
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"testing"
 
 	"github.com/XiaoMi/Gaea/models"
@@ -222,7 +223,7 @@ func TestParseMycatRule(t *testing.T) {
 	}
 }
 
-//TODO YYYY-MM-DD HH:MM:SS,YYYY-MM-DD test
+// TODO YYYY-MM-DD HH:MM:SS,YYYY-MM-DD test
 func TestParseDateRule(t *testing.T) {
 	var s = `
 	{"name": "gaea_namespace_1",
@@ -457,4 +458,368 @@ func TestParseRule(t *testing.T) {
 	if defaultRule.GetShard() == nil {
 		t.Fatal("nil error")
 	}
+}
+
+type MockShard struct {
+	FindForKeyFunc func(key interface{}) (int, error)
+}
+
+func (m *MockShard) FindForKey(key interface{}) (int, error) {
+	return m.FindForKeyFunc(key)
+}
+
+type MockRule struct {
+	GetDBFunc                       func() string
+	GetTableFunc                    func() string
+	GetShardingColumnFunc           func() string
+	IsLinkedRuleFunc                func() bool
+	GetShardFunc                    func() Shard
+	FindTableIndexFunc              func(key interface{}) (int, error)
+	GetSliceFunc                    func(i int) string
+	GetSliceIndexFromTableIndexFunc func(i int) int
+	GetSlicesFunc                   func() []string
+	GetSubTableIndexesFunc          func() []int
+	GetTypeFunc                     func() string
+	GetDatabaseNameByTableIndexFunc func(index int) (string, error)
+	GetTableIndexByDatabaseNameFunc func(phyDB string) (int, bool)
+	GetDatabasesFunc                func() []string
+	GetFirstTableIndexFunc          func() int
+	GetLastTableIndexFunc           func() int
+}
+
+func (m *MockRule) GetDB() string {
+	return m.GetDBFunc()
+}
+
+func (m *MockRule) GetTable() string {
+	return m.GetTableFunc()
+}
+
+func (m *MockRule) GetShardingColumn() string {
+	return m.GetShardingColumnFunc()
+}
+
+func (m *MockRule) IsLinkedRule() bool {
+	return m.IsLinkedRuleFunc()
+}
+
+func (m *MockRule) GetShard() Shard {
+	return m.GetShardFunc()
+}
+
+func (m *MockRule) FindTableIndex(key interface{}) (int, error) {
+	return m.FindTableIndexFunc(key)
+}
+
+func (m *MockRule) GetSlice(i int) string {
+	return m.GetSliceFunc(i)
+}
+
+func (m *MockRule) GetSliceIndexFromTableIndex(i int) int {
+	return m.GetSliceIndexFromTableIndexFunc(i)
+}
+
+func (m *MockRule) GetSlices() []string {
+	return m.GetSlicesFunc()
+}
+
+func (m *MockRule) GetSubTableIndexes() []int {
+	return m.GetSubTableIndexesFunc()
+}
+
+func (m *MockRule) GetType() string {
+	return m.GetTypeFunc()
+}
+
+func (m *MockRule) GetDatabaseNameByTableIndex(index int) (string, error) {
+	return m.GetDatabaseNameByTableIndexFunc(index)
+}
+
+func (m *MockRule) GetTableIndexByDatabaseName(phyDB string) (int, bool) {
+	return m.GetTableIndexByDatabaseNameFunc(phyDB)
+}
+
+func (m *MockRule) GetDatabases() []string {
+	return m.GetDatabasesFunc()
+}
+func (m *MockRule) GetFirstTableIndex() int {
+	return m.GetFirstTableIndexFunc()
+}
+func (m *MockRule) GetLastTableIndex() int {
+	return m.GetLastTableIndexFunc()
+}
+
+func TestCreateLinkedRule(t *testing.T) {
+	rules := map[string]map[string]Rule{
+		"db1": {
+			"table1": &MockRule{},
+		},
+	}
+	shard := &models.Shard{
+		Type:        LinkedTableRuleType,
+		DB:          "db1",
+		Table:       "table2",
+		ParentTable: "table1",
+		Key:         "key1",
+	}
+
+	t.Run("valid creation", func(t *testing.T) {
+		expectedLinkedRule := &LinkedRule{
+			db:             "db1",
+			table:          "table2",
+			shardingColumn: "key1",
+			linkToRule: &BaseRule{
+				db:             "db1",
+				table:          "table2",
+				shardingColumn: "key1",
+			},
+		}
+		rules["db1"]["table1"] = &BaseRule{
+			db:             "db1",
+			table:          "table2",
+			shardingColumn: "key1",
+		}
+		linkedRule, err := createLinkedRule(rules, shard)
+		assert.NoError(t, err)
+		assert.Equal(t, expectedLinkedRule, linkedRule)
+	})
+
+	t.Run("invalid type", func(t *testing.T) {
+		shard.Type = "other"
+		_, err := createLinkedRule(rules, shard)
+		assert.Error(t, err)
+	})
+
+	t.Run("db not found", func(t *testing.T) {
+		shard.DB = "unknown"
+		_, err := createLinkedRule(rules, shard)
+		assert.Error(t, err)
+	})
+
+	t.Run("parent table not found", func(t *testing.T) {
+		shard.DB = "db1"
+		shard.ParentTable = "unknown"
+		_, err := createLinkedRule(rules, shard)
+		assert.Error(t, err)
+	})
+
+	t.Run("cannot link to another linked rule", func(t *testing.T) {
+		mockLinkToRule := &MockRule{}
+		mockLinkToRule.GetTypeFunc = func() string {
+			return LinkedTableRuleType
+		}
+		_, err := createLinkedRule(rules, shard)
+		assert.Error(t, err)
+	})
+
+	t.Run("must link to a base rule", func(t *testing.T) {
+		mockLinkToRule := &MockRule{}
+		mockLinkToRule.GetTypeFunc = func() string {
+			return "other"
+		}
+		_, err := createLinkedRule(rules, shard)
+		assert.Error(t, err)
+	})
+}
+
+func TestBaseRuleMethods(t *testing.T) {
+	baseRule := &BaseRule{
+		db:              "db1",
+		table:           "table1",
+		shardingColumn:  "column1",
+		shard:           &MockShard{},
+		slices:          []string{"slice1", "slice2"},
+		tableToSlice:    map[int]int{0: 0, 1: 1},
+		subTableIndexes: []int{0, 1},
+		ruleType:        "base",
+		mycatDatabases:  []string{"db1", "db2"},
+		mycatDatabaseToTableIndexMap: map[string]int{
+			"db1": 0,
+			"db2": 1,
+		},
+	}
+
+	t.Run("GetDB", func(t *testing.T) {
+		assert.Equal(t, "db1", baseRule.GetDB())
+	})
+
+	t.Run("GetTable", func(t *testing.T) {
+		assert.Equal(t, "table1", baseRule.GetTable())
+	})
+
+	t.Run("GetShardingColumn", func(t *testing.T) {
+		assert.Equal(t, "column1", baseRule.GetShardingColumn())
+	})
+
+	t.Run("IsLinkedRule", func(t *testing.T) {
+		assert.False(t, baseRule.IsLinkedRule())
+	})
+
+	t.Run("GetShard", func(t *testing.T) {
+		assert.NotNil(t, baseRule.GetShard())
+	})
+
+	t.Run("FindTableIndex", func(t *testing.T) {
+		mockShard := &MockShard{
+			FindForKeyFunc: func(key interface{}) (int, error) {
+				return 0, nil
+			},
+		}
+		baseRule.shard = mockShard
+		index, err := baseRule.FindTableIndex("key")
+		assert.NoError(t, err)
+		assert.Equal(t, 0, index)
+	})
+
+	t.Run("GetSlice", func(t *testing.T) {
+		assert.Equal(t, "slice1", baseRule.GetSlice(0))
+	})
+
+	t.Run("GetSliceIndexFromTableIndex", func(t *testing.T) {
+		assert.Equal(t, 0, baseRule.GetSliceIndexFromTableIndex(0))
+	})
+
+	t.Run("GetSlices", func(t *testing.T) {
+		assert.Equal(t, []string{"slice1", "slice2"}, baseRule.GetSlices())
+	})
+
+	t.Run("GetSubTableIndexes", func(t *testing.T) {
+		assert.Equal(t, []int{0, 1}, baseRule.GetSubTableIndexes())
+	})
+
+	t.Run("GetFirstTableIndex", func(t *testing.T) {
+		assert.Equal(t, 0, baseRule.GetFirstTableIndex())
+	})
+
+	t.Run("GetLastTableIndex", func(t *testing.T) {
+		assert.Equal(t, 1, baseRule.GetLastTableIndex())
+	})
+
+	t.Run("GetType", func(t *testing.T) {
+		assert.Equal(t, "base", baseRule.GetType())
+	})
+
+	t.Run("GetDatabaseNameByTableIndex", func(t *testing.T) {
+		name, err := baseRule.GetDatabaseNameByTableIndex(0)
+		assert.NoError(t, err)
+		assert.Equal(t, "db1", name)
+	})
+
+	t.Run("GetTableIndexByDatabaseName", func(t *testing.T) {
+		index, ok := baseRule.GetTableIndexByDatabaseName("db1")
+		assert.True(t, ok)
+		assert.Equal(t, 0, index)
+	})
+
+	t.Run("GetDatabases", func(t *testing.T) {
+		assert.Equal(t, []string{"db1", "db2"}, baseRule.GetDatabases())
+	})
+}
+
+func TestLinkedRuleMethods(t *testing.T) {
+	baseRule := &BaseRule{
+		db:              "db1",
+		table:           "table1",
+		shardingColumn:  "column1",
+		shard:           &MockShard{},
+		slices:          []string{"slice1", "slice2"},
+		tableToSlice:    map[int]int{0: 0, 1: 1},
+		subTableIndexes: []int{0, 1},
+		ruleType:        "base",
+		mycatDatabases:  []string{"db1", "db2"},
+		mycatDatabaseToTableIndexMap: map[string]int{
+			"db1": 0,
+			"db2": 1,
+		},
+	}
+	linkedRule := &LinkedRule{
+		db:             "db1",
+		table:          "table2",
+		shardingColumn: "column1",
+		linkToRule:     baseRule,
+	}
+
+	t.Run("GetDB", func(t *testing.T) {
+		assert.Equal(t, "db1", linkedRule.GetDB())
+	})
+
+	t.Run("GetTable", func(t *testing.T) {
+		assert.Equal(t, "table2", linkedRule.GetTable())
+	})
+
+	t.Run("GetParentDB", func(t *testing.T) {
+		assert.Equal(t, "db1", linkedRule.GetParentDB())
+	})
+
+	t.Run("GetParentTable", func(t *testing.T) {
+		assert.Equal(t, "table1", linkedRule.GetParentTable())
+	})
+
+	t.Run("GetShardingColumn", func(t *testing.T) {
+		assert.Equal(t, "column1", linkedRule.GetShardingColumn())
+	})
+
+	t.Run("IsLinkedRule", func(t *testing.T) {
+		assert.True(t, linkedRule.IsLinkedRule())
+	})
+
+	t.Run("GetShard", func(t *testing.T) {
+		assert.NotNil(t, linkedRule.GetShard())
+	})
+
+	t.Run("FindTableIndex", func(t *testing.T) {
+		mockShard := &MockShard{
+			FindForKeyFunc: func(key interface{}) (int, error) {
+				return 0, nil
+			},
+		}
+		baseRule.shard = mockShard
+		index, err := linkedRule.FindTableIndex("key")
+		assert.NoError(t, err)
+		assert.Equal(t, 0, index)
+	})
+
+	t.Run("GetFirstTableIndex", func(t *testing.T) {
+		assert.Equal(t, 0, linkedRule.GetFirstTableIndex())
+	})
+
+	t.Run("GetLastTableIndex", func(t *testing.T) {
+		assert.Equal(t, 1, linkedRule.GetLastTableIndex())
+	})
+
+	t.Run("GetSlice", func(t *testing.T) {
+		assert.Equal(t, "slice1", linkedRule.GetSlice(0))
+	})
+
+	t.Run("GetSliceIndexFromTableIndex", func(t *testing.T) {
+		assert.Equal(t, 0, linkedRule.GetSliceIndexFromTableIndex(0))
+	})
+
+	t.Run("GetSlices", func(t *testing.T) {
+		assert.Equal(t, []string{"slice1", "slice2"}, linkedRule.GetSlices())
+	})
+
+	t.Run("GetSubTableIndexes", func(t *testing.T) {
+		assert.Equal(t, []int{0, 1}, linkedRule.GetSubTableIndexes())
+	})
+
+	t.Run("GetType", func(t *testing.T) {
+		assert.Equal(t, "base", linkedRule.GetType())
+	})
+
+	t.Run("GetDatabaseNameByTableIndex", func(t *testing.T) {
+		name, err := linkedRule.GetDatabaseNameByTableIndex(0)
+		assert.NoError(t, err)
+		assert.Equal(t, "db1", name)
+	})
+
+	t.Run("GetDatabases", func(t *testing.T) {
+		assert.Equal(t, []string{"db1", "db2"}, linkedRule.GetDatabases())
+	})
+
+	t.Run("GetTableIndexByDatabaseName", func(t *testing.T) {
+		index, ok := linkedRule.GetTableIndexByDatabaseName("db1")
+		assert.True(t, ok)
+		assert.Equal(t, 0, index)
+	})
 }

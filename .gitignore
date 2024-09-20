@@ -5,3 +5,11 @@ logs
 .coverage.*
 .vscode
 .idea
+tests/e2e/cmd/logs
+tests/e2e/cmd/gaea
+tests/e2e/cmd/gaea-cc
+.DS_Store
+.integrate_coverage.func
+.integrate_coverage.html
+.integrate_coverage.out
+.coverage.*

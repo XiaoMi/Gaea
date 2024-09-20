@@ -1,4 +1,8 @@
 ROOT:=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+GOOS ?= linux
+GOARCH ?= $(shell go env GOARCH)
+GOENV  := CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH)
+GO     := $(GOENV) go
 GAEA_OUT:=$(ROOT)/bin/gaea
 GAEA_CC_OUT:=$(ROOT)/bin/gaea-cc
 PKG:=$(shell go list -m)
@@ -9,10 +13,10 @@ all: build test
 build: parser gaea gaea-cc
 
 gaea:
-	go build -o $(GAEA_OUT) $(shell bash gen_ldflags.sh $(GAEA_OUT) $(PKG)/core $(PKG)/cmd/gaea)
+	$(GO) build -o $(GAEA_OUT) $(shell bash gen_ldflags.sh $(GAEA_OUT) $(PKG)/core $(PKG)/cmd/gaea)
 
 gaea-cc:
-	go build -o $(GAEA_CC_OUT) $(shell bash gen_ldflags.sh $(GAEA_CC_OUT) $(PKG)/core $(PKG)/cmd/gaea-cc)
+	$(GO) build -o $(GAEA_CC_OUT) $(shell bash gen_ldflags.sh $(GAEA_CC_OUT) $(PKG)/core $(PKG)/cmd/gaea-cc)
 
 parser:
 	cd parser && make && cd ..
@@ -21,11 +25,33 @@ clean:
 	@rm -rf bin
 	@rm -f .coverage.out .coverage.html
 
+ALL_CHECKS = EOF spelling
+check: $(addprefix check-,$(ALL_CHECKS))
+
+check-%:
+	./hack/verify-$*.sh
+
 test:
-	go test -coverprofile=.coverage.out ./...
+	go test -gcflags="all=-l -N" -coverprofile=.coverage.out `go list ./...` -short
 	go tool cover -func=.coverage.out -o .coverage.func
 	tail -1 .coverage.func
 	go tool cover -html=.coverage.out -o .coverage.html
+
+e2e-test: gaea gaea-cc
+	cp bin/gaea bin/gaea-cc tests/e2e/cmd/
+	./hack/e2e-mysql5.sh
+	./hack/ginkgo-run-mysql5.sh
+
+e2e-test-mysql8: gaea gaea-cc
+	cp bin/gaea bin/gaea-cc tests/e2e/cmd/
+	./hack/e2e-mysql8.sh
+	./hack/ginkgo-run-mysql8.sh
+
+integrate_test:
+	go test -timeout 30m -coverprofile=.integrate_coverage.out ./... -run ^TestIntegration$
+	go tool cover -func=.integrate_coverage.out -o .integrate_coverage.func
+	tail -1 .integrate_coverage.func
+	go tool cover -html=.integrate_coverage.out -o .integrate_coverage.html
 
 build_with_coverage:
 	go test -c cmd/gaea/main.go cmd/gaea/main_test.go -coverpkg ./... -covermode=count -o bin/gaea

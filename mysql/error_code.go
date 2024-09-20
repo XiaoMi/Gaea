@@ -13,6 +13,11 @@
 
 package mysql
 
+import (
+	"errors"
+	"strings"
+)
+
 // MySQL error code.
 // This value is numeric. It is not portable to other database systems.
 const (
@@ -915,4 +920,75 @@ const (
 	ErrWindowNoGroupOrderUnused                                     = 3597
 	ErrWindowExplainJSON                                            = 3598
 	ErrWindowFunctionIgnoresFrame                                   = 3599
+	ErrClientQpsLimited                                             = 901
 )
+
+// IsTableSpaceMissingErr 检查给定的错误是否是缺少表空间
+func IsTableSpaceMissingErr(err error) bool {
+	return IsSQLErrorCode(err, ErrTablespaceMissing)
+}
+
+// IsTablespaceAutoExtendErr 检查给定的错误是否是表空间自动扩展错误(与表空间的自动扩展配置有关)
+func IsTablespaceAutoExtendErr(err error) bool {
+	return IsSQLErrorCode(err, ErrTablespaceAutoExtend)
+}
+
+// IsTablespaceExistsErr 检查给定的错误是否是表空间已存在(在尝试创建新的表空间时发现同名表空间已存在)
+func IsTablespaceExistsErr(err error) bool {
+	return IsSQLErrorCode(err, ErrTablespaceExists)
+}
+
+// IsTableSpaceDiscardeErr 检查给定的错误是否是表空间已丢弃(尝试访问一个标记为丢弃的表空间)
+func IsTableSpaceDiscardeErr(err error) bool {
+	return IsSQLErrorCode(err, ErrTablespaceDiscarded)
+}
+
+// IsServerShutdownErr 检查给定的错误是否是MySQL服务器已关闭
+func IsServerShutdownErr(err error) bool {
+	return IsSQLErrorCode(err, ErrServerShutdown)
+}
+
+// IsSQLSyntaxErr 检查给定的错误是否是SQL语法错误
+func IsSQLSyntaxErr(err error) bool {
+	return IsSQLErrorCode(err, ErrSyntax)
+}
+
+// IsSQLNoPrivilegeErr 检查给定的错误是否表示没有足够的SQL权限。
+func IsSQLNoPrivilegeErr(err error) bool {
+	return IsSQLErrorCode(err, ErrSpecificAccessDenied)
+}
+
+// IsSQLErrorCode check if error is a SQLError with the given code
+func IsSQLErrorCode(err error, code uint16) bool {
+	var sqlErr *SQLError
+	if errors.As(err, &sqlErr) {
+		sqlCode := sqlErr.SQLCode()
+		return sqlCode == code
+	}
+	return false
+}
+
+// IsWrongValueForVarErr checks if the given error indicates a wrong value
+// for a SQL variable (e.g., "Variable '...' can't be set to the value of '...'").
+// It returns true if the error matches the ErrWrongValueForVar code.
+func IsWrongValueForVarErr(err error) bool {
+	return IsSQLErrorCode(err, ErrWrongValueForVar)
+}
+
+// IsSQLErrorWithMessage checks if the error is an SQL error with the given code
+// and contains the specified message. It returns true if both the code and the
+// message match.
+func IsSQLErrorWithMessage(err error, code uint16, message string) bool {
+	var sqlErr *SQLError
+	if errors.As(err, &sqlErr) {
+		return sqlErr.SQLCode() == code && strings.Contains(sqlErr.Message, message)
+	}
+	return false
+}
+
+// IsWrongValueForSQLModeErr checks if the given error is related to an invalid
+// value for the sql_mode variable. It returns true if the error code matches
+// ErrWrongValueForVar and the error message indicates an issue with sql_mode.
+func IsWrongValueForSQLModeErr(err error) bool {
+	return IsSQLErrorWithMessage(err, ErrWrongValueForVar, "Variable 'sql_mode'")
+}

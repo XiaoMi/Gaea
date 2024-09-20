@@ -101,12 +101,12 @@ func (e *ecbEncrypter) BlockSize() (size int) {
 
 func (e *ecbEncrypter) cryptBlocks(dst []byte, src []byte) (err error) {
 	if len(src)%e.blockSize != 0 {
-		err = fmt.Errorf("len(src)[%v] not full blocks, blocksize[%v]", len(src), e.blockSize)
+		err = fmt.Errorf("encrypter len(src)[%v] not full blocks, blocksize[%v]", len(src), e.blockSize)
 		return
 	}
 
 	if len(dst) < len(src) {
-		err = fmt.Errorf("output[%v] is smaller than input[%v]", len(dst), len(src))
+		err = fmt.Errorf("encrypter output[%v] is smaller than input[%v]", len(dst), len(src))
 		return
 	}
 
@@ -137,11 +137,11 @@ func (e *ecbDecrypter) BlockSize() (size int) {
 
 func (e *ecbDecrypter) cryptBlocks(dst []byte, src []byte) (err error) {
 	if len(src)%e.blockSize != 0 {
-		err = fmt.Errorf("len(src)[%v] not full blocks, blocksize[%v]", len(src), e.blockSize)
+		err = fmt.Errorf("decrypter len(src)[%v] not full blocks, blocksize[%v]", len(src), e.blockSize)
 		return
 	}
 	if len(dst) < len(src) {
-		err = fmt.Errorf("output[%v] is smaller than input[%v]", len(dst), len(src))
+		err = fmt.Errorf("decrypter output[%v] is smaller than input[%v]", len(dst), len(src))
 		return
 	}
 

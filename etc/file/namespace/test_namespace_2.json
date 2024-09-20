@@ -20,7 +20,8 @@
             "statistic_slaves": null,
             "capacity": 12,
             "max_capacity": 24,
-            "idle_timeout": 60
+            "idle_timeout": 60,
+            "init_connect": ""
         }
     ],
     "shard_rules": null,

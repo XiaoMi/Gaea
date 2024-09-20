@@ -4,7 +4,7 @@
 // not use this file except in compliance with the License. You may obtain
 // a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
@@ -17,6 +17,8 @@ import (
 	"fmt"
 	"net"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestParseIP(t *testing.T) {
@@ -85,5 +87,117 @@ func TestCreateIPInfoIPNetError2(t *testing.T) {
 	addr := "192.168.122.1/35"
 	if _, err := ParseIPInfo(addr); err == nil {
 		t.FailNow()
+	}
+}
+
+func TestGetInstanceDatacenter(t *testing.T) {
+	testCases := []struct {
+		name     string
+		addr     string
+		hasErr   bool
+		expectDc string
+	}{
+		{
+			"test get datacenter success",
+			"c3-mysql01.bj:3306",
+			false,
+			"c3",
+		},
+		{
+			"test get datacenter format error too much hyphens",
+			"c3-mysql01.bj-3306",
+			true,
+			"",
+		},
+		{
+			"test get datacenter format error too much dots",
+			"c3.mysql01.bj.3306",
+			true,
+			"",
+		},
+		{
+			"test get datacenter format error no enough hyphens",
+			"c3-mysql01.bj-3306",
+			true,
+			"",
+		},
+		{
+			"test get datacenter format error no enough dots",
+			"c3.mysql01-bj:3306",
+			false,
+			"c3.mysql01",
+		},
+		{
+			"test get datacenter format error no colons",
+			"c3.mysql01.bj",
+			true,
+			"",
+		},
+	}
+
+	for k, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			dc, err := GetInstanceDatacenter(tt.addr)
+			t.Logf("Testing Case:%d addr: %s, dc: %v, err: %v", k, tt.addr, dc, err)
+			if tt.hasErr {
+				assert.NotNil(t, err)
+				return
+			}
+			assert.Nil(t, err)
+			assert.Equal(t, tt.expectDc, dc)
+		})
+	}
+}
+
+func TestGetHostDatacenter(t *testing.T) {
+	testCases := []struct {
+		name     string
+		host     string
+		hasErr   bool
+		expectDc string
+	}{
+		{
+			"test get datacenter success",
+			"c3-mysql01.bj",
+			false,
+			"c3",
+		},
+		{
+			"test get datacenter success local",
+			"MacBook-Pro-2.local",
+			false,
+			"MacBook",
+		},
+		{
+			"test get datacenter format error too much dots",
+			"c3.mysql01.bj",
+			true,
+			"",
+		},
+		{
+			"test get datacenter format error no enough dots",
+			"c3.mysql01-bj",
+			false,
+			"c3.mysql01",
+		},
+		{
+			"test get datacenter format error no colons",
+			"c3.mysql01.bj",
+			true,
+			"",
+		},
+	}
+
+	for k, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			dc, err := GetHostDatacenter(tt.host)
+			t.Logf("Testing Case:%d addr: %s, dc: %v, err: %v", k, tt.host, dc, err)
+			if tt.hasErr {
+				assert.NotNil(t, err)
+				return
+			}
+			assert.Nil(t, err)
+			assert.Equal(t, tt.expectDc, dc)
+		})
 	}
 }

@@ -14,17 +14,12 @@
 package ast_test
 
 import (
-	. "github.com/pingcap/check"
+	"testing"
 
 	. "github.com/XiaoMi/Gaea/parser/ast"
 )
 
-var _ = Suite(&testFunctionsSuite{})
-
-type testFunctionsSuite struct {
-}
-
-func (ts *testFunctionsSuite) TestFunctionsVisitorCover(c *C) {
+func TestFunctionsVisitorCover(t *testing.T) {
 	valueExpr := NewValueExpr(42)
 	stmts := []Node{
 		&AggregateFuncExpr{Args: []ExprNode{valueExpr}},
@@ -39,7 +34,7 @@ func (ts *testFunctionsSuite) TestFunctionsVisitorCover(c *C) {
 	}
 }
 
-func (ts *testFunctionsSuite) TestFuncCallExprRestore(c *C) {
+func TestFuncCallExprRestore(t *testing.T) {
 	testCases := []NodeRestoreTestCase{
 		{"JSON_ARRAYAGG(attribute)", "JSON_ARRAYAGG(`attribute`)"},
 		{"JSON_OBJECTAGG(attribute, value)", "JSON_OBJECTAGG(`attribute`, `value`)"},
@@ -76,10 +71,10 @@ func (ts *testFunctionsSuite) TestFuncCallExprRestore(c *C) {
 	extractNodeFunc := func(node Node) Node {
 		return node.(*SelectStmt).Fields.Fields[0].Expr
 	}
-	RunNodeRestoreTest(c, testCases, "select %s", extractNodeFunc)
+	runNodeRestoreTest(t, testCases, "select %s", extractNodeFunc)
 }
 
-func (ts *testFunctionsSuite) TestFuncCastExprRestore(c *C) {
+func TestFuncCastExprRestore(t *testing.T) {
 	testCases := []NodeRestoreTestCase{
 		{"CONVERT('Müller' USING UtF8Mb4)", "CONVERT('Müller' USING UTF8MB4)"},
 		{"CONVERT('Müller', CHAR(32) CHARACTER SET UtF8)", "CONVERT('Müller', CHAR(32) CHARACTER SET UtF8)"},
@@ -89,10 +84,10 @@ func (ts *testFunctionsSuite) TestFuncCastExprRestore(c *C) {
 	extractNodeFunc := func(node Node) Node {
 		return node.(*SelectStmt).Fields.Fields[0].Expr
 	}
-	RunNodeRestoreTest(c, testCases, "select %s", extractNodeFunc)
+	runNodeRestoreTest(t, testCases, "select %s", extractNodeFunc)
 }
 
-func (ts *testFunctionsSuite) TestAggregateFuncExprRestore(c *C) {
+func TestAggregateFuncExprRestore(t *testing.T) {
 	testCases := []NodeRestoreTestCase{
 		{"AVG(test_score)", "AVG(`test_score`)"},
 		{"AVG(distinct test_score)", "AVG(DISTINCT `test_score`)"},
@@ -119,10 +114,10 @@ func (ts *testFunctionsSuite) TestAggregateFuncExprRestore(c *C) {
 	extractNodeFunc := func(node Node) Node {
 		return node.(*SelectStmt).Fields.Fields[0].Expr
 	}
-	RunNodeRestoreTest(c, testCases, "select %s", extractNodeFunc)
+	runNodeRestoreTest(t, testCases, "select %s", extractNodeFunc)
 }
 
-func (ts *testDMLSuite) TestWindowFuncExprRestore(c *C) {
+func TestWindowFuncExprRestore(t *testing.T) {
 	testCases := []NodeRestoreTestCase{
 		{"RANK() OVER w", "RANK() OVER (`w`)"},
 		{"RANK() OVER (PARTITION BY a)", "RANK() OVER (PARTITION BY `a`)"},
@@ -138,5 +133,5 @@ func (ts *testDMLSuite) TestWindowFuncExprRestore(c *C) {
 	extractNodeFunc := func(node Node) Node {
 		return node.(*SelectStmt).Fields.Fields[0].Expr
 	}
-	RunNodeRestoreTest(c, testCases, "select %s from t", extractNodeFunc)
+	runNodeRestoreTest(t, testCases, "select %s from t", extractNodeFunc)
 }

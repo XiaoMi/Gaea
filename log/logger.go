@@ -16,8 +16,12 @@ package log
 
 import (
 	"fmt"
-
 	"github.com/XiaoMi/Gaea/log/xlog"
+)
+
+const (
+	DefaultLogKeepDays   = 3
+	DefaultLogKeepCounts = 72
 )
 
 var logger Logger

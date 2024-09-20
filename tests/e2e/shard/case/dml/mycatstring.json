@@ -1,0 +1,187 @@
+{
+    "execCases": [
+      {
+        "description": "Test Mycat STRING",
+        "setUp": [
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_string_0"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_string_1"
+         },
+         {
+          "slice": "slice-0",
+          "sql": "CREATE DATABASE db_mycat_string_0"
+        },
+        {
+          "slice": "slice-0",
+          "sql": "CREATE DATABASE db_mycat_string_1"
+        },
+         {
+            "slice": "slice-0",
+            "sql": "USE db_mycat_string_0"
+         },
+         {
+            "slice": "slice-0",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+         },
+         {
+            "slice": "slice-0",
+            "sql": "USE db_mycat_string_1"
+         },
+         {
+            "slice": "slice-0",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+         },
+         {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_string_2"
+          },
+          {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_string_3"
+         },
+         {
+          "slice": "slice-1",
+          "sql": "CREATE DATABASE db_mycat_string_2"
+        },
+        {
+          "slice": "slice-1",
+          "sql": "CREATE DATABASE db_mycat_string_3"
+        },
+         {
+            "slice": "slice-1",
+            "sql": "USE db_mycat_string_2"
+         },
+         {
+            "slice": "slice-1",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+         },
+         {
+            "slice": "slice-1",
+            "sql": "USE db_mycat_string_3"
+         },
+         {
+            "slice": "slice-1",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_mycat ( id INT(64) NOT NULL, col1 VARCHAR(256),PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+         }
+       ],
+        "gaeaActions": [
+          {
+            "sql":"USE db_mycat_string",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat (id ,col1) VALUES (100,'test100') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat (id ,col1) VALUES (1,'test1') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat  (id ,col1) VALUES (10,'test10') ",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl_mycat  (id ,col1) VALUES (80,'test80') ",
+            "execType": "Default"
+          }
+        ],
+        "masterCheckSQL": [
+          {
+            "name": "slice-0.db_mycat_string_0 check",
+            "slice": "slice-0",
+            "db": "db_mycat_string_0",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id=100",
+            "execType": "Query",
+            "expect": [
+              ["test100"]
+            ]
+          },
+          {
+            "name": "slice-10.db_mycat_string_0 check",
+            "slice": "slice-0",
+            "db": "db_mycat_string_0",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id IN ('1', '10','80')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "name": "slice-0.db_mycat_string_1 check",
+            "slice": "slice-0",
+            "db": "db_mycat_string_1",
+            "sql":  "SELECT col1 FROM tbl_mycat WHERE id=1",
+            "execType": "Query",
+            "expect": [
+                ["test1"]
+            ]
+          },
+          {
+            "name": "slice-1.db_mycat_string_1 check",
+            "slice": "slice-0",
+            "db": "db_mycat_string_1",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id IN ('100', '10','80')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "name": "slice-1.db_mycat_string_2 check",
+            "slice": "slice-1",
+            "db": "db_mycat_string_2",
+            "sql":  "SELECT col1 FROM tbl_mycat WHERE id=10",
+            "execType": "Query",
+            "expect": [
+              ["test10"]
+            ]
+          },
+          {
+            "name": "slice-1.db_mycat_string_2 check",
+            "slice": "slice-1",
+            "db": "db_mycat_string_2",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id IN ('100', '1','80')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "name": "slice-1.db_mycat_string_3 check",
+            "slice": "slice-1",
+            "db": "db_mycat_string_3",
+            "sql":  "SELECT col1 FROM tbl_mycat WHERE id=80",
+            "execType": "Query",
+            "expect": [
+              ["test80"]
+            ]
+          },
+          {
+            "name": "slice-1.db_mycat_mod_3 check",
+            "slice": "slice-1",
+            "db": "db_mycat_string_3",
+            "sql": "SELECT col1 FROM tbl_mycat WHERE id IN ('100', '1','10')",
+            "execType": "Query",
+            "expect": []
+          }
+        ],
+        "tearDown": [
+          {
+              "slice": "slice-0",
+              "sql": "DROP DATABASE IF EXISTS db_mycat_string_0"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_string_1"
+        },
+          {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_string_2"
+        },
+        {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_mycat_string_3"
+        }
+        ]
+      }
+    ]
+  }

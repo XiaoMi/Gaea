@@ -16,6 +16,7 @@ package plan
 
 import (
 	"fmt"
+	"github.com/shopspring/decimal"
 	"strconv"
 	"strings"
 
@@ -92,6 +93,27 @@ func (r ResultRow) GetFloat(column int) (float64, error) {
 	}
 }
 
+// GetDecimal get decimal value from column
+func (r ResultRow) GetDecimal(column int) (decimal.Decimal, error) {
+	d := r[column]
+	switch v := d.(type) {
+	case float64:
+		return decimal.NewFromFloat(v), nil
+	case uint64:
+		return decimal.NewFromString(strconv.FormatUint(v, 10))
+	case int64:
+		return decimal.NewFromInt(v), nil
+	case string:
+		return decimal.NewFromString(v)
+	case []byte:
+		return decimal.NewFromString(string(v))
+	case nil:
+		return decimal.NewFromInt(0), nil
+	default:
+		return decimal.NewFromInt(0), fmt.Errorf("data type is %T", v)
+	}
+}
+
 // SetValue set value to column
 func (r ResultRow) SetValue(column int, value interface{}) {
 	r[column] = value
@@ -110,12 +132,14 @@ type AggregateFuncMerger interface {
 
 type aggregateFuncBaseMerger struct {
 	fieldIndex int // 所在列位置
+	distinct   bool
+	extra      string
 }
 
 // CreateAggregateFunctionMerger create AggregateFunctionMerger by function type
 // currently support: "count", "sum", "max", "min"
-func CreateAggregateFunctionMerger(funcType string, fieldIndex int) (AggregateFuncMerger, error) {
-	switch strings.ToLower(funcType) {
+func CreateAggregateFunctionMerger(aggregateFunc *ast.AggregateFuncExpr, fieldIndex int) (AggregateFuncMerger, error) {
+	switch strings.ToLower(aggregateFunc.F) {
 	case "count":
 		ret := new(AggregateFuncCountMerger)
 		ret.fieldIndex = fieldIndex
@@ -132,8 +156,13 @@ func CreateAggregateFunctionMerger(funcType string, fieldIndex int) (AggregateFu
 		ret := new(AggregateFuncMinMerger)
 		ret.fieldIndex = fieldIndex
 		return ret, nil
+	case "group_concat":
+		ret := new(AggregateFuncGroupConcatMerger)
+		ret.fieldIndex = fieldIndex
+		ret.distinct = aggregateFunc.Distinct
+		return ret, nil
 	default:
-		return nil, fmt.Errorf("aggregate function type is not support: %s", funcType)
+		return nil, fmt.Errorf("aggregate function type is not support: %s", aggregateFunc.F)
 	}
 }
 
@@ -186,7 +215,7 @@ func (a *AggregateFuncSumMerger) MergeTo(from, to ResultRow) error {
 	case uint64:
 		return a.sumToUint64(from, to)
 	case float64, string, []byte, nil:
-		return a.sumToFloat64(from, to)
+		return a.sumToDecimal(from, to)
 	default:
 		fromValue := from.GetValue(idx)
 		toValue := to.GetValue(idx)
@@ -233,6 +262,23 @@ func (a *AggregateFuncSumMerger) sumToFloat64(from, to ResultRow) error {
 		return fmt.Errorf("get to int value error: %v", err)
 	}
 	to.SetValue(idx, originValue+valueToMerge)
+	return nil
+}
+
+// sumToDecimal turn float to decimal to aggregate func sum
+func (a *AggregateFuncSumMerger) sumToDecimal(from, to ResultRow) error {
+	idx := a.fieldIndex // does not need to check
+	valueToMerge, err := from.GetDecimal(idx)
+	if err != nil {
+		return fmt.Errorf("get from decimal value error: %v", err)
+	}
+	originValue, err := to.GetDecimal(idx)
+	if err != nil {
+		return fmt.Errorf("get to decimal value error: %v", err)
+	}
+	mergeValueDecimal := originValue.Add(valueToMerge)
+	mergeValueFloat, _ := mergeValueDecimal.Float64()
+	to.SetValue(idx, mergeValueFloat)
 	return nil
 }
 
@@ -336,9 +382,45 @@ func (a *AggregateFuncMinMerger) MergeTo(from, to ResultRow) error {
 	}
 }
 
+// AggregateFuncGroupConcatMerger merge group_concat columns in result
+type AggregateFuncGroupConcatMerger struct {
+	aggregateFuncBaseMerger
+}
+
+func (a *AggregateFuncGroupConcatMerger) concatToString(from, to ResultRow) error {
+	idx := a.fieldIndex // does not need to check
+	valueToMerge := fmt.Sprintf("%s", from.GetValue(idx))
+	originValue := fmt.Sprintf("%s", to.GetValue(idx))
+	// if distinct will remove duplicates
+	if a.distinct {
+		originSplits := strings.Split(originValue, ",")
+		valueSplit := strings.Split(valueToMerge, ",")
+		mergedSlice := removeDuplicatesString(originSplits, valueSplit)
+		to.SetValue(idx, strings.Join(mergedSlice, ","))
+		return nil
+	}
+
+	if originValue == "" {
+		to.SetValue(idx, valueToMerge)
+		return nil
+	}
+	to.SetValue(idx, originValue+","+valueToMerge)
+	return nil
+}
+
+// MergeTo implement AggregateFuncGroupConcatMerger
+func (a *AggregateFuncGroupConcatMerger) MergeTo(from, to ResultRow) error {
+	idx := a.fieldIndex
+	if idx >= len(from) || idx >= len(to) {
+		return fmt.Errorf("field index out of bound: %d", a.fieldIndex)
+	}
+
+	return a.concatToString(from, to)
+}
+
 // MergeExecResult merge execution results, like UPDATE, INSERT, DELETE, ...
 func MergeExecResult(rs []*mysql.Result) (*mysql.Result, error) {
-	r := new(mysql.Result)
+	r := mysql.ResultPool.GetWithoutResultSet()
 	for _, v := range rs {
 		r.Status |= v.Status
 		r.AffectedRows += v.AffectedRows
@@ -401,6 +483,9 @@ func mergeMultiResultSet(rs []*mysql.Result) *mysql.Result {
 
 	// 列信息认为相同, 因此只合并结果
 	for i := 1; i < len(rs); i++ {
+		if len(rs[i].Fields) < len(rs[0].Fields) {
+			rs[0].Fields = rs[i].Fields
+		}
 		rs[0].Status |= rs[i].Status
 		rs[0].Values = append(rs[0].Values, rs[i].Values...)
 		rs[0].RowDatas = append(rs[0].RowDatas, rs[i].RowDatas...)
@@ -699,7 +784,7 @@ func formatValue(value interface{}) ([]byte, error) {
 	case float32:
 		return strconv.AppendFloat(nil, float64(v), 'f', -1, 64), nil
 	case float64:
-		return strconv.AppendFloat(nil, float64(v), 'f', -1, 64), nil
+		return strconv.AppendFloat(nil, v, 'f', -1, 64), nil
 	case []byte:
 		return v, nil
 	case string:

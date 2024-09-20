@@ -105,9 +105,14 @@ func TestMycatShardSimpleInsert(t *testing.T) {
 			},
 		},
 		{
-			db:     "db_mycat",
-			sql:    "insert into tbl_mycat (a) values ('hi')",
-			hasErr: true, // sharding column not found
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat (a) values ('hi')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"INSERT INTO `tbl_mycat` (`a`,`id`) VALUES ('hi',1)"},
+				},
+			},
+			//hasErr: true, // sharding column not found
 		},
 		{
 			db:  "db_mycat",
@@ -177,6 +182,7 @@ func TestMycatShardSimpleInsert(t *testing.T) {
 	}
 }
 
+// TestMycatShardBatchInsert should run once cause global sequence has cached
 func TestMycatShardBatchInsert(t *testing.T) {
 	ns, err := preparePlanInfo()
 	if err != nil {
@@ -185,23 +191,148 @@ func TestMycatShardBatchInsert(t *testing.T) {
 
 	tests := []SQLTestcase{
 		{
+			// test mycat_mod shard mode batch insert simple
 			db:  "db_mycat",
-			sql: "insert into tbl_mycat (id, a) values (0, 'hi'), (4, 'hi')",
+			sql: "insert into tbl_mycat (id, a) values (0, 'hi'), (4, 'hi'),(8, 'hi')",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_mycat_0": {"INSERT INTO `tbl_mycat` (`id`,`a`) VALUES (0,'hi'),(4,'hi')"},
+					"db_mycat_0": {
+						"INSERT INTO `tbl_mycat` (`id`,`a`) VALUES (0,'hi'),(4,'hi'),(8,'hi')",
+					},
 				},
 			},
 		},
 		{
-			db:     "db_mycat",
-			sql:    "insert into tbl_mycat (id, a) values (0, 'hi'), (1, 'hi'), (4, 'hi')",
-			hasErr: true, // batch insert has cross slice values
+			// test mycat_mod shard mode batch insert
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat (id, a) values (6, 'hi'), (5, 'hello'),(7,'hi'),(9,'hi')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {
+						"INSERT INTO `tbl_mycat` (`id`,`a`) VALUES (5,'hello'),(9,'hi')",
+					},
+				},
+				"slice-1": {
+					"db_mycat_2": {
+						"INSERT INTO `tbl_mycat` (`id`,`a`) VALUES (6,'hi')",
+					},
+					"db_mycat_3": {
+						"INSERT INTO `tbl_mycat` (`id`,`a`) VALUES (7,'hi')",
+					},
+				},
+			},
 		},
 		{
-			db:     "db_mycat",
-			sql:    "insert into tbl_mycat (id, a) values (6, 'hi'), (5, 'hello')",
-			hasErr: true, // batch insert has cross slice values
+			// test mycat_murmur shard mode batch insert
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat_murmur (id, a) values (0, 'hi'),(1, 'hi'),(2, 'hi'),(3, 'hi'),(4, 'hi')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {
+						"INSERT INTO `tbl_mycat_murmur` (`id`,`a`) VALUES (1,'hi'),(2,'hi'),(3,'hi')",
+					},
+				},
+				"slice-1": {
+					"db_mycat_2": {
+						"INSERT INTO `tbl_mycat_murmur` (`id`,`a`) VALUES (0,'hi'),(4,'hi')",
+					},
+				},
+			},
+		},
+		{
+			// test mycat_long shard mode batch insert
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat_long (id, a) values (0, 'hi'),(1, 'hi'),(256, 'hi'),(257, 'hi'),(512, 'hi'),(513, 'hi'),(768, 'hi'),(769, 'hi')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {
+						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (0,'hi'),(1,'hi')",
+					},
+					"db_mycat_1": {
+						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (256,'hi'),(257,'hi')",
+					},
+				},
+				"slice-1": {
+					"db_mycat_2": {
+						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (512,'hi'),(513,'hi')",
+					},
+					"db_mycat_3": {
+						"INSERT INTO `tbl_mycat_long` (`id`,`a`) VALUES (768,'hi'),(769,'hi')",
+					},
+				},
+			},
+		},
+		{
+			// test global table batch insert value not use global sequence
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat_global_3(id,a) values(1,'hi'),(2,'hello')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"INSERT INTO `tbl_mycat_global_3` (`id`,`a`) VALUES (1,'hi'),(2,'hello')"},
+					"db_mycat_1": {"INSERT INTO `tbl_mycat_global_3` (`id`,`a`) VALUES (1,'hi'),(2,'hello')"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"INSERT INTO `tbl_mycat_global_3` (`id`,`a`) VALUES (1,'hi'),(2,'hello')"},
+					"db_mycat_3": {"INSERT INTO `tbl_mycat_global_3` (`id`,`a`) VALUES (1,'hi'),(2,'hello')"},
+				},
+			},
+		},
+		{
+			// test global table batch insert value use global sequence
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat_global_3(id,a) values(nextval(),'hi'),(nextval(),'hello')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"INSERT INTO `tbl_mycat_global_3` (`id`,`a`) VALUES (1,'hi'),(2,'hello')"},
+					"db_mycat_1": {"INSERT INTO `tbl_mycat_global_3` (`id`,`a`) VALUES (1,'hi'),(2,'hello')"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"INSERT INTO `tbl_mycat_global_3` (`id`,`a`) VALUES (1,'hi'),(2,'hello')"},
+					"db_mycat_3": {"INSERT INTO `tbl_mycat_global_3` (`id`,`a`) VALUES (1,'hi'),(2,'hello')"},
+				},
+			},
+		},
+		{
+			// test global table batch insert value not use global sequence without id column
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat_global_3(a) values('hi'),('hello')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"INSERT INTO `tbl_mycat_global_3` (`a`,`id`) VALUES ('hi',3),('hello',4)"},
+					"db_mycat_1": {"INSERT INTO `tbl_mycat_global_3` (`a`,`id`) VALUES ('hi',3),('hello',4)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"INSERT INTO `tbl_mycat_global_3` (`a`,`id`) VALUES ('hi',3),('hello',4)"},
+					"db_mycat_3": {"INSERT INTO `tbl_mycat_global_3` (`a`,`id`) VALUES ('hi',3),('hello',4)"},
+				},
+			},
+			hasErr: false,
+		},
+		{
+			// test shard table batch insert value use global sequence without global sequence column
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat (id, a) values (nextval(), 'hi'),(nextval(), 'hello')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_1": {"INSERT INTO `tbl_mycat` (`id`,`a`) VALUES (1,'hi')"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"INSERT INTO `tbl_mycat` (`id`,`a`) VALUES (2,'hello')"},
+				},
+			},
+		},
+		{
+			// test shard table batch insert value use global sequence
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat (a) values ('hi'),('hello')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"INSERT INTO `tbl_mycat` (`a`,`id`) VALUES ('hello',4)"},
+				},
+				"slice-1": {
+					"db_mycat_3": {"INSERT INTO `tbl_mycat` (`a`,`id`) VALUES ('hi',3)"},
+				},
+			},
 		},
 	}
 	for _, test := range tests {
@@ -625,6 +756,46 @@ func TestMycatInsertGlobalTable(t *testing.T) {
 				},
 			},
 		},
+		{
+			// global insert value with AssignmentMode will not use global sequence
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat_global_3 set a = 'hi'",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"INSERT INTO `tbl_mycat_global_3` SET `a`='hi'"},
+					"db_mycat_1": {"INSERT INTO `tbl_mycat_global_3` SET `a`='hi'"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"INSERT INTO `tbl_mycat_global_3` SET `a`='hi'"},
+					"db_mycat_3": {"INSERT INTO `tbl_mycat_global_3` SET `a`='hi'"},
+				},
+			},
+		},
+		{
+			// global table insert value use global sequence
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat_global_3(a) values('hi')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"INSERT INTO `tbl_mycat_global_3` (`a`,`id`) VALUES ('hi',1)"},
+					"db_mycat_1": {"INSERT INTO `tbl_mycat_global_3` (`a`,`id`) VALUES ('hi',1)"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"INSERT INTO `tbl_mycat_global_3` (`a`,`id`) VALUES ('hi',1)"},
+					"db_mycat_3": {"INSERT INTO `tbl_mycat_global_3` (`a`,`id`) VALUES ('hi',1)"},
+				},
+			},
+		},
+		{
+			// use global table replace single table to use global sequence
+			db:  "db_mycat",
+			sql: "insert into tbl_mycat_global_4(a) values('hi')",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"INSERT INTO `tbl_mycat_global_4` (`a`,`id`) VALUES ('hi',1)"},
+				},
+			},
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.sql, getTestFunc(ns, test))
@@ -721,7 +892,9 @@ func TestMycatInsertSequenceUnshardKey(t *testing.T) {
 			sql: "insert into tbl_ks (id, user_id) values (3,nextval()),(3,nextval()),(3, nextval())",
 			sqls: map[string]map[string][]string{
 				"slice-1": {
-					"db_ks": {"INSERT INTO `tbl_ks_0003` (`id`,`user_id`) VALUES (3,3),(3,4),(3,5)"},
+					"db_ks": []string{
+						"INSERT INTO `tbl_ks_0003` (`id`,`user_id`) VALUES (3,3),(3,4),(3,5)",
+					},
 				},
 			},
 		},
@@ -743,7 +916,7 @@ func TestEscapeBackslashShard(t *testing.T) {
 			sql: `insert into tbl_ks (id,name) values (1,'hello\\"world')`,
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_ks": {"INSERT INTO `tbl_ks_0001` (`id`,`name`) VALUES (1,'hello\\\\\"world')"},
+					"db_ks": {"INSERT INTO `tbl_ks_0001` (`id`,`name`,`user_id`) VALUES (1,'hello\\\\\"world',1)"},
 				},
 			},
 		},

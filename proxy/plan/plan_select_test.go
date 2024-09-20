@@ -1810,6 +1810,34 @@ func TestMycatSelectGroupBy(t *testing.T) {
 				},
 			},
 		},
+		{
+			db:  "db_mycat",
+			sql: "select col1,count(*) from tbl_mycat group by col1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `col1`,COUNT(1) FROM `tbl_mycat` GROUP BY `col1`"},
+					"db_mycat_1": {"SELECT `col1`,COUNT(1) FROM `tbl_mycat` GROUP BY `col1`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT `col1`,COUNT(1) FROM `tbl_mycat` GROUP BY `col1`"},
+					"db_mycat_3": {"SELECT `col1`,COUNT(1) FROM `tbl_mycat` GROUP BY `col1`"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat order by col1",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT *,`col1` FROM `tbl_mycat` ORDER BY `col1`"},
+					"db_mycat_1": {"SELECT *,`col1` FROM `tbl_mycat` ORDER BY `col1`"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT *,`col1` FROM `tbl_mycat` ORDER BY `col1`"},
+					"db_mycat_3": {"SELECT *,`col1` FROM `tbl_mycat` ORDER BY `col1`"},
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -1835,6 +1863,20 @@ func TestMycatSelectHaving(t *testing.T) {
 				"slice-1": {
 					"db_mycat_2": {"SELECT `id`,`user` FROM `tbl_mycat` HAVING `id`=1"},
 					"db_mycat_3": {"SELECT `id`,`user` FROM `tbl_mycat` HAVING `id`=1"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select user from tbl_mycat having id = 1", // note: does not calculate route in having clause
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `user` FROM `tbl_mycat` HAVING `id`=1"},
+					"db_mycat_1": {"SELECT `user` FROM `tbl_mycat` HAVING `id`=1"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT `user` FROM `tbl_mycat` HAVING `id`=1"},
+					"db_mycat_3": {"SELECT `user` FROM `tbl_mycat` HAVING `id`=1"},
 				},
 			},
 		},
@@ -1912,6 +1954,21 @@ func TestMycatSelectOrderBy(t *testing.T) {
 				},
 			},
 		},
+		// order by will auto add column to select list
+		{
+			db:  "db_mycat",
+			sql: "select user from tbl_mycat order by id desc",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT `user`,`id` FROM `tbl_mycat` ORDER BY `id` DESC"},
+					"db_mycat_1": {"SELECT `user`,`id` FROM `tbl_mycat` ORDER BY `id` DESC"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT `user`,`id` FROM `tbl_mycat` ORDER BY `id` DESC"},
+					"db_mycat_3": {"SELECT `user`,`id` FROM `tbl_mycat` ORDER BY `id` DESC"},
+				},
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -1965,6 +2022,20 @@ func TestMycatSelectLimit(t *testing.T) {
 				"slice-1": {
 					"db_mycat_2": {"SELECT `id`,`user` FROM `tbl_mycat` LIMIT 20"},
 					"db_mycat_3": {"SELECT `id`,`user` FROM `tbl_mycat` LIMIT 20"},
+				},
+			},
+		},
+		{
+			db:  "db_mycat",
+			sql: "select * from tbl_mycat limit 10 offset 20",
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` LIMIT 30"},
+					"db_mycat_1": {"SELECT * FROM `tbl_mycat` LIMIT 30"},
+				},
+				"slice-1": {
+					"db_mycat_2": {"SELECT * FROM `tbl_mycat` LIMIT 30"},
+					"db_mycat_3": {"SELECT * FROM `tbl_mycat` LIMIT 30"},
 				},
 			},
 		},
@@ -3146,21 +3217,40 @@ func TestSelectGlobalTableKingshard(t *testing.T) {
 		{
 			db:  "db_ks",
 			sql: "select * from tbl_ks_global_one where name='haha'",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_ks": {
-						"SELECT * FROM `tbl_ks_global_one` WHERE `name`='haha'",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_ks": {
+							"SELECT * FROM `tbl_ks_global_one` WHERE `name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_ks": {
+							"SELECT * FROM `tbl_ks_global_one` WHERE `name`='haha'",
+						},
 					},
 				},
 			},
 		},
+		// TODO: random slice to be fixed 100% success
 		{
 			db:  "db_ks",
 			sql: "select * from db_ks.tbl_ks_global_one, tbl_ks_global_two where tbl_ks_global_one.name='haha' and tbl_ks_global_two.name='hehe'",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_ks": {
-						"SELECT * FROM (`db_ks`.`tbl_ks_global_one`) JOIN `tbl_ks_global_two` WHERE `tbl_ks_global_one`.`name`='haha' AND `tbl_ks_global_two`.`name`='hehe'",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_ks": {
+							"SELECT * FROM (`db_ks`.`tbl_ks_global_one`) JOIN `tbl_ks_global_two` WHERE `tbl_ks_global_one`.`name`='haha' AND `tbl_ks_global_two`.`name`='hehe'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_ks": {
+							"SELECT * FROM (`db_ks`.`tbl_ks_global_one`) JOIN `tbl_ks_global_two` WHERE `tbl_ks_global_one`.`name`='haha' AND `tbl_ks_global_two`.`name`='hehe'",
+						},
 					},
 				},
 			},
@@ -3259,57 +3349,212 @@ func TestSelectGlobalTableMycat(t *testing.T) {
 	}
 
 	tests := []SQLTestcase{
+
 		{
 			db:  "db_mycat",
 			sql: "select * from tbl_mycat_global_one where name='haha'",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_mycat_0": {
-						"SELECT * FROM `tbl_mycat_global_one` WHERE `name`='haha'",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_mycat_0": {
+							"SELECT * FROM `tbl_mycat_global_one` WHERE `name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-0": {
+						"db_mycat_1": {
+							"SELECT * FROM `tbl_mycat_global_one` WHERE `name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_2": {
+							"SELECT * FROM `tbl_mycat_global_one` WHERE `name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_3": {
+							"SELECT * FROM `tbl_mycat_global_one` WHERE `name`='haha'",
+						},
 					},
 				},
 			},
 		},
+
 		{
 			db:  "db_mycat",
 			sql: "select * from db_mycat.tbl_mycat_global_one where name='haha'",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_mycat_0": {
-						"SELECT * FROM `db_mycat_0`.`tbl_mycat_global_one` WHERE `name`='haha'",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_mycat_0": {
+							"SELECT * FROM `db_mycat_0`.`tbl_mycat_global_one` WHERE `name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-0": {
+						"db_mycat_1": {
+							"SELECT * FROM `db_mycat_1`.`tbl_mycat_global_one` WHERE `name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_2": {
+							"SELECT * FROM `db_mycat_2`.`tbl_mycat_global_one` WHERE `name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_3": {
+							"SELECT * FROM `db_mycat_3`.`tbl_mycat_global_one` WHERE `name`='haha'",
+						},
 					},
 				},
 			},
 		},
+
 		{
 			db:  "db_mycat",
 			sql: "select * from db_mycat.tbl_mycat_global_one where db_mycat.tbl_mycat_global_one.name='haha'",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_mycat_0": {
-						"SELECT * FROM `db_mycat_0`.`tbl_mycat_global_one` WHERE `db_mycat_0`.`tbl_mycat_global_one`.`name`='haha'",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_mycat_0": {
+							"SELECT * FROM `db_mycat_0`.`tbl_mycat_global_one` WHERE `db_mycat_0`.`tbl_mycat_global_one`.`name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-0": {
+						"db_mycat_1": {
+							"SELECT * FROM `db_mycat_1`.`tbl_mycat_global_one` WHERE `db_mycat_1`.`tbl_mycat_global_one`.`name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_2": {
+							"SELECT * FROM `db_mycat_2`.`tbl_mycat_global_one` WHERE `db_mycat_2`.`tbl_mycat_global_one`.`name`='haha'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_3": {
+							"SELECT * FROM `db_mycat_3`.`tbl_mycat_global_one` WHERE `db_mycat_3`.`tbl_mycat_global_one`.`name`='haha'",
+						},
 					},
 				},
 			},
 		},
+
 		{
 			db:  "db_mycat",
 			sql: "select * from db_mycat.tbl_mycat_global_one, tbl_mycat_global_two where tbl_mycat_global_one.name='haha' and tbl_mycat_global_two.name='hehe'",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_mycat_0": {
-						"SELECT * FROM (`db_mycat_0`.`tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`name`='hehe'",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_mycat_0": {
+							"SELECT * FROM (`db_mycat_0`.`tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`name`='hehe'",
+						},
+					},
+				},
+				{
+					"slice-0": {
+						"db_mycat_1": {
+							"SELECT * FROM (`db_mycat_1`.`tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`name`='hehe'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_2": {
+							"SELECT * FROM (`db_mycat_2`.`tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`name`='hehe'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_3": {
+							"SELECT * FROM (`db_mycat_3`.`tbl_mycat_global_one`) JOIN `tbl_mycat_global_two` WHERE `tbl_mycat_global_one`.`name`='haha' AND `tbl_mycat_global_two`.`name`='hehe'",
+						},
 					},
 				},
 			},
 		},
+
 		{
 			db:  "db_mycat",
 			sql: "select * from db_mycat.tbl_mycat_global_one, db_mycat.tbl_mycat_global_two where db_mycat.tbl_mycat_global_one.name='haha' and db_mycat.tbl_mycat_global_two.name='hehe'",
-			sqls: map[string]map[string][]string{
-				"slice-0": {
-					"db_mycat_0": {
-						"SELECT * FROM (`db_mycat_0`.`tbl_mycat_global_one`) JOIN `db_mycat_0`.`tbl_mycat_global_two` WHERE `db_mycat_0`.`tbl_mycat_global_one`.`name`='haha' AND `db_mycat_0`.`tbl_mycat_global_two`.`name`='hehe'",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_mycat_0": {
+							"SELECT * FROM (`db_mycat_0`.`tbl_mycat_global_one`) JOIN `db_mycat_0`.`tbl_mycat_global_two` WHERE `db_mycat_0`.`tbl_mycat_global_one`.`name`='haha' AND `db_mycat_0`.`tbl_mycat_global_two`.`name`='hehe'",
+						},
+					},
+				},
+				{
+					"slice-0": {
+						"db_mycat_1": {
+							"SELECT * FROM (`db_mycat_1`.`tbl_mycat_global_one`) JOIN `db_mycat_1`.`tbl_mycat_global_two` WHERE `db_mycat_1`.`tbl_mycat_global_one`.`name`='haha' AND `db_mycat_1`.`tbl_mycat_global_two`.`name`='hehe'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_2": {
+							"SELECT * FROM (`db_mycat_2`.`tbl_mycat_global_one`) JOIN `db_mycat_2`.`tbl_mycat_global_two` WHERE `db_mycat_2`.`tbl_mycat_global_one`.`name`='haha' AND `db_mycat_2`.`tbl_mycat_global_two`.`name`='hehe'",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_3": {
+							"SELECT * FROM (`db_mycat_3`.`tbl_mycat_global_one`) JOIN `db_mycat_3`.`tbl_mycat_global_two` WHERE `db_mycat_3`.`tbl_mycat_global_one`.`name`='haha' AND `db_mycat_3`.`tbl_mycat_global_two`.`name`='hehe'",
+						},
+					},
+				},
+			},
+		},
+
+		{
+			db:  "db_mycat",
+			sql: "select A.name, B.name from db_mycat.tbl_mycat_global_one A, db_mycat.tbl_mycat_global_two B  where A.name='haha' and B.name='hehe' order by B.col2 desc",
+			randomSqls: []map[string]map[string][]string{
+				{
+					"slice-0": {
+						"db_mycat_0": {
+							"SELECT `A`.`name`,`B`.`name`,`B`.`col2` FROM (`db_mycat_0`.`tbl_mycat_global_one` AS `A`) JOIN `db_mycat_0`.`tbl_mycat_global_two` AS `B` WHERE `A`.`name`='haha' AND `B`.`name`='hehe' ORDER BY `B`.`col2` DESC",
+						},
+					},
+				},
+				{
+					"slice-0": {
+						"db_mycat_1": {
+							"SELECT `A`.`name`,`B`.`name`,`B`.`col2` FROM (`db_mycat_1`.`tbl_mycat_global_one` AS `A`) JOIN `db_mycat_1`.`tbl_mycat_global_two` AS `B` WHERE `A`.`name`='haha' AND `B`.`name`='hehe' ORDER BY `B`.`col2` DESC",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_2": {
+							"SELECT `A`.`name`,`B`.`name`,`B`.`col2` FROM (`db_mycat_2`.`tbl_mycat_global_one` AS `A`) JOIN `db_mycat_2`.`tbl_mycat_global_two` AS `B` WHERE `A`.`name`='haha' AND `B`.`name`='hehe' ORDER BY `B`.`col2` DESC",
+						},
+					},
+				},
+				{
+					"slice-1": {
+						"db_mycat_3": {
+							"SELECT `A`.`name`,`B`.`name`,`B`.`col2` FROM (`db_mycat_3`.`tbl_mycat_global_one` AS `A`) JOIN `db_mycat_3`.`tbl_mycat_global_two` AS `B` WHERE `A`.`name`='haha' AND `B`.`name`='hehe' ORDER BY `B`.`col2` DESC",
+						},
 					},
 				},
 			},
@@ -3317,6 +3562,7 @@ func TestSelectGlobalTableMycat(t *testing.T) {
 	}
 
 	for _, test := range tests {
+		// TODO: random slice to be fixed 100% success
 		t.Run(test.sql, getTestFunc(ns, test))
 	}
 }

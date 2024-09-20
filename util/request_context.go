@@ -14,44 +14,66 @@
 
 package util
 
-import (
-	"sync"
-)
-
-const (
-	// StmtType stmt type
-	StmtType = "stmtType" // SQL类型, 值类型为int (对应parser.Preview()得到的值)
-	// FromSlave if read from slave
-	FromSlave    = "fromSlave"    // 读写分离标识, 值类型为int, false = 0, true = 1
-	DefaultSlice = "defaultSlice" // 默认分片标识 string 类型
-)
-
 // RequestContext means request scope context with values
-// thread safe
+// 旧版 thread safe，因为 context 是顺序执行的，把锁去掉，提升性能，新版本 thread unsafe
 type RequestContext struct {
-	lock *sync.RWMutex
-	ctx  map[string]interface{}
+	tokens         []string
+	stmtType       int
+	fromSlave      int
+	fingerprint    string
+	fingerprintMD5 string
+	defaultSlice   string
 }
 
 // NewRequestContext return request scopre context
 func NewRequestContext() *RequestContext {
-	return &RequestContext{ctx: make(map[string]interface{}, 2), lock: new(sync.RWMutex)}
+	return &RequestContext{}
 }
 
-// Get return context in RequestContext
-func (reqCtx *RequestContext) Get(key string) interface{} {
-	reqCtx.lock.RLock()
-	v, ok := reqCtx.ctx[key]
-	reqCtx.lock.RUnlock()
-	if ok {
-		return v
-	}
-	return nil
+func (reqCtx *RequestContext) GetStmtType() int {
+	return reqCtx.stmtType
 }
 
-// Set set value with specific key
-func (reqCtx *RequestContext) Set(key string, value interface{}) {
-	reqCtx.lock.Lock()
-	reqCtx.ctx[key] = value
-	reqCtx.lock.Unlock()
+func (reqCtx *RequestContext) SetStmtType(value int) {
+	reqCtx.stmtType = value
+}
+
+func (reqCtx *RequestContext) GetTokens() []string {
+	return reqCtx.tokens
+}
+
+func (reqCtx *RequestContext) SetTokens(value []string) {
+	reqCtx.tokens = value
+}
+
+func (reqCtx *RequestContext) GetFromSlave() int {
+	return reqCtx.fromSlave
+}
+
+func (reqCtx *RequestContext) SetFromSlave(value int) {
+	reqCtx.fromSlave = value
+}
+
+func (reqCtx *RequestContext) GetFingerprint() string {
+	return reqCtx.fingerprint
+}
+
+func (reqCtx *RequestContext) SetFingerprint(value string) {
+	reqCtx.fingerprint = value
+}
+
+func (reqCtx *RequestContext) GetFingerprintMD5() string {
+	return reqCtx.fingerprintMD5
+}
+
+func (reqCtx *RequestContext) SetFingerprintMD5(value string) {
+	reqCtx.fingerprintMD5 = value
+}
+
+func (reqCtx *RequestContext) GetDefaultSlice() string {
+	return reqCtx.defaultSlice
+}
+
+func (reqCtx *RequestContext) SetDefaultSlice(value string) {
+	reqCtx.defaultSlice = value
 }

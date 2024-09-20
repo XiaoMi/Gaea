@@ -1,25 +1,35 @@
+// Copyright 2024 The Gaea Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//	http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package ast_test
 
 import (
 	"bytes"
 	"fmt"
+	"testing"
 
-	. "github.com/pingcap/check"
+	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/parser"
 	"github.com/XiaoMi/Gaea/parser/ast"
 )
 
-var _ = Suite(&testAstFormatSuite{})
-
-type testAstFormatSuite struct {
-}
-
 func getDefaultCharsetAndCollate() (string, string) {
 	return "utf8", "utf8_bin"
 }
 
-func (ts *testAstFormatSuite) TestAstFormat(c *C) {
+func TestAstFormat(t *testing.T) {
 	var testcases = []struct {
 		input  string
 		output string
@@ -93,10 +103,10 @@ func (ts *testAstFormatSuite) TestAstFormat(c *C) {
 		charset, collation := getDefaultCharsetAndCollate()
 		stmts, _, err := parser.New().Parse(expr, charset, collation)
 		node := stmts[0].(*ast.SelectStmt).Fields.Fields[0].Expr
-		c.Assert(err, IsNil)
+		require.NoError(t, err)
 
 		writer := bytes.NewBufferString("")
 		node.Format(writer)
-		c.Assert(writer.String(), Equals, tt.output)
+		require.Equal(t, tt.output, writer.String())
 	}
 }

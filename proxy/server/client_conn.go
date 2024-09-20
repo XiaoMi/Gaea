@@ -16,9 +16,10 @@ package server
 
 import (
 	"fmt"
+	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/mysql"
-	"strings"
+	"github.com/XiaoMi/Gaea/util/sync2"
 )
 
 // ClientConn session client connection
@@ -34,6 +35,8 @@ type ClientConn struct {
 	namespace string // TODO: remove it when refactor is done
 
 	proxy *Server
+
+	hasRecycledReadPacket sync2.AtomicBool
 }
 
 // HandshakeResponseInfo handshake response information
@@ -49,31 +52,20 @@ type HandshakeResponseInfo struct {
 // NewClientConn constructor of ClientConn
 func NewClientConn(c *mysql.Conn, manager *Manager) *ClientConn {
 	salt, _ := mysql.RandomBuf(20)
-	return &ClientConn{
+	cc := &ClientConn{
 		Conn:    c,
 		salt:    salt,
 		manager: manager,
 	}
-}
-
-func (cc *ClientConn) CompactVersion(sv string) string {
-	version := strings.Trim(sv, " ")
-	if version != "" {
-		v := strings.Split(sv, ".")
-		if len(v) < 3 {
-			return mysql.ServerVersion
-		}
-		return version
-	} else {
-		return mysql.ServerVersion
-	}
+	cc.hasRecycledReadPacket.Set(false)
+	return cc
 }
 
 func (cc *ClientConn) writeInitialHandshakeV10() error {
-	ServerVersion := cc.CompactVersion(cc.proxy.ServerVersion)
+
 	length :=
 		1 + // protocol version
-			mysql.LenNullString(ServerVersion) +
+			mysql.LenNullString(cc.proxy.ServerVersion) +
 			4 + // connection ID
 			8 + // first part of salt data
 			1 + // filler byte
@@ -97,7 +89,7 @@ func (cc *ClientConn) writeInitialHandshakeV10() error {
 
 	// Copy server version.
 	// server version data with terminate character 0x00, type: string[NUL].
-	pos = mysql.WriteNullString(data, pos, ServerVersion)
+	pos = mysql.WriteNullString(data, pos, cc.proxy.ServerVersion)
 
 	// Add connectionID in.
 	// connection id type: 4 bytes.
@@ -250,7 +242,7 @@ func (cc *ClientConn) readHandshakeResponse() (HandshakeResponseInfo, error) {
 }
 
 func (cc *ClientConn) writeOK(status uint16) error {
-	err := cc.WriteOKPacket(0, 0, status, 0)
+	err := cc.WriteOKPacket(0, 0, status, 0, "")
 	if err != nil {
 		log.Warn("write ok packet failed, %v", err)
 		return err
@@ -258,11 +250,95 @@ func (cc *ClientConn) writeOK(status uint16) error {
 	return nil
 }
 
-func (cc *ClientConn) writeOKResult(status uint16, r *mysql.Result) error {
-	if r.Resultset == nil {
-		return cc.WriteOKPacket(r.AffectedRows, r.InsertID, status, 0)
+func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, continueConn backend.PooledConnect, maxRows int, isBinary bool) error {
+	if rs == nil {
+		return cc.writeOK(status)
 	}
-	return cc.writeResultset(status, r.Resultset)
+	if rs.Status&mysql.ServerMoreResultsExists > 0 {
+		status |= mysql.ServerMoreResultsExists
+	} else {
+		status = status &^ (1 << 3)
+	}
+	if isBinary {
+		if err := rs.BuildBinaryResultSet(); err != nil {
+			return err
+		}
+	}
+	// 提前拷贝，防止 writeOKResult 中 rs 释放
+	var globalFields []*mysql.Field
+	if rs.Resultset != nil {
+		globalFields = rs.Resultset.Fields
+	}
+	err := cc.writeOKResult(status, continueConn.MoreRowsExist(), rs)
+	if err != nil {
+		return err
+	}
+
+	for continueConn.MoreRowsExist() {
+		result := mysql.ResultPool.Get()
+		result.Resultset = &mysql.Resultset{
+			Fields: globalFields,
+		}
+		err = continueConn.FetchMoreRows(result, maxRows)
+		if isBinary {
+			if err := result.BuildBinaryResultSet(); err != nil {
+				return err
+			}
+		}
+		if err = cc.writeRowsWithEOF(result, continueConn.MoreRowsExist(), status); err != nil {
+			return err
+		}
+	}
+	// handle multi rs
+	for continueConn.MoreResultsExist() {
+		rs, err := continueConn.ReadMoreResult(maxRows)
+		if err != nil {
+			return fmt.Errorf("readMoreresult error: %v", err)
+		}
+
+		if isBinary {
+			if err := rs.BuildBinaryResultSet(); err != nil {
+				return err
+			}
+		}
+		// TODO: multi statement may have large result
+		err = cc.writeOKResult(rs.Status, false, rs)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// 写入结果集后，不能再引用结果集
+func (cc *ClientConn) writeOKResult(status uint16, moreRows bool, r *mysql.Result) error {
+	defer r.Free()
+	if r.Resultset == nil {
+		return cc.WriteOKPacket(r.AffectedRows, r.InsertID, status, 0, r.Info)
+	}
+	return cc.writeResultset(status, moreRows, r.Resultset)
+}
+
+// 写入结果集后，不能再引用结果集
+func (cc *ClientConn) writeRowsWithEOF(result *mysql.Result, moreRowsExists bool, status uint16) error {
+	defer result.Free()
+	var err error
+	cc.StartWriterBuffering()
+	for _, v := range result.RowDatas {
+		if err = cc.writeRow(v); err != nil {
+			return err
+		}
+	}
+	if !moreRowsExists {
+		status = status &^ (1 << 3)
+		if err = cc.writeEOFPacket(status); err != nil {
+			return err
+		}
+	}
+	if err = cc.Flush(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (cc *ClientConn) writeEOFPacket(status uint16) error {
@@ -275,12 +351,7 @@ func (cc *ClientConn) writeEOFPacket(status uint16) error {
 }
 
 func (cc *ClientConn) writeErrorPacket(err error) error {
-	e := cc.WriteErrorPacketFromError(err)
-	if e != nil {
-		log.Warn("write error packet failed, %v", err)
-		return e
-	}
-	return nil
+	return cc.WriteErrorPacketFromError(err)
 }
 
 func (cc *ClientConn) writeColumnCount(count uint64) error {
@@ -300,8 +371,35 @@ func (cc *ClientConn) writeRow(row []byte) error {
 	return cc.WriteEphemeralPacket()
 }
 
+func (cc *ClientConn) writeFields(status uint16, r *mysql.Resultset) error {
+	var err error
+	cc.StartWriterBuffering()
+
+	// write column count
+	columnCount := uint64(len(r.Fields))
+	err = cc.writeColumnCount(columnCount)
+	if err != nil {
+		return err
+	}
+
+	// write columns
+	err = cc.writeFieldList(status, r.Fields)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (cc *ClientConn) writeEndResult(status uint16) error {
+	err := cc.writeEOFPacket(status)
+	if err != nil {
+		return err
+	}
+	return cc.Flush()
+}
+
 // https://dev.mysql.com/doc/internals/en/com-query-response.html#packet-ProtocolText::Resultset
-func (cc *ClientConn) writeResultset(status uint16, r *mysql.Resultset) error {
+func (cc *ClientConn) writeResultset(status uint16, moreRows bool, r *mysql.Resultset) error {
 	var err error
 	cc.StartWriterBuffering()
 
@@ -326,10 +424,12 @@ func (cc *ClientConn) writeResultset(status uint16, r *mysql.Resultset) error {
 			return err
 		}
 	}
-
-	err = cc.writeEOFPacket(status)
-	if err != nil {
-		return err
+	// if moreRows exists, will not send EOF packet
+	if !moreRows {
+		err = cc.writeEOFPacket(status)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = cc.Flush()
@@ -487,7 +587,7 @@ func (cc *ClientConn) WriteAuthSwitchRequest(authMethod string) error {
 	l := 1 + len(authMethod) + 1 + len(cc.salt) + 1
 	data := cc.StartEphemeralPacket(l)
 	pos := 0
-	pos = mysql.WriteByte(data, pos, mysql.AuthSwitchHeader)
+	pos = mysql.WriteByte(data, pos, mysql.EOFHeader)
 	pos = mysql.WriteNullString(data, pos, authMethod)
 	pos = mysql.WriteBytes(data, pos, cc.salt)
 	mysql.WriteByte(data, pos, 0)

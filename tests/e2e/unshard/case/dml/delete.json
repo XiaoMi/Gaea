@@ -1,0 +1,221 @@
+{
+    "execCases": [
+      {
+        "description": "Test case for DELETE with ORDER BY and LIMIT",
+        "setUp": [
+          {
+            "slice": "slice-0",
+             "sql": "DROP DATABASE IF EXISTS db_test_delete"
+         },
+         {
+          "slice": "slice-0",
+           "sql": "CREATE DATABASE db_test_delete"
+         },
+          {
+            "slice": "slice-0",
+            "sql": "USE db_test_delete"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "CREATE TABLE tbl1 (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50), age INT)"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "CREATE TABLE tbl2 (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50), age INT, ref_id INT)"
+          }
+       ],
+        "gaeaActions": [
+          {
+            "sql": "USE db_test_delete",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl1 (name, age) VALUES ('User1', 30), ('User2', 29), ('User3', 28), ('User4', 27)",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl2 (name, age, ref_id) VALUES ('User1', 30, 1), ('User2', 29, 2), ('User3', 28, 3), ('User4', 27, 4)",
+            "execType": "Default"
+          },
+          {
+            "sql": "DELETE FROM tbl1 ORDER BY age DESC LIMIT 2",
+            "execType": "Default"
+          }
+        ],
+        "masterCheckSQL": [
+          {
+            "slice": "slice-0",
+            "db": "db_test_delete",
+            "name": "Check master after DELETE with ORDER BY and LIMIT",
+            "sql": "SELECT * FROM tbl1 WHERE name IN ('User1', 'User2')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "slice": "slice-0",
+            "db": "db_test_delete",
+            "name": "Check master after DELETE with ORDER BY and LIMIT",
+            "sql": "SELECT * FROM tbl1 WHERE name IN ('User3', 'User4')",
+            "execType": "Query",
+            "expect": [
+              ["3","User3","28"],
+              ["4","User4","27"]
+            ]
+          },
+          {
+            "slice": "slice-0",
+            "db": "db_test_delete",
+            "name": "Check master after DELETE with ORDER BY and LIMIT",
+            "sql": "SELECT * FROM tbl2 WHERE name IN ('User3', 'User4')",
+            "execType": "Query",
+            "expect": [
+             
+              ["3","User3","28","3"],
+              ["4","User4","27","4"]
+            ]
+          }
+        ],
+       "tearDown": [
+          {
+              "slice": "slice-0",
+              "sql": "DROP DATABASE IF EXISTS db_test_delete"
+          }
+        ]
+      },
+      {
+        "description": "Test case for multi-table DELETE",
+        "setUp": [
+          {
+              "slice": "slice-0",
+              "sql": "DROP DATABASE IF EXISTS db_test_delete"
+          },
+          {
+              "slice": "slice-0",
+              "sql": "CREATE DATABASE db_test_delete"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "USE db_test_delete"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "CREATE TABLE tbl1 (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50), age INT)"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "CREATE TABLE tbl2 (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50), age INT, ref_id INT)"
+          }
+       ],
+        "gaeaActions": [
+          {
+            "sql": "USE db_test_delete",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl1 (name, age) VALUES ('User1', 30), ('User2', 29), ('User3', 28), ('User4', 27)",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl2 (name, age, ref_id) VALUES ('User1', 30, 1), ('User2', 29, 2), ('User3', 28, 3), ('User4', 27, 4)",
+            "execType": "Default"
+          },
+          {
+            "sql": "DELETE tbl1, tbl2 FROM tbl1 INNER JOIN tbl2 ON tbl1.id = tbl2.id WHERE tbl1.age >=28",
+            "execType": "Default"
+          }
+        ],
+        "masterCheckSQL": [
+          {
+            "slice": "slice-0",
+            "db": "db_test_delete",
+            "name": "Check master after multi-table DELETE for tbl1",
+            "sql": "SELECT * FROM tbl1 WHERE name IN ('User3')",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "slice": "slice-0",
+            "db": "db_test_delete",
+            "name": "Check master after multi-table DELETE for tbl2",
+            "sql": "SELECT * FROM tbl2 WHERE name IN ('User3')",
+            "execType": "Query",
+            "expect": []
+          }
+        ],
+        "tearDown": [
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_test_delete"
+        }
+        ]
+      },
+      {
+        "description": "Test case for multi-table DELETE using USING",
+        "setUp": [
+          {
+              "slice": "slice-0",
+              "sql": "DROP DATABASE IF EXISTS db_test_delete"
+          },
+          {
+              "slice": "slice-0",
+              "sql": "CREATE DATABASE db_test_delete"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "USE db_test_delete"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "CREATE TABLE tbl1 (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50), age INT)"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "CREATE TABLE tbl2 (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50), age INT, ref_id INT)"
+          }
+        ],
+        "gaeaActions": [
+          {
+            "sql": "USE db_test_delete",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl1 (name, age) VALUES ('User1', 30), ('User2', 29), ('User3', 28), ('User4', 27)",
+            "execType": "Default"
+          },
+          {
+            "sql": "INSERT INTO tbl2 (name, age, ref_id) VALUES ('User1', 30, 1), ('User2', 29, 2), ('User3', 28, 3), ('User4', 27, 4)",
+            "execType": "Default"
+          },
+          {
+            "sql": "DELETE FROM tbl1, tbl2 USING tbl1 INNER JOIN tbl2 ON tbl1.id = tbl2.id WHERE tbl2.age >= 26",
+            "execType": "Default"
+          }
+        ],
+        "masterCheckSQL": [
+          {
+            "slice": "slice-0",
+            "db": "db_test_delete",
+            "name": "Check master after multi-table DELETE using USING for tbl1",
+            "sql": "SELECT * FROM tbl1",
+            "execType": "Query",
+            "expect": []
+          },
+          {
+            "slice": "slice-0",
+            "db": "db_test_delete",
+            "name": "Check master after multi-table DELETE using USING for tbl2",
+            "sql": "SELECT * FROM tbl2 WHERE name IN ('User4')",
+            "execType": "Query",
+            "expect": []
+          }
+        ],
+        "tearDown": [
+          {
+            "slice": "slice-0",
+            "sql": "DROP DATABASE IF EXISTS db_test_delete"
+        }
+        ]
+      }
+    ]
+  }
+  

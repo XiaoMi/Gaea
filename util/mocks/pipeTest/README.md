@@ -273,4 +273,3 @@ func TestMariadbConnWithoutDB(t *testing.T) {
 	})
 }
 ```
-

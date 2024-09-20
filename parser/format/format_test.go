@@ -15,11 +15,12 @@ package format
 
 import (
 	"bytes"
-	"io/ioutil"
+	"io"
 	"strings"
 	"testing"
 
 	. "github.com/pingcap/check"
+	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/util/testleak"
 )
@@ -29,22 +30,16 @@ func TestT(t *testing.T) {
 	TestingT(t)
 }
 
-var _ = Suite(&testFormatSuite{})
-var _ = Suite(&testRestoreCtxSuite{})
-
-type testFormatSuite struct {
-}
-
-func checkFormat(c *C, f Formatter, buf *bytes.Buffer, str, expect string) {
+func checkFormat(t *testing.T, f Formatter, buf *bytes.Buffer, str, expect string) {
 	_, err := f.Format(str, 3)
-	c.Assert(err, IsNil)
-	b, err := ioutil.ReadAll(buf)
-	c.Assert(err, IsNil)
-	c.Assert(string(b), Equals, expect)
+	require.NoError(t, err)
+	b, err := io.ReadAll(buf)
+	require.NoError(t, err)
+	require.Equal(t, expect, string(b))
 }
 
-func (s *testFormatSuite) TestFormat(c *C) {
-	defer testleak.AfterTest(c)()
+func TestFormat(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	str := "abc%d%%e%i\nx\ny\n%uz\n"
 	buf := &bytes.Buffer{}
 	f := IndentFormatter(buf, "\t")
@@ -53,19 +48,19 @@ func (s *testFormatSuite) TestFormat(c *C) {
 	y
 z
 `
-	checkFormat(c, f, buf, str, expect)
+	checkFormat(t, f, buf, str, expect)
 
 	str = "abc%d%%e%i\nx\ny\n%uz\n%i\n"
 	buf = &bytes.Buffer{}
 	f = FlatFormatter(buf)
 	expect = "abc3%e x y z\n "
-	checkFormat(c, f, buf, str, expect)
+	checkFormat(t, f, buf, str, expect)
 }
 
 type testRestoreCtxSuite struct {
 }
 
-func (s *testRestoreCtxSuite) TestRestoreCtx(c *C) {
+func TestRestoreCtx(t *testing.T) {
 	testCases := []struct {
 		flag   RestoreFlags
 		expect string
@@ -95,6 +90,6 @@ func (s *testRestoreCtxSuite) TestRestoreCtx(c *C) {
 		ctx.WriteString("str`.'\"ing\\")
 		ctx.WritePlain(" ")
 		ctx.WriteName("na`.'\"Me\\")
-		c.Assert(sb.String(), Equals, testCase.expect, Commentf("case: %#v", testCase))
+		require.Equalf(t, testCase.expect, sb.String(), "case: %#v", testCase)
 	}
 }

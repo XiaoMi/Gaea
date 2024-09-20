@@ -33,10 +33,14 @@ const (
 	ServerVersion string = "5.6.20-gaea"
 	// MysqlNativePassword uses a salt and transmits a hash on the wire.
 	MysqlNativePassword = "mysql_native_password"
+	Sha256Password      = "sha256_password"
 	CachingSHA2Password = "caching_sha2_password"
 	// ProtocolVersion is the current version of the protocol.
 	// Always 10.
-	ProtocolVersion = 10
+	ProtocolVersion   = 10
+	SupportCapability = ClientProtocol41 | ClientSecureConnection | ClientLongPassword | ClientTransactions |
+		ClientLongFlag | ClientConnectWithDB | ClientFoundRows | ClientMultiResults | ClientMultiStatements |
+		ClientPSMultiResults | ClientLocalFiles
 )
 
 const (
@@ -46,11 +50,11 @@ const (
 
 // Header information.
 const (
-	OKHeader          byte = 0x00
-	ErrHeader         byte = 0xff
-	EOFHeader         byte = 0xfe
-	LocalInFileHeader byte = 0xfb
-	AuthSwitchHeader  byte = 0xfe
+	OKHeader           byte = 0x00
+	AuthMoreDataHeader byte = 0x01
+	ErrHeader          byte = 0xff
+	EOFHeader          byte = 0xfe
+	LocalInFileHeader  byte = 0xfb
 )
 
 // Server information.
@@ -67,6 +71,12 @@ const (
 	ServerStatusMetadataChanged    uint16 = 0x0400
 	ServerStatusWasSlow            uint16 = 0x0800
 	ServerPSOutParams              uint16 = 0x1000
+)
+
+const (
+	CachingSha2PasswordRequestPublicKey          = 2
+	CachingSha2PasswordFastAuthSuccess           = 3
+	CachingSha2PasswordPerformFullAuthentication = 4
 )
 
 // ErrTextLength error text length limit.
@@ -207,6 +217,76 @@ const (
 	MaxDurationWidthNoFsp   = 10 // HH:MM:SS
 	MaxDurationWidthWithFsp = 15 // HH:MM:SS[.fraction]
 	MaxBlobWidth            = 16777216
+)
+
+const (
+	TkStrFrom = "from"
+	TkStrInto = "into"
+	TkStrSet  = "set"
+	TkStrShow = "show"
+
+	TkStrFields  = "fields"  // TkStrFields show fields
+	TkStrColumns = "columns" // TkStrColumns show columns
+)
+
+var (
+	TkIdInsert   = 1
+	TkIdUpdate   = 2
+	TkIdDelete   = 3
+	TkIdReplace  = 4
+	TkIdSet      = 5
+	TkIdBegin    = 6
+	TkIdCommit   = 7
+	TkIdRollback = 8
+	TkIdAdmin    = 9
+	TkIdUse      = 10
+
+	TkIdSelect      = 11
+	TkIdStart       = 12
+	TkIdTransaction = 13
+	TkIdShow        = 14
+	TkIdPrepare     = 15
+	TkIdKill        = 16
+	TkIdCreate      = 17
+	TkIdTemporary   = 18
+	TkIdTruncate    = 19
+	TkIdLock        = 20
+	TkIdFlush       = 21
+	TkIdLoad        = 22
+
+	ParseTokenMap = map[string]int{
+		"insert":      TkIdInsert,
+		"update":      TkIdUpdate,
+		"delete":      TkIdDelete,
+		"replace":     TkIdReplace,
+		"set":         TkIdSet,
+		"begin":       TkIdBegin,
+		"commit":      TkIdCommit,
+		"rollback":    TkIdRollback,
+		"admin":       TkIdAdmin,
+		"select":      TkIdSelect,
+		"use":         TkIdUse,
+		"start":       TkIdStart,
+		"transaction": TkIdTransaction,
+		"show":        TkIdShow,
+		"prepare":     TkIdPrepare,
+		"kill":        TkIdKill,
+		"create":      TkIdCreate,
+		"temporary":   TkIdTemporary,
+		"truncate":    TkIdTruncate,
+		"lock":        TkIdLock,
+		"flush":       TkIdFlush,
+		"load":        TkIdLoad,
+	}
+	ParseTokenIdStrMap = map[int]string{
+		TkIdSelect:  TkStrFrom,
+		TkIdDelete:  TkStrFrom,
+		TkIdInsert:  TkStrInto,
+		TkIdReplace: TkStrInto,
+		TkIdUpdate:  TkStrSet,
+		TkIdSet:     TkStrSet,
+		TkIdShow:    TkStrShow,
+	}
 )
 
 // SQLMode is the type for MySQL sql_mode.

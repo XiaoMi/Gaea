@@ -117,7 +117,7 @@ func AppendLenEncInt(data []byte, i uint64) []byte {
 	return data
 }
 
-// LenNullString return lenght Null terminated string
+// LenNullString return length Null terminated string
 func LenNullString(value string) int {
 	return len(value) + 1
 }
@@ -397,11 +397,15 @@ func FormatBinaryDate(n int, data []byte) ([]byte, error) {
 	switch n {
 	case 0:
 		return []byte("0000-00-00"), nil
-	case 4:
+	case 4, 7:
+		// 4 : 'dd 07 08 04' = 2015-08-04
+		// 7 : 'dd 07 08 04 00 00 00' = 2015-08-04 00:00:00 mysql-connector-java testServPrepStmtSetObjectAndNewSupportedTypes
 		return []byte(fmt.Sprintf("%04d-%02d-%02d",
 			binary.LittleEndian.Uint16(data[:2]),
 			data[2],
 			data[3])), nil
+	case 10: // string '2017-02-17'
+		return data, nil
 	default:
 		return nil, fmt.Errorf("invalid date packet length %d", n)
 	}
@@ -436,6 +440,8 @@ func FormatBinaryDateTime(n int, data []byte) ([]byte, error) {
 			data[5],
 			data[6],
 			binary.LittleEndian.Uint32(data[7:11]))), nil
+	case 19, 26:
+		return data, nil
 	default:
 		return nil, fmt.Errorf("invalid datetime packet length %d", n)
 	}
@@ -445,17 +451,23 @@ func FormatBinaryDateTime(n int, data []byte) ([]byte, error) {
 func FormatBinaryTime(n int, data []byte) ([]byte, error) {
 	if n == 0 {
 		return []byte("0000-00-00"), nil
+	} else if n == 1 {
+		if data[0] == 0 {
+			return []byte("00:00:00"), nil
+		}
 	}
 
-	var sign byte
+	var sign string
 	if data[0] == 1 {
-		sign = byte('-')
+		sign = "-"
+	} else {
+		sign = ""
 	}
 
 	switch n {
 	case 8:
 		return []byte(fmt.Sprintf(
-			"%c%02d:%02d:%02d",
+			"%s%02d:%02d:%02d",
 			sign,
 			uint16(data[1])*24+uint16(data[5]),
 			data[6],
@@ -463,7 +475,7 @@ func FormatBinaryTime(n int, data []byte) ([]byte, error) {
 		)), nil
 	case 12:
 		return []byte(fmt.Sprintf(
-			"%c%02d:%02d:%02d.%06d",
+			"%s%02d:%02d:%02d.%06d",
 			sign,
 			uint16(data[1])*24+uint16(data[5]),
 			data[6],

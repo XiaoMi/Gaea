@@ -15,6 +15,11 @@
 package models
 
 import (
+	"fmt"
+	"github.com/XiaoMi/Gaea/log"
+	"github.com/XiaoMi/Gaea/log/zap"
+	"github.com/XiaoMi/Gaea/mysql"
+	"strconv"
 	"strings"
 
 	"github.com/go-ini/ini"
@@ -43,10 +48,12 @@ type Proxy struct {
 	Service string `ini:"service_name"`
 	Cluster string `ini:"cluster_name"`
 
-	LogPath     string `ini:"log_path"`
-	LogLevel    string `ini:"log_level"`
-	LogFileName string `ini:"log_filename"`
-	LogOutput   string `ini:"log_output"`
+	LogPath       string `ini:"log_path"`
+	LogLevel      string `ini:"log_level"`
+	LogFileName   string `ini:"log_filename"`
+	LogOutput     string `ini:"log_output"`
+	LogKeepDays   int    `ini:"log_keep_days"`
+	LogKeepCounts int    `ini:"log_keep_counts"`
 
 	ProtoType      string `ini:"proto_type"`
 	ProxyAddr      string `ini:"proxy_addr"`
@@ -64,6 +71,9 @@ type Proxy struct {
 
 	ServerVersion string `ini:"server_version"`
 	AuthPlugin    string `ini:"auth_plugin"`
+	NumCPU        int    `ini:"num_cpu"`
+	NetBufferSize int    `ini:"net_buffer_size"`
+	ConfigFile    string
 }
 
 // ParseProxyConfigFromFile parser proxy config from file
@@ -87,12 +97,52 @@ func ParseProxyConfigFromFile(cfgFile string) (*Proxy, error) {
 	} else if proxyConfig.Cluster != "" {
 		proxyConfig.CoordinatorRoot = "/" + proxyConfig.Cluster
 	}
+
+	proxyConfig.ConfigFile = cfgFile
+
+	if proxyConfig.NetBufferSize > 0 {
+		mysql.InitNetBufferSize(proxyConfig.NetBufferSize)
+	}
+
+	if err := proxyConfig.Verify(); err != nil {
+		return nil, err
+	}
 	return proxyConfig, err
 }
 
 // Verify verify proxy config
-func (p *Proxy) Verify() error {
-	return nil
+func (p *Proxy) Verify() (err error) {
+
+	//first check ConfigType
+	switch p.ConfigType {
+	case ConfigFile, ConfigEtcd, ConfigEtcdV3:
+	default:
+		return fmt.Errorf("unsupport config_type: %s", p.ConfigType)
+	}
+
+	// check statstics
+	if _, err = strconv.ParseBool(p.StatsEnabled); err != nil {
+		return fmt.Errorf("StatsEnabled should be a bool value: current: %s, "+
+			"error: %s", p.StatsEnabled, err.Error())
+	}
+	if p.StatsInterval < 0 {
+		return fmt.Errorf("stats_interval should be >= 0: %d", p.StatsInterval)
+	}
+
+	// check gloal slow query and session timeout
+	if p.SlowSQLTime < 0 {
+		return fmt.Errorf("slow_sql_time should be >= 0: %d", p.SlowSQLTime)
+	}
+	if p.SessionTimeout < 0 {
+		return fmt.Errorf("session_timeout should be >= 0: %d", p.SlowSQLTime)
+	}
+
+	switch p.AuthPlugin {
+	case "", mysql.MysqlNativePassword, mysql.CachingSHA2Password:
+	default:
+		return fmt.Errorf("unsupport auth_plugin: %s", p.AuthPlugin)
+	}
+	return
 }
 
 // ProxyInfo for report proxy information
@@ -113,4 +163,29 @@ type ProxyInfo struct {
 // Encode encode proxy info
 func (p *ProxyInfo) Encode() []byte {
 	return JSONEncode(p)
+}
+
+func InitXLog(output, path, filename, level, service string, logKeepDays int, logKeepCounts int) error {
+	cfg := make(map[string]string)
+	cfg["path"] = path
+	cfg["filename"] = filename
+	cfg["level"] = level
+	cfg["service"] = service
+	cfg["skip"] = "5" // 设置xlog打印方法堆栈需要跳过的层数, 5目前为调用log.Debug()等方法的方法名, 比xlog默认值多一层.
+	cfg["log_keep_days"] = strconv.Itoa(log.DefaultLogKeepDays)
+	if logKeepDays != 0 {
+		cfg["log_keep_days"] = strconv.Itoa(logKeepDays)
+	}
+
+	cfg["log_keep_counts"] = strconv.Itoa(log.DefaultLogKeepCounts)
+	if logKeepCounts != 0 {
+		cfg["log_keep_counts"] = strconv.Itoa(logKeepCounts)
+	}
+	logger, err := zap.CreateLogManager(cfg)
+	if err != nil {
+		return err
+	}
+
+	log.SetGlobalLogger(logger)
+	return nil
 }

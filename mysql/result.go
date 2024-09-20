@@ -32,10 +32,9 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"strconv"
-
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/util/hack"
+	"strconv"
 )
 
 // RowData row in []byte format
@@ -276,8 +275,22 @@ type Result struct {
 
 	InsertID     uint64
 	AffectedRows uint64
-
+	Warnings     uint16      // OK包中的warnings信息，EOF包用的是Conn结构体中的warnings
+	Info         string      // update请求返回的Rows matched: 1  Changed: 1  Warnings: 0在info中
+	pool         *resultPool // 对象池复用
 	*Resultset
+}
+
+// BuildBinaryResultSet build binary result set
+func (r *Result) BuildBinaryResultSet() error {
+	if r != nil && r.Resultset != nil {
+		resultSet, err := BuildBinaryResultset(r.Fields, r.Values)
+		if err != nil {
+			return err
+		}
+		r.Resultset = resultSet
+	}
+	return nil
 }
 
 // Resultset means mysql results of sql execution, included split table sql
@@ -285,8 +298,7 @@ type Resultset struct {
 	Fields     []*Field        // columns information
 	FieldNames map[string]int  // column information, key: column name value: index in Fields
 	Values     [][]interface{} // values after sql handled
-
-	RowDatas []RowData // data will returned
+	RowDatas   []RowData       // data will returned
 }
 
 // RowNumber return row number of results
@@ -554,7 +566,7 @@ func BuildBinaryResultset(fields []*Field, values [][]interface{}) (*Resultset, 
 		r.Fields[i] = fields[i]
 	}
 
-	bitmapLen := ((len(fields) + 7 + 2) >> 3)
+	bitmapLen := (len(fields) + 7 + 2) >> 3
 	for i, v := range values {
 		if len(v) != len(r.Fields) {
 			return nil, fmt.Errorf("row %d has %d columns not equal %d", i, len(v), len(r.Fields))

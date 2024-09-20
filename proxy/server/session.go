@@ -16,11 +16,15 @@ package server
 
 import (
 	"fmt"
+	"github.com/XiaoMi/Gaea/backend"
 	"net"
 	"runtime"
 	"strings"
 	"sync"
+
 	"sync/atomic"
+
+	uber_atomic "go.uber.org/atomic"
 
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/mysql"
@@ -30,7 +34,9 @@ import (
 // DefaultCapability means default capability
 var DefaultCapability = mysql.ClientLongPassword | mysql.ClientLongFlag |
 	mysql.ClientConnectWithDB | mysql.ClientProtocol41 |
-	mysql.ClientTransactions | mysql.ClientSecureConnection
+	mysql.ClientTransactions | mysql.ClientSecureConnection | mysql.ClientFoundRows |
+	mysql.ClientMultiResults | mysql.ClientMultiStatements | mysql.ClientPSMultiResults |
+	mysql.ClientLocalFiles | mysql.ClientPluginAuth
 
 //下面的会根据配置文件参数加进去
 //mysql.ClientPluginAuth
@@ -53,6 +59,8 @@ type Session struct {
 	executor *SessionExecutor
 
 	closed atomic.Value
+
+	continueConn backend.PooledConnect
 }
 
 // create session between client<->proxy
@@ -76,11 +84,31 @@ func newSession(s *Server, co net.Conn) *Session {
 	cc.executor = newSessionExecutor(s.manager)
 	cc.executor.clientAddr = co.RemoteAddr().String()
 	cc.closed.Store(false)
+	cc.executor.session = cc
+	cc.executor.serverAddr = s.listener.Addr()
 	return cc
 }
 
 func (cc *Session) getNamespace() *Namespace {
 	return cc.manager.GetNamespace(cc.namespace)
+}
+
+func (cc *Session) clientConnectionReachLimit() (bool, int) {
+	var current interface{}
+	var ok bool
+
+	//can't find means this is the first connection
+	if current, ok = cc.manager.statistics.clientConnecions.Load(cc.namespace); !ok {
+		return false, 0
+	}
+
+	// 并发情况下，这边判断有问题，会检测不准，修改成原子操作，对建立连接性能有影响，暂不处理
+	var v = int(current.(*uber_atomic.Int32).Load())
+	if v >= cc.getNamespace().maxClientConnections {
+		return true, v
+	}
+
+	return false, v
 }
 
 // IsAllowConnect check if allow to connect
@@ -99,7 +127,7 @@ func (cc *Session) IsAllowConnect() bool {
 // step1: server send plain handshake packets to client
 // step2: client send handshake response packets to server
 // step3: server send ok/err packets to client
-func (cc *Session) Handshake() error {
+func (cc *Session) Handshake() (*HandshakeResponseInfo, error) {
 	// First build and send the server handshake packet.
 	if err := cc.c.writeInitialHandshakeV10(); err != nil {
 		clientHost, _, innerErr := net.SplitHostPort(cc.c.RemoteAddr().String())
@@ -109,12 +137,10 @@ func (cc *Session) Handshake() error {
 		// filter lvs detect liveness
 		hostname, _ := util.HostName(clientHost)
 		if len(hostname) > 0 && strings.Contains(hostname, "lvs") {
-			return err
+			return nil, err
 		}
 
-		log.Warn("[server] Session writeInitialHandshake error, connId: %d, ip: %s, msg: %s, error: %s",
-			cc.c.GetConnectionID(), clientHost, " send initial handshake error", err.Error())
-		return err
+		return nil, err
 	}
 
 	info, err := cc.c.readHandshakeResponse()
@@ -123,29 +149,40 @@ func (cc *Session) Handshake() error {
 		if innerErr != nil {
 			log.Warn("[server] Session parse host error: %v", innerErr)
 		}
-		// filter lvs detect liveness
-		hostname, _ := util.HostName(clientHost)
-		if len(hostname) > 0 && strings.Contains(hostname, "lvs") {
-			return err
-		}
 
-		log.Warn("[server] Session readHandshakeResponse error, connId: %d, ip: %s, msg: %s, error: %s",
+		log.Debug("[server] Session readHandshakeResponse error, connId: %d, ip: %s, msg: %s, error: %s",
 			cc.c.GetConnectionID(), clientHost, "read Handshake Response error", err.Error())
-		return err
+		return &info, err
 	}
 
 	if err := cc.handleHandshakeResponse(info); err != nil {
 		log.Warn("handleHandshakeResponse error, connId: %d, err: %v", cc.c.GetConnectionID(), err)
-		return err
+		return &info, err
+	}
+
+	// check if client ip allow to connect
+	if allowConnect := cc.IsAllowConnect(); allowConnect == false {
+		errMsg := fmt.Sprintf("[ns:%s, %s@%s/%s] ip not allowed to connect.",
+			cc.namespace, cc.executor.user, cc.executor.clientAddr, cc.executor.db)
+		log.Warn(errMsg)
+		return &info, mysql.NewError(mysql.ErrAccessDenied, errMsg)
+	}
+
+	// check connection has reach the limit, must invote after handshake like ip white list
+	if reachLimit, connectionNum := cc.clientConnectionReachLimit(); reachLimit {
+		errMsg := fmt.Sprintf("[ns:%s, %s@%s/%s] too many connections, current:%d, max:%d",
+			cc.namespace, cc.executor.user, cc.executor.clientAddr, cc.executor.db, connectionNum, cc.getNamespace().maxClientConnections)
+		log.Warn(errMsg)
+		return &info, mysql.NewError(mysql.ErrConCount, errMsg)
 	}
 
 	if err := cc.c.writeOK(cc.executor.GetStatus()); err != nil {
 		log.Warn("[server] Session readHandshakeResponse error, connId %d, msg: %s, error: %s",
 			cc.c.GetConnectionID(), "write ok fail", err.Error())
-		return err
+		return &info, err
 	}
 
-	return nil
+	return &info, nil
 }
 
 func (cc *Session) handleHandshakeResponse(info HandshakeResponseInfo) error {
@@ -163,7 +200,10 @@ func (cc *Session) handleHandshakeResponse(info HandshakeResponseInfo) error {
 		if len(info.AuthResponse) == 32 {
 			succ, password = cc.manager.CheckSha2Password(user, info.Salt, info.AuthResponse)
 		} else {
-			succ, password = cc.manager.CheckPassword(user, info.Salt, info.AuthResponse)
+			succ, password = cc.manager.CheckHashPassword(user, info.Salt, info.AuthResponse)
+			if !succ {
+				succ, password = cc.manager.CheckPassword(user, info.Salt, info.AuthResponse)
+			}
 		}
 	} else if info.AuthPlugin == mysql.CachingSHA2Password {
 		succ, password = cc.manager.CheckSha2Password(user, info.Salt, info.AuthResponse)
@@ -196,6 +236,7 @@ func (cc *Session) handleHandshakeResponse(info HandshakeResponseInfo) error {
 	cc.namespace = namespace
 	cc.executor.namespace = namespace
 	cc.c.namespace = namespace // TODO: remove it when refactor is done
+	cc.executor.SetContextNamespace()
 	return nil
 }
 
@@ -208,6 +249,8 @@ func (cc *Session) Close() {
 	if err := cc.executor.rollback(); err != nil {
 		log.Warn("executor rollback error when Session close: %v", err)
 	}
+
+	cc.executor.handleKsQuit()
 	cc.c.Close()
 	log.Debug("client closed, %d", cc.c.GetConnectionID())
 
@@ -233,39 +276,59 @@ func (cc *Session) Run() {
 		cc.Close()
 		cc.proxy.tw.Remove(cc)
 		cc.manager.GetStatisticManager().DescSessionCount(cc.namespace)
+		cc.manager.GetStatisticManager().DescConnectionCount(cc.namespace)
 	}()
 
 	cc.manager.GetStatisticManager().IncrSessionCount(cc.namespace)
+	cc.manager.GetStatisticManager().IncrConnectionCount(cc.namespace)
 
 	for !cc.IsClosed() {
+		cc.executor.nsChangeIndexOld = cc.executor.GetNamespace().namespaceChangeIndex
 		cc.c.SetSequence(0)
 		data, err := cc.c.ReadEphemeralPacket()
 		if err != nil {
 			cc.c.RecycleReadPacket()
+			cc.clearKsConns(cc.executor.nsChangeIndexOld)
+			cc.Close()
 			return
 		}
 
 		cc.proxy.tw.Add(cc.proxy.sessionTimeout, cc, cc.Close)
 		cc.manager.GetStatisticManager().AddReadFlowCount(cc.namespace, len(data))
+		cc.executor.SetContextNamespace()
+		cc.clearKsConns(cc.executor.nsChangeIndexOld)
 
 		cmd := data[0]
 		data = data[1:]
-		rs := cc.executor.ExecuteCommand(cmd, data)
-		cc.c.RecycleReadPacket()
+		rs := cc.execCommand(cmd, data)
+
+		// 如果其他地方已经回收过,不再回收
+		if !cc.c.hasRecycledReadPacket.CompareAndSwap(true, false) {
+			cc.c.RecycleReadPacket()
+		}
 
 		if err = cc.writeResponse(rs); err != nil {
 			log.Warn("Session write response error, connId: %d, err: %v", cc.c.GetConnectionID(), err)
+			if _, ok := err.(mysql.SessionCloseError); ok {
+				log.Notice("Aborted - conn_id=%d, namespace=%s, clientAddr=%s, remoteAddr=%s",
+					cc.c.GetConnectionID(), cc.namespace, cc.executor.clientAddr, cc.c.RemoteAddr())
+			}
+			cc.clearKsConns(cc.executor.nsChangeIndexOld)
 			cc.Close()
 			return
 		}
 
-		if cmd == mysql.ComQuit {
+		if cmd == mysql.ComQuit || cc.shouldClearKsAndCloseSession(cc.executor.nsChangeIndexOld) {
 			cc.Close()
 		}
 	}
 }
 
 func (cc *Session) writeResponse(r Response) error {
+	defer func() {
+		cc.executor.recycleBackendConn(cc.continueConn)
+		cc.continueConn = nil
+	}()
 	switch r.RespType {
 	case RespEOF:
 		return cc.c.writeEOFPacket(r.Status)
@@ -274,7 +337,16 @@ func (cc *Session) writeResponse(r Response) error {
 		if rs == nil {
 			return cc.c.writeOK(r.Status)
 		}
-		return cc.c.writeOKResult(r.Status, r.Data.(*mysql.Result))
+		if cc.continueConn != nil {
+			return cc.c.writeOKResultStream(r.Status, r.Data.(*mysql.Result), cc.continueConn,
+				cc.manager.GetNamespace(cc.namespace).GetMaxResultSize(), r.IsBinary)
+		}
+		if r.IsBinary {
+			if err := rs.BuildBinaryResultSet(); err != nil {
+				return err
+			}
+		}
+		return cc.c.writeOKResult(r.Status, false, r.Data.(*mysql.Result))
 	case RespPrepare:
 		stmt := r.Data.(*Stmt)
 		if stmt == nil {
@@ -288,16 +360,18 @@ func (cc *Session) writeResponse(r Response) error {
 		}
 		return cc.c.writeFieldList(r.Status, rs)
 	case RespError:
-		rs := r.Data.(error)
+		rs := r.Data
 		if rs == nil {
 			return cc.c.writeOK(r.Status)
 		}
-		err := cc.c.writeErrorPacket(rs)
-		if err != nil {
-			return err
-		}
-		if rs == mysql.ErrBadConn { // 后端连接如果断开, 应该返回通知Session关闭
-			return rs
+		switch rs.(type) {
+		case *mysql.SessionCloseRespError:
+			cc.c.writeErrorPacket(rs.(*mysql.SessionCloseRespError))
+			return rs.(*mysql.SessionCloseRespError)
+		case *mysql.SessionCloseNoRespError:
+			return rs.(*mysql.SessionCloseNoRespError)
+		case error:
+			return cc.c.writeErrorPacket(rs.(error))
 		}
 		return nil
 	case RespOK:
@@ -309,4 +383,30 @@ func (cc *Session) writeResponse(r Response) error {
 		log.Fatal(err.Error())
 		return cc.c.writeErrorPacket(err)
 	}
+}
+
+// clearKsConns clear ksConns after namespace changed
+func (cc *Session) clearKsConns(nsChangeIndex uint32) {
+	if cc.executor.IsKeepSession() && cc.getNamespace().namespaceChangeIndex > nsChangeIndex && !cc.executor.isInTransaction() {
+		for _, ksConn := range cc.executor.ksConns {
+			ksConn.Close()
+			ksConn.Recycle()
+		}
+		cc.executor.ksConns = make(map[string]backend.PooledConnect)
+	}
+}
+
+// shouldClearKsAndCloseSession should clear ks map and close session
+func (cc *Session) shouldClearKsAndCloseSession(nsChangeIndex uint32) bool {
+	return cc.executor.IsKeepSession() && cc.executor.isInTransaction() && cc.executor.GetNamespace().namespaceChangeIndex > nsChangeIndex
+}
+
+// execCommand create error response or execute sql
+func (cc *Session) execCommand(cmd byte, data []byte) (rs Response) {
+	if cc.shouldClearKsAndCloseSession(cc.executor.nsChangeIndexOld) {
+		rs = CreateErrorResponse(cc.executor.status, mysql.ErrTxNsChanged)
+	} else {
+		rs = cc.executor.ExecuteCommand(cmd, data)
+	}
+	return
 }

@@ -28,7 +28,7 @@ var (
 	// ErrNoMasterDB no master database
 	ErrNoMasterDB = errors.New("no master database")
 	// ErrNoSlaveDB no slve database
-	ErrNoSlaveDB = errors.New("no slave database")
+	ErrNoSlaveDB = errors.New("no slave databases or all slave databases are offline")
 	// ErrNoDatabase no database
 	ErrNoDatabase = errors.New("no database")
 
@@ -99,4 +99,5 @@ var (
 
 	ErrTimeLimitExceeded = errors.New("sql execute time exceeded")
 	ErrRowsLimitExceeded = errors.New("sql result set size exceeded")
+	ErrInvalidPacket     = errors.New("invalid packet format")
 )

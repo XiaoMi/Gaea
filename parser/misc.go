@@ -422,6 +422,7 @@ var tokenMap = map[string]int{
 	"RLIKE":                    rlike,
 	"ROLE":                     role,
 	"ROLLBACK":                 rollback,
+	"ROLLUP":                   rollup,
 	"ROUTINE":                  routine,
 	"ROW":                      row,
 	"ROW_COUNT":                rowCount,
@@ -544,6 +545,9 @@ var tokenMap = map[string]int{
 	"WORK":                     work,
 	"CHAIN":                    chain,
 	"RELEASE":                  release,
+	"NOWAIT":                   nowait,
+	"SKIP":                     skip,
+	"LOCKED":                   locked,
 }
 
 // See https://dev.mysql.com/doc/refman/5.7/en/function-resolution.html for details
@@ -582,7 +586,7 @@ var btFuncTokenMap = map[string]int{
 	"VAR_SAMP":     builtinVarSamp,
 }
 
-var windowFuncTokenMap = map[string]int{
+var WindowFuncTokenMap = map[string]int{
 	"CUME_DIST":    cumeDist,
 	"DENSE_RANK":   denseRank,
 	"FIRST_VALUE":  firstValue,
@@ -645,7 +649,7 @@ func (s *Scanner) isTokenIdentifier(lit string, offset int) int {
 	}
 	tok, ok := tokenMap[string(data)]
 	if !ok && s.supportWindowFunc {
-		tok = windowFuncTokenMap[string(data)]
+		tok = WindowFuncTokenMap[string(data)]
 	}
 	return tok
 }

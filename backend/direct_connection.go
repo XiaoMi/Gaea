@@ -16,11 +16,19 @@ package backend
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha1"
+	"crypto/x509"
 	"encoding/binary"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net"
 	"strings"
+	"time"
+
+	"github.com/XiaoMi/Gaea/util"
 
 	sqlerr "github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
@@ -28,14 +36,18 @@ import (
 	"github.com/XiaoMi/Gaea/util/sync2"
 )
 
+var ErrExecuteTimeout = errors.New("execute timeout")
+
 // DirectConnection means connection to backend mysql
 type DirectConnection struct {
 	conn *mysql.Conn
 
-	addr     string
-	user     string
-	password string
-	db       string
+	addr           string
+	user           string
+	password       string
+	db             string
+	version        string
+	versionCompare *util.VersionCompareStatus
 
 	capability uint32
 
@@ -50,23 +62,27 @@ type DirectConnection struct {
 	defaultCollation mysql.CollationID
 	defaultCharset   string
 
-	pkgErr error
-	closed sync2.AtomicBool
+	pkgErr                   error
+	closed                   sync2.AtomicBool
+	capabilityConnectToMySQL uint32
+	moreRowExists            bool
 }
 
 // NewDirectConnection return direct and authorised connection to mysql with real net connection
-func NewDirectConnection(addr string, user string, password string, db string, charset string, collationID mysql.CollationID) (*DirectConnection, error) {
+func NewDirectConnection(addr string, user string, password string, db string, charset string, collationID mysql.CollationID, clientCapability uint32) (*DirectConnection, error) {
 	dc := &DirectConnection{
-		addr:             addr,
-		user:             user,
-		password:         password,
-		db:               db,
-		charset:          charset,
-		collation:        collationID,
-		defaultCharset:   charset,
-		defaultCollation: collationID,
-		closed:           sync2.NewAtomicBool(false),
-		sessionVariables: mysql.NewSessionVariables(),
+		addr:                     addr,
+		user:                     user,
+		password:                 password,
+		db:                       db,
+		charset:                  charset,
+		collation:                collationID,
+		defaultCharset:           charset,
+		defaultCollation:         collationID,
+		closed:                   sync2.NewAtomicBool(false),
+		sessionVariables:         mysql.NewSessionVariables(),
+		capabilityConnectToMySQL: clientCapability,
+		moreRowExists:            false,
 	}
 	err := dc.connect()
 	return dc, err
@@ -83,7 +99,10 @@ func (dc *DirectConnection) connect() error {
 		typ = "unix"
 	}
 
-	netConn, err := net.Dial(typ, dc.addr)
+	dialer := net.Dialer{
+		Timeout: GetConnTimeout,
+	}
+	netConn, err := dialer.Dial(typ, dc.addr)
 	if err != nil {
 		return err
 	}
@@ -106,20 +125,20 @@ func (dc *DirectConnection) connect() error {
 	// step2: write handshake response
 	if err := dc.writeHandshakeResponse41(); err != nil {
 		dc.conn.Close()
-
 		return err
 	}
 
-	response, err := dc.readPacket()
+	var cipher []byte
+	var newPlugin string
+	cipher, newPlugin, err = dc.readAuth()
 	if err != nil {
 		dc.conn.Close()
 		return err
 	}
 
-	switch response[0] {
-	case mysql.OKHeader:
-	default:
-		return errors.New("dc connection handshake failed with mysql")
+	if err := dc.authResponse(cipher, newPlugin); err != nil {
+		dc.conn.Close()
+		return err
 	}
 
 	// we must always use autocommit
@@ -165,14 +184,18 @@ func (dc *DirectConnection) writePacket(data []byte) error {
 	err := dc.conn.WritePacket(data)
 	if err != nil && strings.Contains(err.Error(), "broken pipe") {
 		// retry 3 times, close dc's conn、reset dc's stats and reconnect
+		var connError error
 		for i := 0; i < 3; i++ {
 			dc.Close()
-			e := dc.connect()
-			if e == nil { // no need to write data again
+			connError = dc.connect()
+			if connError == nil { // no need to write data again
 				break
 			}
 		}
-
+		if dc.conn == nil {
+			log.Warn("dc address %v, DirectConnection writePacket conn is nil, err = %v, reConnet err = %v",
+				dc.addr, connError, err)
+		}
 	}
 	return err
 }
@@ -182,12 +205,18 @@ func (dc *DirectConnection) writeEphemeralPacket() error {
 	err := dc.conn.WriteEphemeralPacket()
 	if err != nil && strings.Contains(err.Error(), "broken pipe") {
 		// retry 3 times, close dc's conn、reset dc's stats and reconnect
+		// todo 先不下线这个重试，确认线上问题是不是这里产生的再下掉重试逻辑。下面的重试目前也没有生效，dc close后状态未恢复。
+		var connError error
 		for i := 0; i < 3; i++ {
 			dc.Close()
-			e := dc.connect()
-			if e == nil { // no need to write data again and ephemeral buffer is recycled
+			connError = dc.connect()
+			if connError == nil { // no need to write data again and ephemeral buffer is recycled
 				break
 			}
+		}
+		if dc.conn == nil {
+			log.Warn("dc address %v, DirectConnection writePacket conn is nil, err = %v, reConnet err = %v",
+				dc.addr, connError, err)
 		}
 	}
 	return err
@@ -207,9 +236,14 @@ func (dc *DirectConnection) readInitialHandshake() error {
 		return fmt.Errorf("invalid protocol version %d, must >= 10", data[0])
 	}
 
-	//skip mysql version
 	//mysql version end with 0x00
-	pos := 1 + bytes.IndexByte(data[1:], 0x00) + 1
+	version, pos, ok := mysql.ReadNullString(data, 1)
+	if !ok {
+		return fmt.Errorf("readInitialHandshake error: can't read version")
+	}
+
+	dc.version = version
+	dc.versionCompare = util.NewVersionCompareStatus(version)
 
 	// get connection id
 	dc.conn.ConnectionID = binary.LittleEndian.Uint32(data[pos : pos+4])
@@ -252,12 +286,170 @@ func (dc *DirectConnection) readInitialHandshake() error {
 	return nil
 }
 
+func (dc *DirectConnection) readAuth() ([]byte, string, error) {
+	data, err := dc.readPacket()
+	if err != nil {
+		return nil, "", err
+	}
+	switch data[0] {
+	case mysql.OKHeader, mysql.ErrHeader:
+		return nil, "", nil
+	case mysql.AuthMoreDataHeader:
+		return data[1:], "", nil
+	case mysql.EOFHeader:
+		// AuthSwitch: https://dev.mysql.com/doc/internals/en/authentication-method-mismatch.html
+		if len(data) == 1 {
+			return nil, mysql.MysqlNativePassword, nil
+		}
+		pluginEndIndex := bytes.IndexByte(data, 0x00)
+		if pluginEndIndex < 0 {
+			return nil, "", sqlerr.ErrInvalidPacket
+		}
+		plugin := string(data[1:pluginEndIndex])
+		cipher := data[pluginEndIndex+1:]
+		return cipher, plugin, nil
+	default:
+		return nil, "", sqlerr.ErrInvalidPacket
+	}
+}
+
+func (dc *DirectConnection) authResponse(cipher []byte, newPlugin string) error {
+	if newPlugin == "" {
+		return nil
+	}
+
+	// handle auth plugin switch, if requested
+	var adjustCipher, scrPasswd []byte
+	if len(cipher) >= 20 {
+		// old_password's len(cipher) == 0
+		adjustCipher = cipher[:20]
+	} else {
+		adjustCipher = cipher
+	}
+
+	switch newPlugin {
+	case mysql.CachingSHA2Password:
+		scrPasswd = mysql.CalcCachingSha2Password(adjustCipher, dc.password)
+	case mysql.Sha256Password:
+		// request public key from server
+		scrPasswd = []byte{1}
+	case mysql.MysqlNativePassword:
+		if strings.HasPrefix(dc.password, "**") && len(dc.password) == 42 {
+			scrPasswd = mysql.CalcPasswordSHA1(adjustCipher, []byte(dc.password)[2:])
+		} else {
+			scrPasswd = mysql.CalcPassword(adjustCipher, []byte(dc.password))
+		}
+	default:
+		return fmt.Errorf("not support plugin: %s", newPlugin)
+	}
+	if err := dc.writeAuthSwitchPacket(scrPasswd); err != nil {
+		return fmt.Errorf("writeAuthSwitchPacket error: %s", err)
+	}
+
+	// Read Result Packet
+	authData, plugin, err := dc.readAuth()
+	if err != nil {
+		return err
+	}
+	if plugin != "" {
+		return fmt.Errorf("not allow to change the auth plugin more than once")
+	}
+
+	switch newPlugin {
+	// https://insidemysql.com/preparing-your-community-connector-for-mysql-8-part-2-sha256/
+	case mysql.CachingSHA2Password:
+		switch len(authData) {
+		case 0:
+			return nil // auth successful
+		case 1:
+			switch authData[0] {
+			case mysql.CachingSha2PasswordFastAuthSuccess:
+				_, _, err := dc.readAuth()
+				if err != nil {
+					return err
+				}
+			case mysql.CachingSha2PasswordPerformFullAuthentication:
+				// request public key
+				data := make([]byte, 1)
+				data[0] = byte(mysql.CachingSha2PasswordRequestPublicKey)
+				err = dc.writePacket(data)
+				if err != nil {
+					return err
+				}
+				authData, _, err := dc.readAuth()
+				if err != nil {
+					return err
+				}
+
+				if err = dc.writePublicKeyAuthPacketSha256(authData, adjustCipher); err != nil {
+					return err
+				}
+
+				_, _, err = dc.readAuth()
+				if err != nil {
+					return err
+				}
+			}
+		}
+	case mysql.Sha256Password:
+		switch len(authData) {
+		case 0:
+			return nil // auth successful
+		default:
+			if err = dc.writePublicKeyAuthPacketSha256(authData, adjustCipher); err != nil {
+				return err
+			}
+			_, _, err := dc.readAuth()
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// http://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::AuthSwitchResponse
+func (dc *DirectConnection) writeAuthSwitchPacket(scrPasswd []byte) error {
+	data := make([]byte, len(scrPasswd))
+	copy(data, scrPasswd)
+	return dc.writePacket(data)
+}
+
+// Caching sha2 authentication. Public key request and send encrypted password
+func (dc *DirectConnection) writePublicKeyAuthPacketSha256(authData []byte, scramble []byte) error {
+	block, _ := pem.Decode(authData)
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return err
+	}
+
+	plain := make([]byte, len(dc.password)+1)
+	copy(plain, dc.password)
+	for i := range plain {
+		j := i % len(scramble)
+		plain[i] ^= scramble[j]
+	}
+	sha1 := sha1.New()
+	enc, _ := rsa.EncryptOAEP(sha1, rand.Reader, pub.(*rsa.PublicKey), plain, nil)
+	data := make([]byte, len(enc))
+	copy(data, enc)
+	return dc.writePacket(data)
+}
+
 // writeHandshakeResponse41 writes the handshake response.
 func (dc *DirectConnection) writeHandshakeResponse41() error {
 	// Adjust client capability flags based on server support
-	capability := mysql.ClientProtocol41 | mysql.ClientSecureConnection |
-		mysql.ClientLongPassword | mysql.ClientTransactions | mysql.ClientLongFlag
+
+	var capability uint32
+	if dc.capabilityConnectToMySQL == 0 {
+		capability = mysql.ClientProtocol41 | mysql.ClientSecureConnection |
+			mysql.ClientLongPassword | mysql.ClientTransactions | mysql.ClientLongFlag
+	} else {
+		capability = dc.capabilityConnectToMySQL
+	}
+
 	capability &= dc.capability
+	capability |= mysql.ClientPluginAuth
 
 	//we only support secure connection
 	auth := mysql.CalcPassword(dc.salt, []byte(dc.password))
@@ -360,6 +552,9 @@ func (dc *DirectConnection) writeComFieldList(table string, wildcard string) err
 
 // Ping implements mysql ping command.
 func (dc *DirectConnection) Ping() error {
+	if dc.conn == nil {
+		return fmt.Errorf("get mysql conn of DirectConnection error.dc addr:%s", dc.GetAddr())
+	}
 	dc.conn.SetSequence(0)
 	if err := dc.writePacket([]byte{mysql.ComPing}); err != nil {
 		return err
@@ -377,6 +572,21 @@ func (dc *DirectConnection) Ping() error {
 	return fmt.Errorf("unexpected packet type: %d", data[0])
 }
 
+func (dc *DirectConnection) PingWithTimeout(timeout time.Duration) error {
+	pingChan := make(chan error)
+	go func() {
+		err := dc.Ping()
+		pingChan <- err
+	}()
+
+	select {
+	case <-time.After(timeout):
+		return errors.New("ping timeout")
+	case err1 := <-pingChan:
+		return err1
+	}
+}
+
 // UseDB send ComInitDB to backend mysql
 func (dc *DirectConnection) UseDB(dbName string) error {
 	dc.conn.SetSequence(0)
@@ -391,7 +601,7 @@ func (dc *DirectConnection) UseDB(dbName string) error {
 	if r, err := dc.readPacket(); err != nil {
 		return err
 	} else if !mysql.IsOKPacket(r) {
-		return errors.New("dc connection use db failed")
+		return fmt.Errorf("dc connection use db(%s) failed", dbName)
 	}
 
 	dc.db = dbName
@@ -411,6 +621,27 @@ func (dc *DirectConnection) GetAddr() string {
 // Execute send ComQuery or ComStmtPrepare/ComStmtExecute/ComStmtClose to backend mysql
 func (dc *DirectConnection) Execute(sql string, maxRows int) (*mysql.Result, error) {
 	return dc.exec(sql, maxRows)
+}
+
+func (dc *DirectConnection) ExecuteWithTimeout(sql string, maxRows int, timeout time.Duration) (*mysql.Result, error) {
+	errChan := make(chan error, 1)
+	var res *mysql.Result
+
+	go func() {
+		var err error
+		res, err = dc.exec(sql, maxRows)
+		errChan <- err
+	}()
+
+	select {
+	case <-time.After(timeout):
+		return nil, ErrExecuteTimeout
+	case err := <-errChan:
+		if err != nil {
+			return nil, err
+		}
+		return res, nil
+	}
 }
 
 // Begin send ComQuery with 'begin' to backend mysql to start transaction
@@ -453,7 +684,7 @@ func (dc *DirectConnection) SetAutoCommit(v uint8) error {
 func (dc *DirectConnection) SetCharset(charset string, collation mysql.CollationID) ( /*changed*/ bool, error) {
 	charset = strings.Trim(charset, "\"'`")
 
-	if collation == 0 || collation > 247 {
+	if collation == 0 || (collation > 247 && (dc.versionCompare == nil || dc.versionCompare.LessThanMySQLVersion80)) {
 		collation = mysql.CollationNames[mysql.Charsets[charset]]
 	}
 
@@ -494,12 +725,36 @@ func (dc *DirectConnection) ResetConnection() error {
 		}
 	}
 
+	if dc.conn == nil {
+		log.Warn("reset connect failed conn is nil, addr: %s, user: %s, db: %s, status: %d", dc.addr, dc.user, dc.db, dc.status)
+		return fmt.Errorf("dc.conn is nil")
+	}
+
 	return nil
 }
 
 // SetSessionVariables set direction variables according to Session
 func (dc *DirectConnection) SetSessionVariables(frontend *mysql.SessionVariables) (bool, error) {
 	return dc.sessionVariables.SetEqualsWith(frontend)
+}
+
+// SyncSessionVariables synchronizes the session variables from the provided frontend session
+// state to this direct connection's database session. It first sets the session variables based
+// on the frontend's specifications and then commits these changes to the database session with
+// an appropriate SQL SET statement.
+// This method ensures that the connection's state is consistent with the frontend's requirements,
+func (dc *DirectConnection) SyncSessionVariables(frontend *mysql.SessionVariables) error {
+	variablesChanged, err := dc.SetSessionVariables(frontend)
+	if err != nil {
+		return err
+	}
+	if !variablesChanged {
+		return nil
+	}
+	if err = dc.WriteSetStatement(); err != nil {
+		return err
+	}
+	return nil
 }
 
 // WriteSetStatement execute sql
@@ -512,6 +767,10 @@ func (dc *DirectConnection) WriteSetStatement() error {
 	appendSetCharset(&setVariableSQL, dc.charset, collation)
 
 	for _, v := range dc.sessionVariables.GetAll() {
+		if v.Name() == mysql.TxReadOnly && dc.versionCompare != nil && !dc.versionCompare.LessThanMySQLVersion803 {
+			appendSetVariable(&setVariableSQL, mysql.TransactionReadOnly, v.Get())
+			continue
+		}
 		appendSetVariable(&setVariableSQL, v.Name(), v.Get())
 	}
 
@@ -569,13 +828,7 @@ func (dc *DirectConnection) exec(query string, maxRows int) (*mysql.Result, erro
 
 // read resultset from mysql
 func (dc *DirectConnection) readResultSet(data []byte, binary bool, maxRows int) (*mysql.Result, error) {
-	result := &mysql.Result{
-		Status:       0,
-		InsertID:     0,
-		AffectedRows: 0,
-
-		Resultset: &mysql.Resultset{},
-	}
+	result := mysql.ResultPool.Get()
 
 	// column count
 	pos := 0
@@ -644,7 +897,8 @@ func (dc *DirectConnection) readResultColumns(result *mysql.Result) (err error) 
 // readResultRows read result rows
 func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool, maxRows int) (err error) {
 	var data []byte
-
+	var bufLength int
+	dc.moreRowExists = false
 	for {
 		data, err = dc.readPacket()
 		if err != nil {
@@ -661,6 +915,8 @@ func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool, 
 			}
 
 			break
+		} else {
+			bufLength += len(data)
 		}
 
 		if data[0] == mysql.ErrHeader {
@@ -673,6 +929,13 @@ func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool, 
 				return fmt.Errorf("%v %d, drain error: %v", sqlerr.ErrRowsLimitExceeded, maxRows, err)
 			}
 			return fmt.Errorf("%v %d", sqlerr.ErrRowsLimitExceeded, maxRows)
+		}
+
+		if bufLength > mysql.MaxPayloadLen {
+			dc.moreRowExists = true
+			break
+		} else {
+			dc.moreRowExists = false
 		}
 	}
 
@@ -715,7 +978,7 @@ func (dc *DirectConnection) isEOFPacket(data []byte) bool {
 func (dc *DirectConnection) handleOKPacket(data []byte) (*mysql.Result, error) {
 	var pos = 1
 
-	r := new(mysql.Result)
+	r := mysql.ResultPool.GetWithoutResultSet()
 
 	r.AffectedRows, pos, _, _ = mysql.ReadLenEncInt(data, pos)
 	r.InsertID, pos, _, _ = mysql.ReadLenEncInt(data, pos)
@@ -726,8 +989,8 @@ func (dc *DirectConnection) handleOKPacket(data []byte) (*mysql.Result, error) {
 		pos += 2
 
 		// TODO strict_mode, check warnings as error
-		// Warnings := binary.LittleEndian.Uint16(data[pos:])
-		// pos += 2
+		r.Warnings = binary.LittleEndian.Uint16(data[pos:])
+		pos += 2
 	} else if dc.capability&mysql.ClientTransactions > 0 {
 		r.Status = binary.LittleEndian.Uint16(data[pos:])
 		dc.status = r.Status
@@ -735,6 +998,7 @@ func (dc *DirectConnection) handleOKPacket(data []byte) (*mysql.Result, error) {
 	}
 
 	//info
+	r.Info = string(data[pos:])
 	return r, nil
 }
 
@@ -811,7 +1075,7 @@ func appendSetVariable(buf *bytes.Buffer, key string, value interface{}) {
 	buf.WriteString(" = ")
 	switch v := value.(type) {
 	case string:
-		if strings.ToLower(v) == mysql.KeywordDefault {
+		if strings.ToLower(v) == mysql.KeywordDefault || key == mysql.SQLModeStr {
 			buf.WriteString(v)
 		} else {
 			buf.WriteString("'")

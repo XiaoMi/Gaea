@@ -16,6 +16,7 @@ package server
 
 import (
 	"fmt"
+	"github.com/XiaoMi/Gaea/core"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -48,6 +49,8 @@ type AdminServer struct {
 	}
 	proxy *Server
 	model *models.ProxyInfo
+	// proxy config file path
+	configFile string
 
 	listener      net.Listener
 	adminUser     string
@@ -86,7 +89,7 @@ func NewAdminServer(proxy *Server, cfg *models.Proxy) (*AdminServer, error) {
 	s.coordinatorUsername = cfg.UserName
 	s.coordinatorPassword = cfg.Password
 	s.coordinatorRoot = cfg.CoordinatorRoot
-
+	s.configFile = cfg.ConfigFile
 	s.engine = gin.New()
 	l, err := net.Listen(cfg.ProtoType, cfg.AdminAddr)
 	if err != nil {
@@ -96,6 +99,7 @@ func NewAdminServer(proxy *Server, cfg *models.Proxy) (*AdminServer, error) {
 	s.registerURL()
 	s.registerMetric()
 	s.registerProf()
+	s.registerVersion()
 
 	proxyInfo, err := NewProxyInfo(cfg, s.proxy.Listener().Addr().String())
 	if err != nil {
@@ -144,6 +148,7 @@ func (s *AdminServer) Close() error {
 func (s *AdminServer) registerURL() {
 	adminGroup := s.engine.Group("/api/proxy", gin.BasicAuth(gin.Accounts{s.adminUser: s.adminPassword}))
 	adminGroup.GET("/ping", s.ping)
+	adminGroup.PUT("/proxyconfig/reload", s.reloadProxyConfig)
 	adminGroup.PUT("/config/prepare/:name", s.prepareConfig)
 	adminGroup.PUT("/config/commit/:name", s.commitConfig)
 	adminGroup.PUT("/namespace/delete/:name", s.deleteNamespace)
@@ -187,6 +192,11 @@ func (s *AdminServer) registerProf() {
 	profGroup.GET("/mutex", gin.WrapF(pprof.Handler("mutex").ServeHTTP))
 	profGroup.GET("/threadcreate", gin.WrapF(pprof.Handler("threadcreate").ServeHTTP))
 	profGroup.GET("/allocs", gin.WrapF(pprof.Handler("allocs").ServeHTTP))
+}
+
+func (s *AdminServer) registerVersion() {
+	versionGroup := s.engine.Group("/api/proxy")
+	versionGroup.GET("/version", s.ProxyVersion)
 }
 
 // NewProxyInfo create proxy information
@@ -266,6 +276,20 @@ func (s *AdminServer) unregisterProxy() error {
 // @Security BasicAuth
 // @Router /api/proxy/ping [get]
 func (s *AdminServer) ping(c *gin.Context) {
+	c.JSON(http.StatusOK, "OK")
+}
+
+// @Summary reload proxy config
+// @Description 通过管理接口, 重载 proxy 配置文件，当前仅支持 log 配置的重载
+// @Produce  json
+// @Success 200 {string} string "OK"
+// @Security BasicAuth
+// @Router /api/proxy/proxyconfig/reload [put]
+func (s *AdminServer) reloadProxyConfig(c *gin.Context) {
+	if err := s.proxy.ReloadProxyConfig(); err != nil {
+		c.JSON(selfDefinedInternalError, fmt.Sprintf("reload config file Error:%s", err))
+	}
+	log.Notice("reload proxy config success")
 	c.JSON(http.StatusOK, "OK")
 }
 
@@ -430,4 +454,13 @@ func (s *AdminServer) clearNamespaceBackendSQLFingerprint(c *gin.Context) {
 	namespace.ClearBackendErrorSQLFingerprints()
 
 	c.JSON(http.StatusOK, "OK")
+}
+
+// @Summary 获取gaea版本信息
+// @Description  获取gaea版本信息，2.0版本新增接口
+// @Success 200 {string} string "version"
+// @Security 不需要鉴权
+// @Router /api/proxy/config/version [get]
+func (s *AdminServer) ProxyVersion(c *gin.Context) {
+	c.JSON(http.StatusOK, core.Info.Version)
 }

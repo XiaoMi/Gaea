@@ -93,7 +93,7 @@ func (c *EtcdClient) contextWithTimeout() (context.Context, context.CancelFunc) 
 	return context.WithTimeout(context.Background(), c.timeout)
 }
 
-func isErrNoNode(err error) bool {
+func IsErrNoNode(err error) bool {
 	if err != nil {
 		if e, ok := err.(client.Error); ok {
 			return e.Code == client.ErrorCodeKeyNotFound
@@ -205,7 +205,7 @@ func (c *EtcdClient) Delete(path string) error {
 	defer canceller()
 	log.Debug("etcd delete node %s", path)
 	_, err := c.kapi.Delete(cntx, path, nil)
-	if err != nil && !isErrNoNode(err) {
+	if err != nil && !IsErrNoNode(err) {
 		log.Debug("etcd delete node %s failed: %s", path, err)
 		return err
 	}
@@ -224,7 +224,7 @@ func (c *EtcdClient) Read(path string) ([]byte, error) {
 	defer canceller()
 	log.Debug("etcd read node %s", path)
 	r, err := c.kapi.Get(cntx, path, nil)
-	if err != nil && !isErrNoNode(err) {
+	if err != nil && !IsErrNoNode(err) {
 		return nil, err
 	} else if r == nil || r.Node.Dir {
 		return nil, nil
@@ -244,7 +244,7 @@ func (c *EtcdClient) List(path string) ([]string, error) {
 	defer canceller()
 	log.Debug("etcd list node %s", path)
 	r, err := c.kapi.Get(cntx, path, nil)
-	if err != nil && !isErrNoNode(err) {
+	if err != nil && !IsErrNoNode(err) {
 		return nil, err
 	} else if r == nil || !r.Node.Dir {
 		return nil, nil
@@ -257,20 +257,63 @@ func (c *EtcdClient) List(path string) ([]string, error) {
 	}
 }
 
+// ListWithValues retrieves all key-value pairs under the specified path in ETCD.
+// This function uses recursion to fetch all nested nodes under the given path.
+func (c *EtcdClient) ListWithValues(path string) (map[string]string, error) {
+	// Check if the ETCD client has been closed and return an error if so.
+	if c.closed {
+		return nil, ErrClosedEtcdClient
+	}
+	// Create a context with a timeout to avoid hanging the GET request indefinitely.
+	cntx, canceller := c.contextWithTimeout()
+	defer canceller()
+	log.Debug("etcd list node %s", path)
+
+	// Set the recursive option to fetch all sub-nodes under the specified path.
+	opts := &client.GetOptions{Recursive: true}
+	r, err := c.kapi.Get(cntx, path, opts)
+	// Handle errors other than the 'no node found' error.
+	if err != nil && !IsErrNoNode(err) {
+		return nil, err
+	} else if r == nil || !r.Node.Dir {
+		// If no node is found at the path, or the node is not a directory, return nil.
+		return nil, nil
+	} else {
+		files := make(map[string]string)
+		// Recursively collect all nodes into the map.
+		collectNodes(r.Node, files)
+		return files, nil
+	}
+}
+
+// collectNodes recursively collects data from ETCD nodes into a map.
+// This helper function traverses all nodes under a given parent node and stores their keys and values in the provided map.
+func collectNodes(node *client.Node, files map[string]string) {
+	if node.Dir {
+		for _, n := range node.Nodes {
+			// If the node is a directory, recursively call collectNodes for each sub-node.
+			collectNodes(n, files)
+		}
+	} else {
+		// If the node is not a directory, store its key and value in the map.
+		files[node.Key] = node.Value
+	}
+}
+
 // Watch watch path
 func (c *EtcdClient) Watch(path string, ch chan string) error {
-    c.Lock() // 在这里上锁
+	c.Lock() // 在这里上锁
 	// defer c.Unlock() // 移除此行，避免死结发生
 	if c.closed {
 		c.Unlock() // 上锁后记得解锁，去防止死结问题发生
 		panic(ErrClosedEtcdClient)
 	}
-	
+
 	watcher := c.kapi.Watcher(path, &client.WatcherOptions{Recursive: true})
-    
-    c.Unlock() // 上锁后在适当时机解锁，去防止死结问题发生
+
+	c.Unlock() // 上锁后在适当时机解锁，去防止死结问题发生
 	// 在这里解锁是最好的，因为解锁后立刻可以进行监听
-    
+
 	for {
 		res, err := watcher.Next(context.Background())
 		if err != nil {

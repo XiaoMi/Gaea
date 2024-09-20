@@ -1,4 +1,4 @@
-// Copyright 2019 The Gaea Authors. All Rights Reserved.
+// Copyright 2024 The Gaea Authors. All Rights Reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,12 +14,25 @@
 
 package util
 
-import "bytes"
+import "strings"
 
-func Concat(strings ...string) string {
-	var buffer bytes.Buffer
-	for _, s := range strings {
-		buffer.WriteString(s)
+func LowerEqual(src string, dest string) bool {
+	if len(src) != len(dest) {
+		return false
 	}
-	return buffer.String()
+	return strings.ToLower(src) == dest
+}
+
+func UpperEqual(src string, dest string) bool {
+	if len(src) != len(dest) {
+		return false
+	}
+	return strings.ToUpper(src) == dest
+}
+
+func HasUpperPrefix(src string, dest string) bool {
+	if len(src) < len(dest) {
+		return false
+	}
+	return strings.ToUpper(src[0:len(dest)]) == dest
 }

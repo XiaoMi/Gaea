@@ -15,34 +15,30 @@ package parser
 
 import (
 	"fmt"
+	"testing"
 	"unicode"
 
-	. "github.com/pingcap/check"
-
 	"github.com/XiaoMi/Gaea/mysql"
+
+	requires "github.com/stretchr/testify/require"
 )
 
-var _ = Suite(&testLexerSuite{})
-
-type testLexerSuite struct {
-}
-
-func (s *testLexerSuite) TestTokenID(c *C) {
+func TestTokenID(t *testing.T) {
 	for str, tok := range tokenMap {
 		l := NewScanner(str)
 		var v yySymType
 		tok1 := l.Lex(&v)
-		c.Check(tok, Equals, tok1)
+		requires.Equal(t, tok1, tok)
 	}
 }
 
-func (s *testLexerSuite) TestSingleChar(c *C) {
+func TestSingleChar(t *testing.T) {
 	table := []byte{'|', '&', '-', '+', '*', '/', '%', '^', '~', '(', ',', ')'}
 	for _, tok := range table {
 		l := NewScanner(string(tok))
 		var v yySymType
 		tok1 := l.Lex(&v)
-		c.Check(int(tok), Equals, tok1)
+		requires.Equal(t, tok1, int(tok))
 	}
 }
 
@@ -51,7 +47,7 @@ type testCaseItem struct {
 	tok int
 }
 
-func (s *testLexerSuite) TestSingleCharOther(c *C) {
+func TestSingleCharOther(t *testing.T) {
 	table := []testCaseItem{
 		{"AT", identifier},
 		{"?", paramMarker},
@@ -59,10 +55,10 @@ func (s *testLexerSuite) TestSingleCharOther(c *C) {
 		{"=", eq},
 		{".", int('.')},
 	}
-	runTest(c, table)
+	runTest(t, table)
 }
 
-func (s *testLexerSuite) TestAtLeadingIdentifier(c *C) {
+func TestAtLeadingIdentifier(t *testing.T) {
 	table := []testCaseItem{
 		{"@", singleAtIdentifier},
 		{"@''", singleAtIdentifier},
@@ -84,25 +80,25 @@ func (s *testLexerSuite) TestAtLeadingIdentifier(c *C) {
 		{"@@local.`test`", doubleAtIdentifier},
 		{"@@`test`", doubleAtIdentifier},
 	}
-	runTest(c, table)
+	runTest(t, table)
 }
 
-func (s *testLexerSuite) TestUnderscoreCS(c *C) {
+func TestUnderscoreCS(t *testing.T) {
 	var v yySymType
 	scanner := NewScanner(`_utf8"string"`)
 	tok := scanner.Lex(&v)
-	c.Check(tok, Equals, underscoreCS)
+	requires.Equal(t, underscoreCS, tok)
 	tok = scanner.Lex(&v)
-	c.Check(tok, Equals, stringLit)
+	requires.Equal(t, stringLit, tok)
 
 	scanner.reset("N'string'")
 	tok = scanner.Lex(&v)
-	c.Check(tok, Equals, underscoreCS)
+	requires.Equal(t, underscoreCS, tok)
 	tok = scanner.Lex(&v)
-	c.Check(tok, Equals, stringLit)
+	requires.Equal(t, stringLit, tok)
 }
 
-func (s *testLexerSuite) TestLiteral(c *C) {
+func TestLiteral(t *testing.T) {
 	table := []testCaseItem{
 		{`'''a'''`, stringLit},
 		{`''a''`, stringLit},
@@ -147,19 +143,18 @@ func (s *testLexerSuite) TestLiteral(c *C) {
 		{`b'0101'`, bitLit},
 		{`0b0101`, bitLit},
 	}
-	runTest(c, table)
+	runTest(t, table)
 }
 
-func runTest(c *C, table []testCaseItem) {
+func runTest(t *testing.T, table []testCaseItem) {
 	var val yySymType
 	for _, v := range table {
 		l := NewScanner(v.str)
 		tok := l.Lex(&val)
-		c.Check(tok, Equals, v.tok, Commentf(v.str))
+		requires.Equal(t, v.tok, tok, v.str)
 	}
 }
-
-func (s *testLexerSuite) TestComment(c *C) {
+func TestComment(t *testing.T) {
 
 	table := []testCaseItem{
 		{"-- select --\n1", intLit},
@@ -178,19 +173,19 @@ SELECT`, selectKwd},
 		{"--\r\nSELECT", selectKwd},
 		{"--", 0},
 	}
-	runTest(c, table)
+	runTest(t, table)
 }
 
-func (s *testLexerSuite) TestscanQuotedIdent(c *C) {
+func TestScanQuotedIdent(t *testing.T) {
 	l := NewScanner("`fk`")
 	l.r.peek()
 	tok, pos, lit := scanQuotedIdent(l)
-	c.Assert(pos.Offset, Equals, 0)
-	c.Assert(tok, Equals, quotedIdentifier)
-	c.Assert(lit, Equals, "fk")
+	requires.Zero(t, pos.Offset)
+	requires.Equal(t, quotedIdentifier, tok)
+	requires.Equal(t, "fk", lit)
 }
 
-func (s *testLexerSuite) TestscanString(c *C) {
+func TestscanString(t *testing.T) {
 	table := []struct {
 		raw    string
 		expect string
@@ -215,17 +210,16 @@ func (s *testLexerSuite) TestscanString(c *C) {
 		{"'\\a\x90'", "a\x90"},
 		{`"\aèàø»"`, `aèàø»`},
 	}
-
 	for _, v := range table {
 		l := NewScanner(v.raw)
 		tok, pos, lit := l.scan()
-		c.Assert(tok, Equals, stringLit)
-		c.Assert(pos.Offset, Equals, 0)
-		c.Assert(lit, Equals, v.expect)
+		requires.Zero(t, pos.Offset)
+		requires.Equal(t, stringLit, tok)
+		requires.Equal(t, v.expect, lit)
 	}
 }
 
-func (s *testLexerSuite) TestIdentifier(c *C) {
+func TestIdentifier(t *testing.T) {
 	replacementString := string(unicode.ReplacementChar) + "xxx"
 	table := [][2]string{
 		{`哈哈`, "哈哈"},
@@ -251,25 +245,25 @@ func (s *testLexerSuite) TestIdentifier(c *C) {
 		l.reset(item[0])
 		var v yySymType
 		tok := l.Lex(&v)
-		c.Assert(tok, Equals, identifier)
-		c.Assert(v.ident, Equals, item[1])
+		requires.Equal(t, identifier, tok, item)
+		requires.Equal(t, item[1], v.ident, item)
 	}
 }
 
-func (s *testLexerSuite) TestSpecialComment(c *C) {
+func TestSpecialComment(t *testing.T) {
 	l := NewScanner("/*!40101 select\n5*/")
 	tok, pos, lit := l.scan()
-	c.Assert(tok, Equals, identifier)
-	c.Assert(lit, Equals, "select")
-	c.Assert(pos, Equals, Pos{0, 0, 9})
+	requires.Equal(t, identifier, tok)
+	requires.Equal(t, "select", lit)
+	requires.Equal(t, Pos{0, 0, 9}, pos)
 
 	tok, pos, lit = l.scan()
-	c.Assert(tok, Equals, intLit)
-	c.Assert(lit, Equals, "5")
-	c.Assert(pos, Equals, Pos{1, 1, 16})
+	requires.Equal(t, intLit, tok)
+	requires.Equal(t, "5", lit)
+	requires.Equal(t, Pos{1, 1, 16}, pos)
 }
 
-func (s *testLexerSuite) TestOptimizerHint(c *C) {
+func TestOptimizerHint(t *testing.T) {
 	l := NewScanner("  /*+ BKA(t1) */")
 	tokens := []struct {
 		tok int
@@ -288,13 +282,13 @@ func (s *testLexerSuite) TestOptimizerHint(c *C) {
 		if tok == 0 {
 			return
 		}
-		c.Assert(tok, Equals, tokens[i].tok, Commentf("%d", i))
-		c.Assert(lit, Equals, tokens[i].lit, Commentf("%d", i))
-		c.Assert(pos.Offset, Equals, tokens[i].pos, Commentf("%d", i))
+		requires.Equal(t, tokens[i].tok, tok, i)
+		requires.Equal(t, tokens[i].lit, lit, i)
+		requires.Equal(t, tokens[i].pos, pos.Offset, i)
 	}
 }
 
-func (s *testLexerSuite) TestInt(c *C) {
+func TestInt(t *testing.T) {
 	tests := []struct {
 		input  string
 		expect uint64
@@ -307,23 +301,23 @@ func (s *testLexerSuite) TestInt(c *C) {
 		{"10", 10},
 	}
 	scanner := NewScanner("")
-	for _, t := range tests {
+	for _, test := range tests {
 		var v yySymType
-		scanner.reset(t.input)
+		scanner.reset(test.input)
 		tok := scanner.Lex(&v)
-		c.Assert(tok, Equals, intLit)
+		requires.Equal(t, intLit, tok)
 		switch i := v.item.(type) {
 		case int64:
-			c.Assert(uint64(i), Equals, t.expect)
+			requires.Equal(t, test.expect, uint64(i))
 		case uint64:
-			c.Assert(i, Equals, t.expect)
+			requires.Equal(t, test.expect, i)
 		default:
-			c.Fail()
+			t.Fail()
 		}
 	}
 }
 
-func (s *testLexerSuite) TestSQLModeANSIQuotes(c *C) {
+func TestSQLModeANSIQuotes(t *testing.T) {
 	tests := []struct {
 		input string
 		tok   int
@@ -338,24 +332,25 @@ func (s *testLexerSuite) TestSQLModeANSIQuotes(c *C) {
 	}
 	scanner := NewScanner("")
 	scanner.SetSQLMode(mysql.ModeANSIQuotes)
-	for _, t := range tests {
+	for _, test := range tests {
 		var v yySymType
-		scanner.reset(t.input)
+		scanner.reset(test.input)
 		tok := scanner.Lex(&v)
-		c.Assert(tok, Equals, t.tok)
-		c.Assert(v.ident, Equals, t.ident)
+		requires.Equal(t, test.tok, tok)
+		requires.Equal(t, test.ident, v.ident)
 	}
 	scanner.reset(`'string' 'string'`)
 	var v yySymType
 	tok := scanner.Lex(&v)
-	c.Assert(tok, Equals, stringLit)
-	c.Assert(v.ident, Equals, "string")
+	requires.Equal(t, stringLit, tok)
+	requires.Equal(t, "string", v.ident)
 	tok = scanner.Lex(&v)
-	c.Assert(tok, Equals, stringLit)
-	c.Assert(v.ident, Equals, "string")
+	requires.Equal(t, stringLit, tok)
+	requires.Equal(t, "string", v.ident)
+
 }
 
-func (s *testLexerSuite) TestIllegal(c *C) {
+func TestIllegal(t *testing.T) {
 	table := []testCaseItem{
 		{"'", 0},
 		{"'fu", 0},
@@ -370,5 +365,5 @@ func (s *testLexerSuite) TestIllegal(c *C) {
 		{"@@`", 0},
 		{"@@global.`", 0},
 	}
-	runTest(c, table)
+	runTest(t, table)
 }

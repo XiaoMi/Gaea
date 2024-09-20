@@ -14,18 +14,15 @@
 package types
 
 import (
-	. "github.com/pingcap/check"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/util/testleak"
 )
 
-var _ = Suite(&testEnumSuite{})
-
-type testEnumSuite struct {
-}
-
-func (s *testEnumSuite) TestEnum(c *C) {
-	defer testleak.AfterTest(c)()
+func TestEnum(t *testing.T) {
+	defer testleak.AfterTestT(t)()
 	tbl := []struct {
 		Elems    []string
 		Name     string
@@ -36,18 +33,18 @@ func (s *testEnumSuite) TestEnum(c *C) {
 		{[]string{"a"}, "1", 1},
 	}
 
-	for _, t := range tbl {
-		e, err := ParseEnumName(t.Elems, t.Name)
-		if t.Expected == 0 {
-			c.Assert(err, NotNil)
-			c.Assert(e.ToNumber(), Equals, float64(0))
-			c.Assert(e.String(), Equals, "")
+	for _, tt := range tbl {
+		e, err := ParseEnumName(tt.Elems, tt.Name)
+		if tt.Expected == 0 {
+			require.Error(t, err)
+			require.Equal(t, float64(0), e.ToNumber())
+			require.Equal(t, "", e.String())
 			continue
 		}
 
-		c.Assert(err, IsNil)
-		c.Assert(e.String(), Equals, t.Elems[t.Expected-1])
-		c.Assert(e.ToNumber(), Equals, float64(t.Expected))
+		require.NoError(t, err)
+		require.Equal(t, tt.Elems[tt.Expected-1], e.String())
+		require.Equal(t, float64(tt.Expected), e.ToNumber())
 	}
 
 	tblNumber := []struct {
@@ -59,14 +56,13 @@ func (s *testEnumSuite) TestEnum(c *C) {
 		{[]string{"a"}, 0, 0},
 	}
 
-	for _, t := range tblNumber {
-		e, err := ParseEnumValue(t.Elems, t.Number)
-		if t.Expected == 0 {
-			c.Assert(err, NotNil)
+	for _, tt := range tblNumber {
+		e, err := ParseEnumValue(tt.Elems, tt.Number)
+		if tt.Expected == 0 {
+			require.Error(t, err)
 			continue
 		}
-
-		c.Assert(err, IsNil)
-		c.Assert(e.ToNumber(), Equals, float64(t.Expected))
+		require.NoError(t, err)
+		require.Equal(t, float64(tt.Expected), e.ToNumber())
 	}
 }

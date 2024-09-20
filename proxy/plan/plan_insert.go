@@ -17,6 +17,8 @@ package plan
 import (
 	"fmt"
 
+	"github.com/XiaoMi/Gaea/parser/model"
+
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/mysql"
@@ -31,8 +33,8 @@ import (
 type InsertPlan struct {
 	basePlan
 	*StmtInfo
-
-	stmt *ast.InsertStmt
+	rewriteStmts []ast.StmtNode
+	stmt         *ast.InsertStmt
 
 	table               string
 	isAssignmentMode    bool
@@ -46,6 +48,7 @@ type InsertPlan struct {
 // NewInsertPlan constructor of InsertPlan
 func NewInsertPlan(db string, sql string, r *router.Router, seq *sequence.SequenceManager) *InsertPlan {
 	return &InsertPlan{
+		rewriteStmts:        []ast.StmtNode{},
 		StmtInfo:            NewStmtInfo(db, sql, r),
 		shardingColumnIndex: -1,
 		sequences:           seq,
@@ -66,16 +69,21 @@ func HandleInsertStmt(p *InsertPlan, stmt *ast.InsertStmt) error {
 	}
 
 	// 处理全局表成功时会触发fastReturn
-	fastReturn, err := handleInsertTableRefs(p)
+	isGlobalTable, err := handleInsertTableRefs(p)
 	if err != nil {
 		return fmt.Errorf("handleInsertTableRefs error: %v", err)
-	}
-	if fastReturn {
-		return nil
 	}
 
 	if err := handleInsertGlobalSequenceValue(p); err != nil {
 		return fmt.Errorf("handleInsertGlobalSequenceValue error: %v", err)
+	}
+
+	// 全局表直接生成 SQL 返回
+	if isGlobalTable {
+		if err := generateGlobalShardingSQLs(p); err != nil {
+			return fmt.Errorf("generate global table sharding sqls error: %v", err)
+		}
+		return nil
 	}
 
 	if err := handleInsertColumnNames(p); err != nil {
@@ -90,7 +98,7 @@ func HandleInsertStmt(p *InsertPlan, stmt *ast.InsertStmt) error {
 		return fmt.Errorf("handleInsertValues error: %v", err)
 	}
 
-	sqls, err := generateShardingSQLs(p.stmt, p.result, p.router)
+	sqls, err := generateMultiShardingSQLs(p.rewriteStmts, p.result, p.router)
 	if err != nil {
 		log.Warn("generate insert sql failed, %v", err)
 		return err
@@ -126,7 +134,7 @@ func precheckInsertStmt(p *InsertPlan) error {
 	return nil
 }
 
-func handleInsertTableRefs(p *InsertPlan) (fastReturn bool, err error) {
+func handleInsertTableRefs(p *InsertPlan) (isGlobalTable bool, err error) {
 	if p.stmt.Table.TableRefs.Right != nil {
 		return false, fmt.Errorf("have multi tables in insert")
 	}
@@ -154,20 +162,34 @@ func handleInsertTableRefs(p *InsertPlan) (fastReturn bool, err error) {
 
 	tableSource.Source = decorator
 
-	// 如果是全局表, 则将记录写入所有分片
 	if rule.GetType() == router.GlobalTableRuleType {
-		p.result.db = rule.GetDB()
-		p.result.table = rule.GetTable()
-		p.result.indexes = rule.GetSubTableIndexes()
-		sqls, err := generateShardingSQLs(p.stmt, p.result, p.router)
-		if err != nil {
-			return false, fmt.Errorf("generate global table insert sql error: %v", err)
-		}
-		p.sqls = sqls
 		return true, nil
 	}
 
 	return false, nil
+}
+
+func generateGlobalShardingSQLs(p *InsertPlan) error {
+	tableSource, ok := p.stmt.Table.TableRefs.Left.(*ast.TableSource)
+	if !ok {
+		return fmt.Errorf("not a table source")
+	}
+	if dec, ok := tableSource.Source.(*TableNameDecorator); ok {
+		if dec.rule.GetType() != router.GlobalTableRuleType {
+			return fmt.Errorf("not global table rule type")
+		}
+
+		p.result.db = dec.rule.GetDB()
+		p.result.table = dec.rule.GetTable()
+		p.result.indexes = dec.rule.GetSubTableIndexes()
+		sqls, err := generateShardingSQLs(p.stmt, p.result, p.router)
+		if err != nil {
+			return fmt.Errorf("generate global table insert sql error: %v", err)
+		}
+		p.sqls = sqls
+		return nil
+	}
+	return fmt.Errorf("global table source not TableNameDecorator")
 }
 
 func handleInsertColumnNames(p *InsertPlan) error {
@@ -227,10 +249,13 @@ func handleInsertValues(p *InsertPlan) error {
 			}
 			p.result.Inter([]int{routeIdx})
 		}
+		p.rewriteStmts = append(p.rewriteStmts, p.stmt)
 		return nil
 	}
 
 	// not assignment mode
+	routeIdxs := make([]int, 0, len(p.result.indexes))
+	newStmtMap := make(map[int]*ast.InsertStmt)
 	for _, valueList := range p.stmt.Lists {
 		valueItem := valueList[p.shardingColumnIndex]
 		switch x := valueItem.(type) {
@@ -243,15 +268,23 @@ func handleInsertValues(p *InsertPlan) error {
 				return fmt.Errorf("sharding value cannot be null")
 			}
 			routeIdx, err := p.tableRules[p.table].FindTableIndex(v)
+			if newStmt, ok := newStmtMap[routeIdx]; ok {
+				newStmt.Lists = append(newStmt.Lists, valueList)
+			} else {
+				newStmt := *p.stmt
+				newStmt.Lists = [][]ast.ExprNode{valueList}
+				routeIdxs = append(routeIdxs, routeIdx)
+				p.rewriteStmts = append(p.rewriteStmts, &newStmt)
+				newStmtMap[routeIdx] = &newStmt
+			}
 			if err != nil {
 				return fmt.Errorf("find table index error: %v", err)
 			}
-			p.result.Inter([]int{routeIdx})
 		}
 	}
-	if len(p.result.GetShardIndexes()) == 0 {
-		return fmt.Errorf("batch insert has cross slice values or no route found")
-	}
+
+	p.result.indexes = routeIdxs
+
 	return nil
 }
 
@@ -314,19 +347,40 @@ func handleInsertGlobalSequenceValue(p *InsertPlan) error {
 
 	// global sequence column not found
 	if seqIndex == -1 {
-		return nil
+		// 有配置全局自增列但是没有指定自增列，自动补齐
+		p.stmt.Columns = append(p.stmt.Columns, &ast.ColumnName{
+			Name: model.NewCIStr(pkName),
+		})
+		seqIndex = len(p.stmt.Columns) - 1
+		// for batch insert, we should append every list
+		for i := 0; i < len(p.stmt.Lists); i++ {
+			p.stmt.Lists[i] = append(p.stmt.Lists[i], &ast.FuncCallExpr{FnName: model.NewCIStr("nextval")})
+		}
 	}
 
 	for _, valueList := range p.stmt.Lists {
-		if x, ok := valueList[seqIndex].(*ast.FuncCallExpr); ok {
+		generateNextSeq := false
+		switch x := valueList[seqIndex].(type) {
+		// insert into t(col) values(val)  ->  insert into t(col,id) values(val, nextSeq)
+		case *ast.FuncCallExpr:
 			if x.FnName.L == "nextval" {
-				id, err := seq.NextSeq()
-				if err != nil {
-					return fmt.Errorf("get next seq error: %v", err)
-				}
-				valueList[seqIndex] = ast.NewValueExpr(id)
+				generateNextSeq = true
+			}
+		// insert into t(id, col) values(null, val)  ->  insert into t(id,col) values(nextSeq, val)
+		case *driver.ValueExpr:
+			if x.IsNull() {
+				generateNextSeq = true
 			}
 		}
+
+		if generateNextSeq {
+			id, err := seq.NextSeq()
+			if err != nil {
+				return fmt.Errorf("get next seq error: %v", err)
+			}
+			valueList[seqIndex] = ast.NewValueExpr(id)
+		}
+
 	}
 
 	return nil

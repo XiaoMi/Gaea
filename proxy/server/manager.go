@@ -18,16 +18,23 @@ import (
 	"bytes"
 	"crypto/md5"
 	"fmt"
+	"math"
 	"net/http"
+	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/XiaoMi/Gaea/log/zap"
+
+	"github.com/XiaoMi/Gaea/backend"
+	"go.uber.org/atomic"
+
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
-	"github.com/XiaoMi/Gaea/log/xlog"
 	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser"
@@ -35,6 +42,21 @@ import (
 	"github.com/XiaoMi/Gaea/stats/prometheus"
 	"github.com/XiaoMi/Gaea/util"
 	"github.com/XiaoMi/Gaea/util/sync2"
+	"github.com/shirou/gopsutil/process"
+)
+
+const (
+	MasterRole               = "master"
+	SlaveRole                = "slave"
+	StatisticSlaveRole       = "statistic-slave"
+	SQLExecTimeSize          = 5000
+	DefaultDatacenter        = "default"
+	SQLExecStatusOk          = "OK"
+	SQLExecStatusErr         = "ERROR"
+	SQLExecStatusIgnore      = "IGNORE"
+	SQLExecStatusSlow        = "SLOW"
+	SQLBackendExecStatusSlow = "backend SLOW"
+	SQLBackendExecStatusErr  = "backend ERR"
 )
 
 // LoadAndCreateManager load namespace config, and create manager
@@ -63,6 +85,9 @@ func loadAllNamespace(cfg *models.Proxy) (map[string]*models.Namespace, error) {
 	}
 
 	client := models.NewClient(cfg.ConfigType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, root)
+	if client == nil {
+		return map[string]*models.Namespace{}, fmt.Errorf("client is nil")
+	}
 	store := models.NewStore(client)
 	defer store.Close()
 	var err error
@@ -92,13 +117,7 @@ func loadAllNamespace(cfg *models.Proxy) (map[string]*models.Namespace, error) {
 					err = e
 					return
 				}
-				// verify namespace config
-				e = namespace.Verify()
-				if e != nil {
-					log.Warn("verify namespace %s failed, err: %v", name, e)
-					err = e
-					return
-				}
+
 				namespaceC <- namespace
 			}
 		}()
@@ -179,20 +198,33 @@ func (m *Manager) Close() {
 	}
 
 	m.statistics.Close()
+	if m.statistics.generalLogger != nil {
+		// 日志落盘
+		m.statistics.generalLogger.Close()
+	}
 }
 
 // ReloadNamespacePrepare prepare commit
 func (m *Manager) ReloadNamespacePrepare(namespaceConfig *models.Namespace) error {
 	name := namespaceConfig.Name
 	current, other, _ := m.switchIndex.Get()
-
 	// reload namespace prepare
 	currentNamespaceManager := m.namespaces[current]
+
+	nsOld := currentNamespaceManager.GetNamespace(name)
+	var nsChangeIndexOld uint32
+	if nsOld != nil {
+		nsChangeIndexOld = nsOld.namespaceChangeIndex
+	}
+
 	newNamespaceManager := ShallowCopyNamespaceManager(currentNamespaceManager)
 	if err := newNamespaceManager.RebuildNamespace(namespaceConfig); err != nil {
 		log.Warn("prepare config of namespace: %s failed, err: %v", name, err)
 		return err
 	}
+
+	newNamespaceManager.GetNamespace(name).namespaceChangeIndex = nsChangeIndexOld + 1
+
 	m.namespaces[other] = newNamespaceManager
 
 	// reload user prepare
@@ -200,6 +232,9 @@ func (m *Manager) ReloadNamespacePrepare(namespaceConfig *models.Namespace) erro
 	newUserManager := CloneUserManager(currentUserManager)
 	newUserManager.RebuildNamespaceUsers(namespaceConfig)
 	m.users[other] = newUserManager
+	if _, ok := m.statistics.SQLResponsePercentile[name]; !ok {
+		m.statistics.SQLResponsePercentile[name] = NewSQLResponse(name)
+	}
 	m.reloadPrepared.Set(true)
 
 	return nil
@@ -274,6 +309,12 @@ func (m *Manager) CheckPassword(user string, salt, auth []byte) (bool, string) {
 	return m.users[current].CheckPassword(user, salt, auth)
 }
 
+// CheckHashPassword check if right password with specific user
+func (m *Manager) CheckHashPassword(user string, salt, auth []byte) (bool, string) {
+	current, _, _ := m.switchIndex.Get()
+	return m.users[current].CheckHashPassword(user, salt, auth)
+}
+
 // CheckPassword check if right password with specific user
 func (m *Manager) CheckSha2Password(user string, salt, auth []byte) (bool, string) {
 	current, _, _ := m.switchIndex.Get()
@@ -299,106 +340,129 @@ func (m *Manager) ConfigFingerprint() string {
 
 // RecordSessionSQLMetrics record session SQL metrics, like response time, error
 func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *SessionExecutor, sql string, startTime time.Time, err error) {
-	trimmedSql := strings.ReplaceAll(sql, "\n", " ")
 	namespace := se.namespace
 	ns := m.GetNamespace(namespace)
 	if ns == nil {
-		log.Warn("record session SQL metrics error, namespace: %s, sql: %s, err: %s", namespace, trimmedSql, "namespace not found")
+		log.Warn("record session SQL metrics error, namespace: %s, sql: %s, err: %s", namespace, sql, "namespace not found")
 		return
 	}
 
 	var operation string
-	if stmtType, ok := reqCtx.Get(util.StmtType).(int); ok {
+	if stmtType := reqCtx.GetStmtType(); stmtType > -1 {
 		operation = parser.StmtType(stmtType)
 	} else {
-		fingerprint := mysql.GetFingerprint(sql)
+		trimmedSql := strings.ReplaceAll(sql, "\n", " ")
+		fingerprint := getSQLFingerprint(reqCtx, trimmedSql)
 		operation = mysql.GetFingerprintOperation(fingerprint)
 	}
 
 	// record sql timing
-	m.statistics.recordSessionSQLTiming(namespace, operation, startTime)
-
-	// record slow sql
-	duration := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
-	if duration > ns.getSessionSlowSQLTime() || ns.getSessionSlowSQLTime() == 0 {
-		log.Warn("session slow SQL, namespace: %s, sql: %s, cost: %d ms", namespace, trimmedSql, duration)
-		fingerprint := mysql.GetFingerprint(sql)
-		md5 := mysql.GetMd5(fingerprint)
-		ns.SetSlowSQLFingerprint(md5, fingerprint)
-		m.statistics.recordSessionSlowSQLFingerprint(namespace, md5)
+	if !(err != nil && err.Error() == mysql.ErrClientQpsLimitedMsg) {
+		m.statistics.recordSessionSQLTiming(namespace, operation, startTime)
 	}
 
-	// record error sql
-	if err != nil {
-		log.Warn("session error SQL, namespace: %s, sql: %s, cost: %d ms, err: %v", namespace, trimmedSql, duration, err)
-		fingerprint := mysql.GetFingerprint(sql)
-		md5 := mysql.GetMd5(fingerprint)
+	durationFloat := float64(time.Since(startTime).Microseconds()) / 1000.0
+
+	if err == nil {
+		se.manager.statistics.generalLogger.Notice("%s - %.1fms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v",
+			SQLExecStatusOk, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
+			se.session.c.GetConnectionID(), se.backendConnectionId, se.isInTransaction(), sql)
+	} else {
+		// record error sql
+		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v. err:%s",
+			SQLExecStatusErr, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
+			se.session.c.GetConnectionID(), se.backendConnectionId, se.isInTransaction(), sql, err)
+		fingerprint := getSQLFingerprint(reqCtx, sql)
+		md5 := getSQLFingerprintMd5(reqCtx, sql)
 		ns.SetErrorSQLFingerprint(md5, fingerprint)
 		m.statistics.recordSessionErrorSQLFingerprint(namespace, operation, md5)
 	}
 
-	if OpenProcessGeneralQueryLog() && ns.openGeneralLog {
-		m.statistics.generalLogger.Notice("client: %s, namespace: %s, db: %s, user: %s, cmd: %s, sql: %s, cost: %d ms, succ: %t",
-			se.clientAddr, namespace, se.db, se.user, operation, trimmedSql, duration, err == nil)
+	// record slow sql, only durationFloat > slowSQLTime will be recorded
+	if ns.getSessionSlowSQLTime() > 0 && int64(durationFloat) > ns.getSessionSlowSQLTime() {
+		se.manager.statistics.generalLogger.Warn("%s - %.1fms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v",
+			SQLExecStatusSlow, durationFloat, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
+			se.session.c.GetConnectionID(), se.backendConnectionId, se.isInTransaction(), sql)
+		fingerprint := getSQLFingerprint(reqCtx, sql)
+		md5 := getSQLFingerprintMd5(reqCtx, sql)
+		ns.SetSlowSQLFingerprint(md5, fingerprint)
+		m.statistics.recordSessionSlowSQLFingerprint(namespace, md5)
 	}
 }
 
 // RecordBackendSQLMetrics record backend SQL metrics, like response time, error
-func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, namespace string, sql, backendAddr string, startTime time.Time, err error) {
-	trimmedSql := strings.ReplaceAll(sql, "\n", " ")
-	ns := m.GetNamespace(namespace)
+func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, se *SessionExecutor, sliceName, sql, backendAddr string, startTime time.Time, err error) {
+	ns := m.GetNamespace(se.namespace)
 	if ns == nil {
-		log.Warn("record backend SQL metrics error, namespace: %s, backend addr: %s, sql: %s, err: %s", namespace, backendAddr, trimmedSql, "namespace not found")
+		log.Warn("record backend SQL metrics error, namespace: %s, backend addr: %s, sql: %s, err: %s", se.namespace, backendAddr, sql, "namespace not found")
 		return
 	}
 
 	var operation string
-	if stmtType, ok := reqCtx.Get(util.StmtType).(int); ok {
+	if stmtType := reqCtx.GetStmtType(); stmtType > -1 {
 		operation = parser.StmtType(stmtType)
 	} else {
-		fingerprint := mysql.GetFingerprint(sql)
+		trimmedSql := strings.ReplaceAll(sql, "\n", " ")
+		fingerprint := getSQLFingerprint(reqCtx, trimmedSql)
 		operation = mysql.GetFingerprintOperation(fingerprint)
 	}
 
 	// record sql timing
-	m.statistics.recordBackendSQLTiming(namespace, operation, startTime)
+	go m.statistics.recordBackendSQLTiming(se.namespace, operation, sliceName, backendAddr, startTime)
 
-	// record slow sql
-	duration := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
-	if m.statistics.isBackendSlowSQL(startTime) {
-		log.Warn("backend slow SQL, namespace: %s, addr: %s, sql: %s, cost: %d ms", namespace, backendAddr, trimmedSql, duration)
-		fingerprint := mysql.GetFingerprint(sql)
-		md5 := mysql.GetMd5(fingerprint)
+	// record backend slow sql
+	duration := time.Since(startTime).Milliseconds()
+	if m.statistics.isBackendSlowSQL(duration) {
+		m.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v",
+			SQLBackendExecStatusSlow, duration, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
+			se.session.c.GetConnectionID(), se.backendConnectionId, se.isInTransaction(), sql)
+		fingerprint := getSQLFingerprint(reqCtx, sql)
+		md5 := getSQLFingerprintMd5(reqCtx, sql)
 		ns.SetBackendSlowSQLFingerprint(md5, fingerprint)
-		m.statistics.recordBackendSlowSQLFingerprint(namespace, md5)
+		m.statistics.recordBackendSlowSQLFingerprint(se.namespace, md5)
 	}
 
-	// record error sql
+	// record backend error sql
 	if err != nil {
-		log.Warn("backend error SQL, namespace: %s, addr: %s, sql: %s, cost %d ms, err: %v", namespace, backendAddr, trimmedSql, duration, err)
-		fingerprint := mysql.GetFingerprint(sql)
-		md5 := mysql.GetMd5(fingerprint)
+		m.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v, error: %v",
+			SQLBackendExecStatusErr, duration, se.user, se.namespace, se.clientAddr, se.backendAddr, se.db,
+			se.session.c.GetConnectionID(), se.backendConnectionId, se.isInTransaction(), sql, err)
+		fingerprint := getSQLFingerprint(reqCtx, sql)
+		md5 := getSQLFingerprintMd5(reqCtx, sql)
 		ns.SetBackendErrorSQLFingerprint(md5, fingerprint)
-		m.statistics.recordBackendErrorSQLFingerprint(namespace, operation, md5)
+		m.statistics.recordBackendErrorSQLFingerprint(se.namespace, operation, md5)
 	}
 }
 
 func (m *Manager) startConnectPoolMetricsTask(interval int) {
+	current, _, _ := m.switchIndex.Get()
+	for _, ns := range m.namespaces[current].namespaces {
+		m.statistics.SQLResponsePercentile[ns.name] = NewSQLResponse(ns.name)
+	}
+
 	if interval <= 0 {
 		interval = 10
 	}
 
 	go func() {
 		t := time.NewTicker(time.Duration(interval) * time.Second)
+		tSQLRecordTime := time.NewTicker(time.Duration(backend.PingPeriod) * time.Second)
 		for {
 			select {
 			case <-m.GetStatisticManager().closeChan:
 				return
 			case <-t.C:
+				m.statistics.AddUptimeCount(time.Now().Unix() - m.statistics.startTime)
+
+				// record cpu usage will wait at least 5 seconds
+				m.statistics.CalcCPUBusy(interval - 5)
+
 				current, _, _ := m.switchIndex.Get()
 				for nameSpaceName, _ := range m.namespaces[current].namespaces {
 					m.recordBackendConnectPoolMetrics(nameSpaceName)
 				}
+			case <-tSQLRecordTime.C:
+				m.statistics.CalcAvgSQLTimes()
 			}
 		}
 	}()
@@ -410,20 +474,44 @@ func (m *Manager) recordBackendConnectPoolMetrics(namespace string) {
 		log.Warn("record backend connect pool metrics err, namespace: %s", namespace)
 		return
 	}
+	for n, v := range m.statistics.SQLResponsePercentile {
+		for backendAddr, val := range v.response99Max {
+			m.statistics.recordBackendSQLTimingP99Max(n, backendAddr, int64(val))
+		}
+		for backendAddr, val := range v.response99Avg {
+			m.statistics.recordBackendSQLTimingP99Avg(n, backendAddr, int64(val))
+		}
+		for backendAddr, val := range v.response95Max {
+			m.statistics.recordBackendSQLTimingP95Max(n, backendAddr, int64(val))
+		}
+		for backendAddr, val := range v.response95Avg {
+			m.statistics.recordBackendSQLTimingP95Avg(n, backendAddr, int64(val))
+		}
+	}
 
 	for sliceName, slice := range ns.slices {
-		m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slice.Master.Addr(), slice.Master.InUse())
-		m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slice.Master.Addr(), slice.Master.Available())
-		m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slice.Master.Addr(), slice.Master.WaitCount())
-		for _, slave := range slice.Slave {
-			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slave.Addr(), slave.InUse())
-			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slave.Addr(), slave.Available())
-			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slave.Addr(), slave.WaitCount())
+		m.statistics.recordInstanceDownCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), getStatusDownCounts(slice.Master.StatusMap, 0), MasterRole)
+		m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].InUse(), MasterRole)
+		m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].Available(), MasterRole)
+		m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].WaitCount(), MasterRole)
+		m.statistics.recordConnectPoolActiveCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].Active(), MasterRole)
+		m.statistics.recordConnectPoolCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].Capacity(), MasterRole)
+
+		for i, slave := range slice.Slave.ConnPool {
+			m.statistics.recordInstanceDownCount(namespace, sliceName, slave.Addr(), getStatusDownCounts(slice.Slave.StatusMap, i), SlaveRole)
+			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slave.Addr(), slave.InUse(), SlaveRole)
+			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slave.Addr(), slave.Available(), SlaveRole)
+			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slave.Addr(), slave.WaitCount(), SlaveRole)
+			m.statistics.recordConnectPoolActiveCount(namespace, sliceName, slave.Addr(), slave.Active(), SlaveRole)
+			m.statistics.recordConnectPoolCount(namespace, sliceName, slave.Addr(), slave.Capacity(), SlaveRole)
 		}
-		for _, statisticSlave := range slice.StatisticSlave {
-			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.InUse())
-			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.Available())
-			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.WaitCount())
+		for i, statisticSlave := range slice.StatisticSlave.ConnPool {
+			m.statistics.recordInstanceDownCount(namespace, sliceName, statisticSlave.Addr(), getStatusDownCounts(slice.StatisticSlave.StatusMap, i), StatisticSlaveRole)
+			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.InUse(), StatisticSlaveRole)
+			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.Available(), StatisticSlaveRole)
+			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.WaitCount(), StatisticSlaveRole)
+			m.statistics.recordConnectPoolActiveCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.Active(), StatisticSlaveRole)
+			m.statistics.recordConnectPoolCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.Capacity(), StatisticSlaveRole)
 		}
 	}
 }
@@ -443,8 +531,14 @@ func NewNamespaceManager() *NamespaceManager {
 // CreateNamespaceManager create NamespaceManager
 func CreateNamespaceManager(namespaceConfigs map[string]*models.Namespace) *NamespaceManager {
 	nsMgr := NewNamespaceManager()
+	proxyDatacenter, err := util.GetLocalDatacenter()
+	if err != nil {
+		log.Fatal("get proxy datacenter err,will use default datacenter,err:%s", err)
+		proxyDatacenter = DefaultDatacenter
+	}
+
 	for _, config := range namespaceConfigs {
-		namespace, err := NewNamespace(config)
+		namespace, err := NewNamespace(config, proxyDatacenter)
 		if err != nil {
 			log.Warn("create namespace %s failed, err: %v", config.Name, err)
 			continue
@@ -465,7 +559,11 @@ func ShallowCopyNamespaceManager(nsMgr *NamespaceManager) *NamespaceManager {
 
 // RebuildNamespace rebuild namespace
 func (n *NamespaceManager) RebuildNamespace(config *models.Namespace) error {
-	namespace, err := NewNamespace(config)
+	proxyDatacenter, err := util.GetLocalDatacenter()
+	if err != nil {
+		log.Fatal("get local proxy datacenter err:%s", err)
+	}
+	namespace, err := NewNamespace(config, proxyDatacenter)
 	if err != nil {
 		log.Warn("create namespace %s failed, err: %v", config.Name, err)
 		return err
@@ -597,6 +695,18 @@ func (u *UserManager) CheckPassword(user string, salt, auth []byte) (bool, strin
 	return false, ""
 }
 
+// CheckHashPassword check encrypt password with specific user
+func (u *UserManager) CheckHashPassword(user string, salt, auth []byte) (bool, string) {
+	for _, password := range u.users[user] {
+		if strings.HasPrefix(password, "*") && len(password) == 41 {
+			if mysql.CheckHashPassword(auth, salt, []byte(password)[1:]) {
+				return true, password
+			}
+		}
+	}
+	return false, ""
+}
+
 // CheckPassword check if right password with specific user
 func (u *UserManager) CheckSha2Password(user string, salt, auth []byte) (bool, string) {
 	for _, password := range u.users[user] {
@@ -634,12 +744,14 @@ const (
 	statsLabelFlowDirection = "Flowdirection"
 	statsLabelSlice         = "Slice"
 	statsLabelIPAddr        = "IPAddr"
+	statsLabelRole          = "role"
 )
 
 // StatisticManager statistics manager
 type StatisticManager struct {
 	manager     *Manager
 	clusterName string
+	startTime   int64
 
 	statsType     string // 监控后端类型
 	handlers      map[string]http.Handler
@@ -652,17 +764,63 @@ type StatisticManager struct {
 	sqlForbidenCounts         *stats.CountersWithMultiLabels // SQL黑名单请求统计
 	flowCounts                *stats.CountersWithMultiLabels // 业务流量统计
 	sessionCounts             *stats.GaugesWithMultiLabels   // 前端会话数统计
+	CPUBusy                   *stats.GaugesWithMultiLabels   // Gaea服务器CPU消耗情况
+	clientConnecions          sync.Map                       // 等同于sessionCounts, 用于限制前端连接
 
 	backendSQLTimings                *stats.MultiTimings            // 后端SQL耗时统计
 	backendSQLFingerprintSlowCounts  *stats.CountersWithMultiLabels // 后端慢SQL指纹数量统计
 	backendSQLErrorCounts            *stats.CountersWithMultiLabels // 后端SQL错误数统计
 	backendSQLFingerprintErrorCounts *stats.CountersWithMultiLabels // 后端SQL指纹错误数统计
-	backendConnectPoolIdleCounts     *stats.GaugesWithMultiLabels   //后端空闲连接数统计
-	backendConnectPoolInUseCounts    *stats.GaugesWithMultiLabels   //后端正在使用连接数统计
-	backendConnectPoolWaitCounts     *stats.GaugesWithMultiLabels   //后端等待队列统计
+	backendConnectPoolIdleCounts     *stats.GaugesWithMultiLabels   // 后端空闲连接数统计
+	backendConnectPoolInUseCounts    *stats.GaugesWithMultiLabels   // 后端正在使用连接数统计
+	backendConnectPoolActiveCounts   *stats.GaugesWithMultiLabels   // 后端活跃连接数统计
+	backendConnectPoolWaitCounts     *stats.GaugesWithMultiLabels   // 后端等待队列统计
+	backendConnectPoolCapacityCounts *stats.GaugesWithMultiLabels   // 当前连接池大小
+	backendInstanceDownCounts        *stats.GaugesWithMultiLabels   // 后端实例状态统计
+	uptimeCounts                     *stats.GaugesWithMultiLabels   // 启动时间记录
+	backendSQLResponse99MaxCounts    *stats.GaugesWithMultiLabels   // 后端 SQL 耗时 P99 最大响应时间
+	backendSQLResponse99AvgCounts    *stats.GaugesWithMultiLabels   // 后端 SQL 耗时 P99 平均响应时间
+	backendSQLResponse95MaxCounts    *stats.GaugesWithMultiLabels   // 后端 SQL 耗时 P95 最大响应时间
+	backendSQLResponse95AvgCounts    *stats.GaugesWithMultiLabels   // 后端 SQL 耗时 P95 平均响应时间
 
-	slowSQLTime int64
-	closeChan   chan bool
+	SQLResponsePercentile map[string]*SQLResponse // 用于记录 P99/P95 Max/AVG 响应时间
+	slowSQLTime           int64
+	CPUNums               int // Gaea服务器使用的CPU核数
+	closeChan             chan bool
+}
+
+// SQLResponse record one namespace SQL response like P99/P95
+type SQLResponse struct {
+	ns                      string
+	sqlExecTimeRecordSwitch bool
+	sQLExecTimeChan         chan *SQLExecTimeRecord
+	sQLTimeList             []*SQLExecTimeRecord
+	response99Max           map[string]int64 // map[backendAddr]P99MaxValue
+	response99Avg           map[string]int64 // map[backendAddr]P99AvgValue
+	response95Max           map[string]int64 // map[backendAddr]P95MaxValue
+	response95Avg           map[string]int64 // map[backendAddr]P95AvgValue
+}
+
+// SQLExecTimeRecord record backend sql exec time
+type SQLExecTimeRecord struct {
+	sliceName     string
+	backendAddr   string
+	execTimeMicro int64
+}
+
+func NewSQLResponse(name string) *SQLResponse {
+	sQLExecTimeRecord := make([]*SQLExecTimeRecord, 0, SQLExecTimeSize)
+	return &SQLResponse{
+		ns:                      name,
+		sqlExecTimeRecordSwitch: false,
+		sQLExecTimeChan:         make(chan *SQLExecTimeRecord, SQLExecTimeSize),
+		sQLTimeList:             sQLExecTimeRecord,
+		response99Max:           make(map[string]int64),
+		response99Avg:           make(map[string]int64),
+		response95Max:           make(map[string]int64),
+		response95Avg:           make(map[string]int64),
+	}
+
 }
 
 // NewStatisticManager return empty StatisticManager
@@ -675,6 +833,8 @@ func CreateStatisticManager(cfg *models.Proxy, manager *Manager) (*StatisticMana
 	mgr := NewStatisticManager()
 	mgr.manager = manager
 	mgr.clusterName = cfg.Cluster
+	mgr.SQLResponsePercentile = make(map[string]*SQLResponse)
+	mgr.CPUNums = cfg.NumCPU
 
 	var err error
 	if err = mgr.Init(cfg); err != nil {
@@ -698,7 +858,27 @@ func initGeneralLogger(cfg *models.Proxy) (log.Logger, error) {
 	c["level"] = cfg.LogLevel
 	c["service"] = cfg.Service
 	c["runtime"] = "false"
-	return xlog.CreateLogManager(cfg.LogOutput, c)
+
+	// LogKeepDays 或者 LogKeepCounts 只配置一个且大于默认值，实际日志保留天数为配置的天数
+	if cfg.LogKeepDays > log.DefaultLogKeepDays && cfg.LogKeepCounts == 0 {
+		cfg.LogKeepCounts = cfg.LogKeepDays * 24
+	}
+	if cfg.LogKeepCounts > log.DefaultLogKeepCounts && cfg.LogKeepDays == 0 {
+		cfg.LogKeepDays = int(math.Ceil(float64(cfg.LogKeepCounts) / 24))
+	}
+
+	// 若配置的保留天数小于默认值，实际日志保留天数为配置的天数
+	c["log_keep_days"] = strconv.Itoa(log.DefaultLogKeepDays)
+	if cfg.LogKeepDays != 0 {
+		c["log_keep_days"] = strconv.Itoa(cfg.LogKeepDays)
+	}
+
+	c["log_keep_counts"] = strconv.Itoa(log.DefaultLogKeepCounts)
+	if cfg.LogKeepCounts != 0 {
+		c["log_keep_counts"] = strconv.Itoa(cfg.LogKeepCounts)
+	}
+
+	return zap.CreateLogManager(c)
 }
 
 func parseProxyStatsConfig(cfg *models.Proxy) (*proxyStatsConfig, error) {
@@ -716,9 +896,11 @@ func parseProxyStatsConfig(cfg *models.Proxy) (*proxyStatsConfig, error) {
 
 // Init init StatisticManager
 func (s *StatisticManager) Init(cfg *models.Proxy) error {
+	s.startTime = time.Now().Unix()
 	s.closeChan = make(chan bool, 0)
 	s.handlers = make(map[string]http.Handler)
 	s.slowSQLTime = cfg.SlowSQLTime
+	s.CPUNums = cfg.NumCPU
 	statsCfg, err := parseProxyStatsConfig(cfg)
 	if err != nil {
 		return err
@@ -742,6 +924,7 @@ func (s *StatisticManager) Init(cfg *models.Proxy) error {
 		"gaea proxy flow counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelFlowDirection})
 	s.sessionCounts = stats.NewGaugesWithMultiLabels("SessionCounts",
 		"gaea proxy session counts", []string{statsLabelCluster, statsLabelNamespace})
+	s.CPUBusy = stats.NewGaugesWithMultiLabels("CPUBusyByCore", "gaea proxy CPU busy by core", []string{statsLabelCluster})
 
 	s.backendSQLTimings = stats.NewMultiTimings("BackendSqlTimings",
 		"gaea proxy backend sql sqlTimings", []string{statsLabelCluster, statsLabelNamespace, statsLabelOperation})
@@ -752,12 +935,28 @@ func (s *StatisticManager) Init(cfg *models.Proxy) error {
 	s.backendSQLFingerprintErrorCounts = stats.NewCountersWithMultiLabels("BackendSqlFingerprintErrorCounts",
 		"gaea proxy backend sql fingerprint error counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelFingerprint})
 	s.backendConnectPoolIdleCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolIdleCounts",
-		"gaea proxy backend idle connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
+		"gaea proxy backend idle connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr, statsLabelRole})
 	s.backendConnectPoolInUseCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolInUseCounts",
-		"gaea proxy backend in-use connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
+		"gaea proxy backend in-use connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr, statsLabelRole})
 	s.backendConnectPoolWaitCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolWaitCounts",
-		"gaea proxy backend wait connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
-
+		"gaea proxy backend wait connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr, statsLabelRole})
+	s.backendConnectPoolActiveCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolActiveCounts",
+		"gaea proxy backend active connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr, statsLabelRole})
+	s.backendConnectPoolCapacityCounts = stats.NewGaugesWithMultiLabels("backendConnectPoolCapacityCounts",
+		"gaea proxy backend capacity connect counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr, statsLabelRole})
+	s.backendInstanceDownCounts = stats.NewGaugesWithMultiLabels("backendInstanceDownCounts",
+		"gaea proxy backend DB status down counts", []string{statsLabelCluster, statsLabelNamespace, statsLabelSlice, statsLabelIPAddr, statsLabelRole})
+	s.backendSQLResponse99MaxCounts = stats.NewGaugesWithMultiLabels("backendSQLResponse99MaxCounts",
+		"gaea proxy backend sql sqlTimings P99 max", []string{statsLabelCluster, statsLabelNamespace, statsLabelIPAddr})
+	s.backendSQLResponse99AvgCounts = stats.NewGaugesWithMultiLabels("backendSQLResponse99AvgCounts",
+		"gaea proxy backend sql sqlTimings P99 avg", []string{statsLabelCluster, statsLabelNamespace, statsLabelIPAddr})
+	s.backendSQLResponse95MaxCounts = stats.NewGaugesWithMultiLabels("backendSQLResponse95MaxCounts",
+		"gaea proxy backend sql sqlTimings P95 max", []string{statsLabelCluster, statsLabelNamespace, statsLabelIPAddr})
+	s.backendSQLResponse95AvgCounts = stats.NewGaugesWithMultiLabels("backendSQLResponse95AvgCounts",
+		"gaea proxy backend sql sqlTimings P95 avg", []string{statsLabelCluster, statsLabelNamespace, statsLabelIPAddr})
+	s.uptimeCounts = stats.NewGaugesWithMultiLabels("UptimeCounts",
+		"gaea proxy uptime counts", []string{statsLabelCluster})
+	s.clientConnecions = sync.Map{}
 	s.startClearTask()
 	return nil
 }
@@ -820,10 +1019,9 @@ func (s *StatisticManager) recordSessionSQLTiming(namespace string, operation st
 	s.sqlTimings.Record(operationStatsKey, startTime)
 }
 
-// millisecond duration
-func (s *StatisticManager) isBackendSlowSQL(startTime time.Time) bool {
-	duration := time.Since(startTime).Nanoseconds() / int64(time.Millisecond)
-	return duration > s.slowSQLTime || s.slowSQLTime == 0
+// isBackendSlowSQL return true only gaea.ini slow_sql_time > 0 and duration > slow_sql_time
+func (s *StatisticManager) isBackendSlowSQL(duration int64) bool {
+	return s.slowSQLTime > 0 && duration > s.slowSQLTime
 }
 
 func (s *StatisticManager) recordBackendSlowSQLFingerprint(namespace string, md5 string) {
@@ -838,9 +1036,28 @@ func (s *StatisticManager) recordBackendErrorSQLFingerprint(namespace string, op
 	s.backendSQLFingerprintErrorCounts.Add(fingerprintStatsKey, 1)
 }
 
-func (s *StatisticManager) recordBackendSQLTiming(namespace string, operation string, startTime time.Time) {
+func (s *StatisticManager) recordBackendSQLTiming(namespace string, operation string, sliceName, backendAddr string, startTime time.Time) {
 	operationStatsKey := []string{s.clusterName, namespace, operation}
 	s.backendSQLTimings.Record(operationStatsKey, startTime)
+
+	if s.SQLResponsePercentile[namespace] == nil {
+		log.Warn("ns %s not in SQLResponsePercentile", namespace)
+		return
+	}
+	if !s.SQLResponsePercentile[namespace].sqlExecTimeRecordSwitch {
+		return
+	}
+	execTimeMicro := time.Since(startTime).Microseconds()
+	sQLExecTimeRecord := &SQLExecTimeRecord{
+		sliceName:     sliceName,
+		backendAddr:   backendAddr,
+		execTimeMicro: execTimeMicro,
+	}
+	select {
+	case s.SQLResponsePercentile[namespace].sQLExecTimeChan <- sQLExecTimeRecord:
+	case <-time.After(time.Millisecond):
+		s.SQLResponsePercentile[namespace].sqlExecTimeRecordSwitch = false
+	}
 }
 
 // RecordSQLForbidden record forbidden sql
@@ -855,10 +1072,28 @@ func (s *StatisticManager) IncrSessionCount(namespace string) {
 	s.sessionCounts.Add(statsKey, 1)
 }
 
+func (s *StatisticManager) IncrConnectionCount(namespace string) {
+	if value, ok := s.clientConnecions.Load(namespace); !ok {
+		s.clientConnecions.Store(namespace, atomic.NewInt32(1))
+	} else {
+		lastNum := value.(*atomic.Int32)
+		lastNum.Inc()
+	}
+}
+
 // DescSessionCount decr session count
 func (s *StatisticManager) DescSessionCount(namespace string) {
 	statsKey := []string{s.clusterName, namespace}
 	s.sessionCounts.Add(statsKey, -1)
+}
+
+func (s *StatisticManager) DescConnectionCount(namespace string) {
+	if value, ok := s.clientConnecions.Load(namespace); !ok {
+		_ = log.Warn("namespace: '%v' maxClientConnections should in map", namespace)
+	} else {
+		lastNum := value.(*atomic.Int32)
+		lastNum.Dec()
+	}
 }
 
 // AddReadFlowCount add read flow count
@@ -873,20 +1108,147 @@ func (s *StatisticManager) AddWriteFlowCount(namespace string, byteCount int) {
 	s.flowCounts.Add(statsKey, int64(byteCount))
 }
 
-//record idle connect count
-func (s *StatisticManager) recordConnectPoolIdleCount(namespace string, slice string, addr string, count int64) {
-	statsKey := []string{s.clusterName, namespace, slice, addr}
+// record idle connect count
+func (s *StatisticManager) recordConnectPoolIdleCount(namespace string, slice string, addr string, count int64, role string) {
+	statsKey := []string{s.clusterName, namespace, slice, addr, role}
 	s.backendConnectPoolIdleCounts.Set(statsKey, count)
 }
 
-//record in-use connect count
-func (s *StatisticManager) recordConnectPoolInuseCount(namespace string, slice string, addr string, count int64) {
-	statsKey := []string{s.clusterName, namespace, slice, addr}
+// record in-use connect count
+func (s *StatisticManager) recordConnectPoolInuseCount(namespace string, slice string, addr string, count int64, role string) {
+	statsKey := []string{s.clusterName, namespace, slice, addr, role}
 	s.backendConnectPoolInUseCounts.Set(statsKey, count)
 }
 
-//record wait queue length
-func (s *StatisticManager) recordConnectPoolWaitCount(namespace string, slice string, addr string, count int64) {
-	statsKey := []string{s.clusterName, namespace, slice, addr}
+// record wait queue length
+func (s *StatisticManager) recordConnectPoolWaitCount(namespace string, slice string, addr string, count int64, role string) {
+	statsKey := []string{s.clusterName, namespace, slice, addr, role}
 	s.backendConnectPoolWaitCounts.Set(statsKey, count)
+}
+
+// recordConnectPoolActive records the count of active connections in a connection pool for a specific server role within a namespace and slice context.
+func (s *StatisticManager) recordConnectPoolActiveCount(namespace string, slice string, addr string, count int64, role string) {
+	statsKey := []string{s.clusterName, namespace, slice, addr, role}
+	s.backendConnectPoolActiveCounts.Set(statsKey, count)
+}
+
+// recordConnectPoolCount records the total capacity of a connection pool for a specific server role within a namespace and slice context.
+func (s *StatisticManager) recordConnectPoolCount(namespace string, slice string, addr string, count int64, role string) {
+	statsKey := []string{s.clusterName, namespace, slice, addr, role}
+	s.backendConnectPoolCapacityCounts.Set(statsKey, count)
+}
+
+// record wait queue length
+func (s *StatisticManager) recordInstanceDownCount(namespace string, slice string, addr string, count int64, role string) {
+	statsKey := []string{s.clusterName, namespace, slice, addr, role}
+	s.backendInstanceDownCounts.Set(statsKey, count)
+}
+
+// record wait queue length
+func (s *StatisticManager) recordBackendSQLTimingP99Max(namespace, backendAddr string, count int64) {
+	statsKey := []string{s.clusterName, namespace, backendAddr}
+	s.backendSQLResponse99MaxCounts.Set(statsKey, count)
+}
+
+func (s *StatisticManager) recordBackendSQLTimingP99Avg(namespace, backendAddr string, count int64) {
+	statsKey := []string{s.clusterName, namespace, backendAddr}
+	s.backendSQLResponse99AvgCounts.Set(statsKey, count)
+}
+
+func (s *StatisticManager) recordBackendSQLTimingP95Max(namespace, backendAddr string, count int64) {
+	statsKey := []string{s.clusterName, namespace, backendAddr}
+	s.backendSQLResponse95MaxCounts.Set(statsKey, count)
+}
+
+func (s *StatisticManager) recordBackendSQLTimingP95Avg(namespace, backendAddr string, count int64) {
+	statsKey := []string{s.clusterName, namespace, backendAddr}
+	s.backendSQLResponse95AvgCounts.Set(statsKey, count)
+}
+
+// AddUptimeCount add uptime count
+func (s *StatisticManager) AddUptimeCount(count int64) {
+	statsKey := []string{s.clusterName}
+	s.uptimeCounts.Set(statsKey, count)
+}
+
+func (s *StatisticManager) CalcCPUBusy(interval int) {
+	cpuBusy := int64(0)
+	p, err := process.NewProcess(int32(os.Getpid()))
+	if err != nil {
+		log.Notice("server", "gopsutil", "NewProcess", 0, err)
+		return
+	}
+	cpuPercent, err := p.Percent(time.Duration(interval) * time.Second)
+	if err == nil {
+		if s.CPUNums != 0 {
+			// 为了适应CountersWithMultiLabels的数据类型，这里对cpuTime结果做了取整，grafana显示时需要还原
+			cpuBusy = int64(cpuPercent / float64(s.CPUNums) * 100)
+
+		} else {
+			cpuBusy = int64(cpuPercent / float64(runtime.NumCPU()) * 100)
+		}
+	}
+	statsKey := []string{s.clusterName}
+	s.CPUBusy.Set(statsKey, cpuBusy)
+}
+
+func (s *StatisticManager) CalcAvgSQLTimes() {
+	for ns, sQLResponse := range s.SQLResponsePercentile {
+		sqlTimesMicro := make([]int64, 0)
+		quit := false
+		backendAddr := ""
+		for !quit {
+			select {
+			case tmp := <-sQLResponse.sQLExecTimeChan:
+				if len(sqlTimesMicro) >= SQLExecTimeSize {
+					quit = true
+				}
+				backendAddr = tmp.backendAddr
+				etime := tmp.execTimeMicro
+				sqlTimesMicro = append(sqlTimesMicro, etime)
+			case <-time.After(time.Millisecond):
+				quit = true
+			}
+		}
+		if len(sqlTimesMicro) == 0 {
+			s.SQLResponsePercentile[ns].response99Max[backendAddr] = 0
+			s.SQLResponsePercentile[ns].response95Max[backendAddr] = 0
+			s.SQLResponsePercentile[ns].response99Avg[backendAddr] = 0
+			s.SQLResponsePercentile[ns].response95Avg[backendAddr] = 0
+			s.SQLResponsePercentile[ns].sqlExecTimeRecordSwitch = true
+			continue
+		}
+		sort.Slice(sqlTimesMicro, func(i, j int) bool { return sqlTimesMicro[i] < sqlTimesMicro[j] })
+		sum := int64(0)
+		p99sum := int64(0)
+		p95sum := int64(0)
+		s.SQLResponsePercentile[ns].response99Max[backendAddr] = sqlTimesMicro[(len(sqlTimesMicro)-1)*99/100]
+		s.SQLResponsePercentile[ns].response95Max[backendAddr] = sqlTimesMicro[(len(sqlTimesMicro)-1)*95/100]
+		for k := range sqlTimesMicro {
+			sum += sqlTimesMicro[k]
+			if k < len(sqlTimesMicro)*95/100 {
+				p95sum += sqlTimesMicro[k]
+			}
+			if k < len(sqlTimesMicro)*99/100 {
+				p99sum += sqlTimesMicro[k]
+			}
+		}
+		if len(sqlTimesMicro)*99/100 > 0 {
+			s.SQLResponsePercentile[ns].response99Avg[backendAddr] = p99sum / int64(len(sqlTimesMicro)*99/100)
+		}
+		if len(sqlTimesMicro)*95/100 > 0 {
+			s.SQLResponsePercentile[ns].response95Avg[backendAddr] = p95sum / int64(len(sqlTimesMicro)*95/100)
+		}
+		s.SQLResponsePercentile[ns].sqlExecTimeRecordSwitch = true
+	}
+}
+
+// getStatusDownCounts get status down counts from DBinfo.statusMap
+func getStatusDownCounts(statusMap *sync.Map, index int) int64 {
+	if v, ok := statusMap.Load(index); !ok {
+		return 1
+	} else if v != backend.StatusUp {
+		return 1
+	}
+	return 0
 }

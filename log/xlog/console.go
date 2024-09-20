@@ -221,7 +221,7 @@ func (p *XConsoleLog) debugx(logID, format string, a ...interface{}) error {
 }
 
 // Close implements XLogger
-//关闭日志库。注意：如果没有调用Close()关闭日志库的话，将会造成文件句柄泄露
+// 关闭日志库。注意：如果没有调用Close()关闭日志库的话，将会造成文件句柄泄露
 func (p *XConsoleLog) Close() {
 }
 

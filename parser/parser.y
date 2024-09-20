@@ -335,6 +335,7 @@ import (
 	jsonType	"JSON"
 	keyBlockSize	"KEY_BLOCK_SIZE"
 	local		"LOCAL"
+	locked      "LOCKED"
 	last		"LAST"
 	less		"LESS"
 	level		"LEVEL"
@@ -381,6 +382,7 @@ import (
 	reverse		"REVERSE"
 	role		"ROLE"
 	rollback	"ROLLBACK"
+	rollup		"ROLLUP"
 	routine		"ROUTINE"
 	rowCount	"ROW_COUNT"
 	rowFormat	"ROW_FORMAT"
@@ -392,7 +394,9 @@ import (
 	session		"SESSION"
 	share		"SHARE"
 	shared		"SHARED"
+	nowait      "NOWAIT"
 	signed		"SIGNED"
+	skip        "SKIP"
 	slave		"SLAVE"
 	slow		"SLOW"
 	snapshot	"SNAPSHOT"
@@ -623,7 +627,7 @@ import (
 	ShowStmt			"Show engines/databases/tables/user/columns/warnings/status statement"
 	Statement			"statement"
 	TraceStmt			"TRACE statement"
-	TraceableStmt			"traceable statment"
+	TraceableStmt			"traceable statement"
 	TruncateTableStmt		"TRUNCATE TABLE statement"
 	UnlockTablesStmt		"Unlock tables statement"
 	UpdateStmt			"UPDATE statement"
@@ -814,6 +818,7 @@ import (
 	TableRefs 			"table references"
 	TableToTable 			"rename table to table"
 	TableToTableList 		"rename table to table by list"
+	LockType			"Table locks type"
 
 	TransactionChar		"Transaction characteristic"
 	TransactionChars	"Transaction characteristic list"
@@ -842,6 +847,7 @@ import (
 	WhenClause		"When clause"
 	WhenClauseList		"When clause list"
 	WithReadLockOpt		"With Read Lock opt"
+	WithRollUpOpt		"WITH ROLLUP or empty"
 	WithGrantOptionOpt	"With Grant Option opt"
 	ElseOpt			"Optional else clause"
 	Type			"Types"
@@ -935,7 +941,6 @@ import (
 	NationalOpt		"National option"
 	CharsetKw		"charset or charater set"
 	CommaOpt		"optional comma"
-	LockType		"Table locks type"
 	logAnd			"logical and operator"
 	logOr			"logical or operator"
 	FieldsOrColumns 	"Fields or columns"
@@ -954,7 +959,8 @@ import (
 	FunctionNameDateArithMultiForms	"Date arith function call names (adddate or subdate)"
 
 %precedence empty
-
+%precedence lowerThanWith
+%precedence with
 %precedence sqlCache sqlNoCache
 %precedence lowerThanIntervalKeyword
 %precedence interval
@@ -992,6 +998,7 @@ import (
 %right	collate
 
 %precedence '('
+%precedence ')'
 %precedence quick
 %precedence escape
 %precedence lowerThanComma
@@ -1613,8 +1620,7 @@ ColumnOption:
 	}
 |	"ON" "UPDATE" NowSymOptionFraction
 	{
-		nowFunc := &ast.FuncCallExpr{FnName: model.NewCIStr("CURRENT_TIMESTAMP")}
-		$$ = &ast.ColumnOption{Tp: ast.ColumnOptionOnUpdate, Expr: nowFunc}
+		$$ = &ast.ColumnOption{Tp: ast.ColumnOptionOnUpdate, Expr: $3}
 	}
 |	"COMMENT" stringLit
 	{
@@ -2965,9 +2971,9 @@ FieldList:
 	}
 
 GroupByClause:
-	"GROUP" "BY" ByList
+	"GROUP" "BY" ByList WithRollUpOpt
 	{
-		$$ = &ast.GroupByClause{Items: $3.([]*ast.ByItem)}
+		$$ = &ast.GroupByClause{Items: $3.([]*ast.ByItem), WithRollup: $4.(bool)}
 	}
 
 HavingClause:
@@ -2977,6 +2983,15 @@ HavingClause:
 |	"HAVING" Expression
 	{
 		$$ = &ast.HavingClause{Expr: $2}
+	}
+
+WithRollUpOpt:
+	{
+		$$ = false
+	}  %prec lowerThanWith
+|	"WITH" "ROLLUP"
+	{
+		$$ = true
 	}
 
 IfExists:
@@ -3098,6 +3113,7 @@ UnReservedKeyword:
 | "NONE" | "NULLS" | "SUPER" | "EXCLUSIVE" | "STATS_PERSISTENT" | "ROW_COUNT" | "COALESCE" | "MONTH" | "PROCESS" | "PROFILES"
 | "MICROSECOND" | "MINUTE" | "PLUGINS" | "PRECEDING" | "QUERY" | "QUERIES" | "SECOND" | "SEPARATOR" | "SHARE" | "SHARED" | "SLOW" | "MAX_CONNECTIONS_PER_HOUR" | "MAX_QUERIES_PER_HOUR" | "MAX_UPDATES_PER_HOUR"
 | "MAX_USER_CONNECTIONS" | "REPLICATION" | "CLIENT" | "SLAVE" | "RELOAD" | "TEMPORARY" | "ROUTINE" | "EVENT" | "ALGORITHM" | "DEFINER" | "INVOKER" | "MERGE" | "TEMPTABLE" | "UNDEFINED" | "SECURITY" | "CASCADED" | "RECOVER"
+| "ROLLUP" | "NOWAIT" | "SKIP" | "LOCKED"
 
 
 
@@ -3565,7 +3581,7 @@ SimpleExpr:
 	{
 		$$ = &ast.UnaryOperationExpr{Op: opcode.Not, V: $2}
 	}
-|	SubSelect
+|	SubSelect %prec neg
 |	'(' Expression ')' {
 		startOffset := parser.startOffset(&yyS[yypt-1])
 		endOffset := parser.endOffset(&yyS[yypt])
@@ -3783,20 +3799,20 @@ FunctionCallKeyword:
 	}
 |	"CHAR" '(' ExpressionList ')'
 	{
-		nilVal := ast.NewValueExpr(nil)
 		args := $3.([]ast.ExprNode)
 		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr(ast.CharFunc),
-			Args: append(args, nilVal),
+			FnName: model.NewCIStr($1),
+			Args: append(args),
 		}
 	}
 |	"CHAR" '(' ExpressionList "USING" StringName ')'
 	{
+	    using := ast.NewValueExpr("USING")
 		charset1 := ast.NewValueExpr($5)
 		args := $3.([]ast.ExprNode)
 		$$ = &ast.FuncCallExpr{
-			FnName: model.NewCIStr(ast.CharFunc),
-			Args: append(args, charset1),
+			FnName: model.NewCIStr($1),
+			Args: append(args,using,charset1),
 		}
 	}
 |	"DATE"  stringLit
@@ -3824,7 +3840,7 @@ FunctionCallKeyword:
 	}
 |	"PASSWORD" '(' ExpressionListOpt ')'
 	{
-		$$ = &ast.FuncCallExpr{FnName:model.NewCIStr(ast.PasswordFunc), Args: $3.([]ast.ExprNode)}
+		$$ = &ast.FuncCallExpr{FnName:model.NewCIStr($1), Args: $3.([]ast.ExprNode)}
 	}
 |	'{' ODBCDateTimeType stringLit '}'
 	{
@@ -4617,6 +4633,7 @@ SelectStmtBasic:
 			Distinct:      $2.(*ast.SelectStmtOpts).Distinct,
 			Fields:        $3.(*ast.FieldList),
 		}
+
 		$$ = st
 	}
 
@@ -5083,16 +5100,10 @@ TableFactor:
 		tn.IndexHints = $4.([]*ast.IndexHint)
 		$$ = &ast.TableSource{Source: tn, AsName: $3.(model.CIStr)}
 	}
-|	'(' SelectStmt ')' TableAsName
+|   SubSelect TableAsName
 	{
-		st := $2.(*ast.SelectStmt)
-		endOffset := parser.endOffset(&yyS[yypt-1])
-		parser.setLastSelectFieldText(st, endOffset)
-		$$ = &ast.TableSource{Source: $2.(*ast.SelectStmt), AsName: $4.(model.CIStr)}
-	}
-|	'(' UnionStmt ')' TableAsName
-	{
-		$$ = &ast.TableSource{Source: $2.(*ast.UnionStmt), AsName: $4.(model.CIStr)}
+	    resultNode := $1.(*ast.SubqueryExpr).Query
+        $$ = &ast.TableSource{Source: resultNode, AsName: $2.(model.CIStr)}
 	}
 |	'(' TableRefs ')'
 	{
@@ -5386,6 +5397,10 @@ TableOptimizerHintOpt:
 	{
 		$$ = &ast.TableOptimizerHint{HintName: model.NewCIStr($1), MaxExecutionTime: getUint64FromNUM($3)}
 	}
+|   master
+    {
+        $$ = &ast.TableOptimizerHint{HintName: model.NewCIStr($1)}
+    }
 
 SelectStmtCalcFoundRows:
 	{
@@ -5451,6 +5466,29 @@ SubSelect:
 		s.SetText(src[yyS[yypt-1].offset:yyS[yypt].offset])
 		$$ = &ast.SubqueryExpr{Query: s}
 	}
+|	'(' SubSelect ')'
+	{
+	    subQuery := $2.(*ast.SubqueryExpr).Query
+        isRecursive := true
+        // remove redundant brackets like '((select 1))'
+        for isRecursive {
+            if _, isRecursive = subQuery.(*ast.SubqueryExpr); isRecursive {
+                subQuery = subQuery.(*ast.SubqueryExpr).Query
+            }
+        }
+        switch rs := subQuery.(type) {
+        case *ast.SelectStmt:
+            endOffset := parser.endOffset(&yyS[yypt])
+            parser.setLastSelectFieldText(rs, endOffset)
+            src := parser.src
+            rs.SetText(src[yyS[yypt-1].offset:yyS[yypt].offset])
+            $$ = &ast.SubqueryExpr{Query: rs}
+        case *ast.UnionStmt:
+            src := parser.src
+            rs.SetText(src[yyS[yypt-1].offset:yyS[yypt].offset])
+            $$ = &ast.SubqueryExpr{Query: rs}
+        }
+	}
 
 // See https://dev.mysql.com/doc/refman/5.7/en/innodb-locking-reads.html
 SelectLockOpt:
@@ -5459,9 +5497,29 @@ SelectLockOpt:
 		$$ = ast.SelectLockNone
 	}
 |	"FOR" "UPDATE"
-	{
-		$$ = ast.SelectLockForUpdate
-	}
+    {
+        $$ = ast.SelectLockForUpdate
+    }
+|	"FOR" "SHARE"
+    {
+        $$ = ast.SelectLockForShare
+    }
+|	"FOR" "UPDATE" "NOWAIT"
+    {
+        $$ = ast.SelectLockForUpdateNoWait
+    }
+|	"FOR" "SHARE" "NOWAIT"
+    {
+        $$ = ast.SelectLockForShareNoWait
+    }
+|	"FOR" "UPDATE" "SKIP" "LOCKED"
+ {
+     $$ = ast.SelectLockForUpdateSkipLocked
+ }
+|	"FOR" "SHARE" "SKIP" "LOCKED"
+ {
+     $$ = ast.SelectLockForShareSkipLocked
+ }
 |	"LOCK" "IN" "SHARE" "MODE"
 	{
 		$$ = ast.SelectLockInShareMode
@@ -5726,6 +5784,10 @@ SetExpr:
 	{
 		$$ = ast.NewValueExpr("ON")
 	}
+|	"BINARY"
+        {
+        	$$ = ast.NewValueExpr("BINARY")
+        }
 |	ExprOrDefault
 
 VariableAssignment:
@@ -8065,11 +8127,18 @@ LinesTerminated:
  *********************************************************************/
 
 UnlockTablesStmt:
-	"UNLOCK" TablesTerminalSym {}
+	"UNLOCK" TablesTerminalSym
+    {
+        $$ = &ast.UnlockTablesStmt{}
+    }
 
 LockTablesStmt:
 	"LOCK" TablesTerminalSym TableLockList
-	{}
+    {
+        $$ = &ast.LockTablesStmt{
+            TableLocks: $3.([]ast.TableLock),
+        }
+    }
 
 TablesTerminalSym:
 	"TABLES"
@@ -8077,15 +8146,40 @@ TablesTerminalSym:
 
 TableLock:
 	TableName LockType
+	{
+        $$ = ast.TableLock{
+            Table: $1.(*ast.TableName),
+            Type:  $2.(model.TableLockType),
+        }
+    }
 
 LockType:
 	"READ"
+	{
+    		$$ = model.TableLockRead
+    }
 |	"READ" "LOCAL"
+    {
+		$$ = model.TableLockReadLocal
+    }
 |	"WRITE"
+    {
+       $$ = model.TableLockWrite
+    }
+|	"WRITE" "LOCAL"
+    {
+        $$ = model.TableLockWriteLocal
+    }
 
 TableLockList:
 	TableLock
+    {
+        $$ = []ast.TableLock{$1.(ast.TableLock)}
+    }
 |	TableLockList ',' TableLock
+	{
+		$$ = append($1.([]ast.TableLock), $3.(ast.TableLock))
+	}
 
 
 /********************************************************************

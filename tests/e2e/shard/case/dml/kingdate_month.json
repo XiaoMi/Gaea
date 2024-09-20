@@ -1,0 +1,167 @@
+{
+    "execCases": [
+      {
+        "description": "Test King Shard DATE MONTH INSERT UPDATE DELETE ",
+        "setUp": [
+          {
+             "slice": "slice-0",
+              "sql": "DROP DATABASE IF EXISTS db_kingshard_date_month"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "CREATE DATABASE db_kingshard_date_month"
+          },
+          {
+            "slice": "slice-0",
+            "sql": "USE db_kingshard_date_month"
+          },
+          {
+            "slice": "slice-1",
+             "sql": "DROP DATABASE IF EXISTS db_kingshard_date_month"
+         },
+         {
+           "slice": "slice-1",
+           "sql": "CREATE DATABASE db_kingshard_date_month"
+         },
+         {
+           "slice": "slice-1",
+           "sql": "USE db_kingshard_date_month"
+         },
+          {
+            "slice": "slice-0",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_shard_201405 ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+          },
+          {
+            "slice": "slice-0",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_shard_201406 ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"          },
+          {
+            "slice": "slice-1",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_shard_201408 ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+          },
+          {
+            "slice": "slice-1",
+            "sql":"CREATE TABLE IF NOT EXISTS tbl_shard_201409 ( id INT(64) NOT NULL, col1 VARCHAR(256),create_time datetime DEFAULT NULL,PRIMARY KEY (id)) ENGINE=InnoDB DEFAULT CHARSET=utf8;"
+          }
+       ],
+        "gaeaActions": [
+          {
+            "sql":"USE db_kingshard_date_month",
+            "execType": "Default"
+          },
+          {
+            "sql": "insert into tbl_shard (id, col1,create_time) values(5, 'test5','2014-05-01'); ",
+            "execType": "Default"
+          },
+          {
+            "sql": "insert into tbl_shard (id, col1,create_time) values(6, 'test6','2014-06-01');",
+            "execType": "Default"
+          },
+          {
+            "sql": "insert into tbl_shard (id, col1,create_time) values(8, 'test8','2014-08-01'); ",
+            "execType": "Default"
+          },
+          {
+            "sql": "insert into tbl_shard (id, col1,create_time) values(9, 'test9','2014-09-01');",
+            "execType": "Default"
+          },
+          {
+            "sql": "insert into tbl_shard (id, col1,create_time) values(10, 'test10','2014-05-01'); ",
+            "execType": "Default"
+          },
+          {
+            "sql": "UPDATE tbl_shard SET col1='updated_test5' WHERE id=5",
+            "execType": "Default"
+          },
+          {
+            "sql": "DELETE FROM tbl_shard  WHERE id=10",
+            "execType": "Default"
+          }
+        ],
+        "masterCheckSQL": [
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_date_month",
+            "name": "tbl_shard_201405 check",
+            "sql": "SELECT col1 FROM tbl_shard_201405 WHERE id=5",
+            "execType": "QueryRow",
+            "expect": ["updated_test5"]
+          },
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_date_month",
+            "name": "tbl_shard_201405 check",
+            "sql": "SELECT * FROM tbl_shard_201405 WHERE id IN ('6', '8','9','10')",
+            "execType": "QueryRow",
+            "expect": []
+          },
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_date_month",
+            "name": "tbl_shard_201405 check",
+            "sql":  "SELECT * FROM tbl_shard_201405 WHERE id=10",
+            "execType": "QueryRow",
+            "expect": []
+          },
+
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_date_month",
+            "name": "tbl_shard_201406 check",
+            "sql": "SELECT col1 FROM tbl_shard_201406 WHERE id =6",
+            "execType": "QueryRow",
+            "expect": ["test6"]
+          },
+          {
+            "slice": "slice-0",
+            "db": "db_kingshard_date_month",
+            "name": "tbl_shard_201406 check",
+            "sql": "SELECT * FROM tbl_shard_201406 WHERE id IN ('5', '8','9','10')",
+            "execType":"Query",
+            "expect": []
+          },
+          {
+            "slice": "slice-1",
+            "db": "db_kingshard_date_month",
+            "name": "tbl_shard_201408 check",
+            "sql":  "SELECT col1 FROM  tbl_shard_201408 WHERE id=8",
+            "execType": "QueryRow",
+            "expect": ["test8"]
+          },
+          {
+            "slice": "slice-1",
+            "db": "db_kingshard_date_month",
+            "name": "tbl_shard_201408 check",
+            "sql": "SELECT * FROM tbl_shard_201408 WHERE id IN ('5', '6','9','10')",
+            "execType": "Query",
+            "expect":[]
+          },
+          {
+            "slice": "slice-1",
+            "db": "db_kingshard_date_month",
+            "name": "tbl_shard_201409 check",
+            "sql": "SELECT col1 FROM tbl_shard_201409 WHERE id=9",
+            "execType": "QueryRow",
+            "expect": ["test9"]
+          },
+          {
+            "slice": "slice-1",
+            "db": "db_kingshard_date_month",
+            "name": "tbl_shard_201409 check",
+            "sql": "SELECT * FROM tbl_shard_201409 WHERE id IN ('5', '6','8','10')",
+            "execType": "Query",
+            "expect": []
+          }
+        ],
+        "tearDown": [
+          {
+              "slice": "slice-0",
+              "sql": "DROP DATABASE IF EXISTS db_kingshard_date_year"
+          },
+          {
+            "slice": "slice-1",
+            "sql": "DROP DATABASE IF EXISTS db_kingshard_date_year"
+        }
+        ]
+      }
+    ]
+  }

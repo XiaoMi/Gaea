@@ -30,9 +30,11 @@ package backend
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
@@ -41,28 +43,65 @@ import (
 	"github.com/XiaoMi/Gaea/util"
 )
 
+type StatusCode uint32
+
 const (
-	weightSplit = "@"
+	weightSplit     = "@"
+	datacenterSplit = "#"
 
 	// DefaultSlice means default slice for namespace
-	DefaultSlice = "slice-0"
+	DefaultSlice       = "slice-0"
+	PingPeriod   int64 = 4
+
+	StatusUp                StatusCode = 1
+	StatusDown              StatusCode = 0
+	LocalSlaveReadClosed               = 0
+	LocalSlaveReadPreferred            = 1
+	LocalSlaveReadForce                = 2
 )
+
+func (s *StatusCode) String() string {
+	r := "StatusUp"
+	if *s == StatusDown {
+		r = "StatusDown"
+	}
+
+	return fmt.Sprintf(r)
+}
+
+type DBInfo struct {
+	ConnPool   []ConnectionPool
+	Balancer   *balancer
+	StatusMap  *sync.Map
+	Datacenter []string
+}
+
+func (dbi *DBInfo) GetStatus(index int) (StatusCode, error) {
+	if index > len(dbi.ConnPool) {
+		return StatusDown, fmt.Errorf("index:%d out of range", index)
+	}
+	if value, ok := dbi.StatusMap.Load(index); ok {
+		return value.(StatusCode), nil
+	}
+	return StatusDown, fmt.Errorf("can't get status of index:%d", index)
+}
+
+func (dbi *DBInfo) SetStatus(index int, status StatusCode) {
+	dbi.StatusMap.Store(index, status)
+}
 
 // Slice means one slice of the mysql cluster
 type Slice struct {
 	Cfg models.Slice
 	sync.RWMutex
 
-	Master ConnectionPool
-
-	Slave         []ConnectionPool
-	slaveBalancer *balancer
-
-	StatisticSlave         []ConnectionPool
-	statisticSlaveBalancer *balancer
-
-	charset     string
-	collationID mysql.CollationID
+	Master          *DBInfo
+	Slave           *DBInfo
+	StatisticSlave  *DBInfo
+	ProxyDatacenter string
+	charset         string
+	collationID     mysql.CollationID
+	HealthCheckSql  string
 }
 
 // GetSliceName return name of slice
@@ -71,15 +110,15 @@ func (s *Slice) GetSliceName() string {
 }
 
 // GetConn get backend connection from different node based on fromSlave and userType
-func (s *Slice) GetConn(fromSlave bool, userType int) (pc PooledConnect, err error) {
+func (s *Slice) GetConn(fromSlave bool, userType int, localSlaveReadPriority int) (pc PooledConnect, err error) {
 	if fromSlave {
 		if userType == models.StatisticUser {
-			pc, err = s.GetStatisticSlaveConn()
+			pc, err = s.GetSlaveConn(s.StatisticSlave, localSlaveReadPriority)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			pc, err = s.GetSlaveConn()
+			pc, err = s.GetSlaveConn(s.Slave, localSlaveReadPriority)
 			if err != nil {
 				log.Warn("get connection from slave failed, try to get from master, error: %s", err.Error())
 				pc, err = s.GetMasterConn()
@@ -90,51 +129,242 @@ func (s *Slice) GetConn(fromSlave bool, userType int) (pc PooledConnect, err err
 	}
 	if err != nil {
 		log.Warn("get connection from backend failed, error: %s", err.Error())
-		return
 	}
 	return
 }
 
 func (s *Slice) GetDirectConn(addr string) (*DirectConnection, error) {
-	return NewDirectConnection(addr, s.Cfg.UserName, s.Cfg.Password, "", s.charset, s.collationID)
+	return NewDirectConnection(addr, s.Cfg.UserName, s.Cfg.Password, "", s.charset, s.collationID, s.Cfg.Capability)
 }
 
 // GetMasterConn return a connection in master pool
 func (s *Slice) GetMasterConn() (PooledConnect, error) {
+	if v, _ := s.Master.StatusMap.Load(0); v != StatusUp {
+		return nil, fmt.Errorf("master:%s is Down", s.Cfg.Master)
+	}
+
 	ctx := context.TODO()
-	return s.Master.Get(ctx)
+	return s.Master.ConnPool[0].Get(ctx)
 }
 
-// GetSlaveConn return a connection in slave pool
-func (s *Slice) GetSlaveConn() (PooledConnect, error) {
-	if len(s.Slave) == 0 {
-		return nil, errors.ErrNoDatabase
-	}
-
-	s.Lock()
-	index, err := s.slaveBalancer.next()
-	s.Unlock()
-	if err != nil {
-		return nil, err
-	}
-	ctx := context.TODO()
-	return s.Slave[index].Get(ctx)
+// GetMasterStatus return master status
+func (s *Slice) GetMasterStatus() (StatusCode, error) {
+	return s.Master.GetStatus(0)
 }
 
-// GetStatisticSlaveConn return a connection in statistic slave pool
-func (s *Slice) GetStatisticSlaveConn() (PooledConnect, error) {
-	if len(s.StatisticSlave) == 0 {
-		return nil, errors.ErrNoDatabase
+// SetMasterStatus set master status
+func (s *Slice) SetMasterStatus(code StatusCode) {
+	s.Master.SetStatus(0, code)
+}
+
+// CheckStatus check slice instance status
+func (s *Slice) CheckStatus(ctx context.Context, name string, downAfterNoAlive int, secondsBehindMaster int) {
+	go s.checkBackendMasterStatus(ctx, name, downAfterNoAlive)
+	go s.checkBackendSlaveStatus(ctx, s.Slave, name, downAfterNoAlive, secondsBehindMaster)
+	go s.checkBackendSlaveStatus(ctx, s.StatisticSlave, name, downAfterNoAlive, secondsBehindMaster)
+}
+
+func (s *Slice) checkBackendMasterStatus(ctx context.Context, name string, downAfterNoAlive int) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Fatal("[ns:%s, %s] check master status panic:%s", name, s.Cfg.Name, err)
+		}
+	}()
+	for {
+		select {
+		case <-ctx.Done():
+			log.Warn("[ns:%s, %s] check master status canceled", name, s.Cfg.Name)
+			return
+		case <-time.After(time.Duration(PingPeriod) * time.Second):
+			if len(s.Master.ConnPool) == 0 {
+				log.Warn("[ns:%s, %s] master is empty", name, s.Cfg.Name)
+				continue
+			}
+			cp := s.Master.ConnPool[0]
+			log.Debug("[ns:%s, %s:%s] start check master", name, s.Cfg.Name, cp.Addr())
+			_, err := checkInstanceStatus(name, cp, s.HealthCheckSql)
+
+			if time.Now().Unix()-cp.GetLastChecked() >= int64(downAfterNoAlive) {
+				s.SetMasterStatus(StatusDown)
+				log.Warn("[ns:%s, %s:%s] check master StatusDown for %ds. err: %s", name, s.Cfg.Name, cp.Addr(), time.Now().Unix()-cp.GetLastChecked(), err)
+				continue
+			}
+
+			oldStatus, err := s.GetMasterStatus()
+			if err != nil {
+				log.Warn("[ns:%s, %s:%s] get master master status error:%s", name, s.Cfg.Name, cp.Addr(), err)
+				continue
+			}
+
+			s.SetMasterStatus(StatusUp)
+			if oldStatus == StatusDown {
+				log.Warn("[ns:%s, %s:%s] check master StatusUp", name, s.Cfg.Name, cp.Addr())
+			}
+		}
+	}
+}
+
+func (s *Slice) checkBackendSlaveStatus(ctx context.Context, db *DBInfo, name string, downAfterNoAlive int, secondBehindMaster int) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Fatal("[ns:%s, %s] check slave status panic:%s", name, s.Cfg.Name, err)
+		}
+	}()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Warn("[ns:%s, %s] check slave status canceled", name, s.Cfg.Name)
+			return
+		case <-time.After(time.Duration(PingPeriod) * time.Second):
+			for idx, cp := range db.ConnPool {
+				log.Debug("[ns:%s, %s:%s] start check slave", name, s.Cfg.Name, cp.Addr())
+
+				oldStatus, err := db.GetStatus(idx)
+				if err != nil {
+					log.Warn("[ns:%s, %s:%s] get slave status error:%s", name, s.Cfg.Name, cp.Addr(), err)
+					continue
+				}
+				pc, err := checkInstanceStatus(name, cp, s.HealthCheckSql)
+				// check slave status
+				if time.Now().Unix()-cp.GetLastChecked() >= int64(downAfterNoAlive) {
+					db.SetStatus(idx, StatusDown)
+					log.Warn("[ns:%s, %s:%s] check slave StatusDown for %ds. err:%s", name, s.Cfg.Name, cp.Addr(), time.Now().Unix()-cp.GetLastChecked(), err)
+					continue
+				}
+
+				// check master status, if master is down, we should not check slave sync status,cause slave io thread is close
+				if masterStatus, err := s.GetMasterStatus(); err != nil {
+					log.Warn("[ns:%s, %s:%s] get master status error:%s", name, s.Cfg.Name, cp.Addr(), err)
+					continue
+				} else if masterStatus == StatusDown {
+					// set slave status to up to avoid slave down when master is down on startup
+					db.SetStatus(idx, StatusUp)
+					if oldStatus == StatusDown {
+						log.Warn("[ns:%s, %s:%s] check slave StatusUp", name, s.Cfg.Name, cp.Addr())
+					}
+					continue
+				}
+
+				if pc == nil {
+					log.Warn("[ns:%s, %s:%s] skip check slave sync, get nil conn", name, s.Cfg.Name, cp.Addr())
+					continue
+				}
+
+				if alive, err := checkSlaveSyncStatus(pc, secondBehindMaster); !alive {
+					db.SetStatus(idx, StatusDown)
+					log.Warn("[ns:%s, %s:%s] check slave StatusDown. sync err:%s", name, s.Cfg.Name, cp.Addr(), err)
+					continue
+				}
+
+				db.SetStatus(idx, StatusUp)
+				if oldStatus == StatusDown {
+					log.Warn("[ns:%s, %s:%s] check slave StatusUp", name, s.Cfg.Name, cp.Addr())
+				}
+			}
+		}
+	}
+}
+
+func checkInstanceStatus(name string, cp ConnectionPool, healthCheckSql string) (PooledConnect, error) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Fatal("[ns:%s, %s] check instance status panic:%s", name, cp.Addr(), err)
+		}
+	}()
+
+	pc, err := cp.GetCheck(context.Background())
+	if err != nil {
+		if pc != nil {
+			pc.Close()
+		}
+		return nil, fmt.Errorf("get check conn err:%s", err)
 	}
 
-	s.Lock()
-	index, err := s.statisticSlaveBalancer.next()
-	s.Unlock()
-	if err != nil {
-		return nil, err
+	if pc == nil {
+		return nil, fmt.Errorf("get nil check conn, ins:%s", cp.Addr())
 	}
-	ctx := context.TODO()
-	return s.StatisticSlave[index].Get(ctx)
+
+	if len(healthCheckSql) > 0 {
+		_, err := pc.ExecuteWithTimeout(healthCheckSql, 0, ExecTimeOut)
+		if err == nil {
+			cp.SetLastChecked()
+			return pc, nil
+		}
+		log.Warn("[ns:%s instance:%s] exec health check sql:%s sqlError:%v", name, cp.Addr(), healthCheckSql, err)
+		if mysql.IsServerShutdownErr(err) || mysql.IsTableSpaceMissingErr(err) || mysql.IsTableSpaceDiscardeErr(err) || err == ErrExecuteTimeout {
+			pc.Close()
+			return nil, fmt.Errorf("exec health check query error:%s", err)
+		}
+	}
+	if err = pc.PingWithTimeout(GetConnTimeout); err != nil {
+		pc.Close()
+		return nil, fmt.Errorf("ping conn error:%s", err)
+	}
+
+	cp.SetLastChecked()
+	return pc, nil
+}
+
+func allSlaveIsOffline(SlaveStatusMap *sync.Map) bool {
+	var result = true
+	SlaveStatusMap.Range(func(k, v interface{}) bool {
+		if v == StatusUp {
+			result = false
+			return false
+		}
+		return true
+	})
+
+	return result
+}
+
+// GetSlaveConn get connection from salve
+func (s *Slice) GetSlaveConn(slavesInfo *DBInfo, localSlaveReadPriority int) (PooledConnect, error) {
+	if len(slavesInfo.ConnPool) == 0 || allSlaveIsOffline(slavesInfo.StatusMap) {
+		return nil, errors.ErrNoSlaveDB
+	}
+	var index int
+	partialFoundIndex, foundIndex := -1, -1
+	// find the idx of the ConnPool that isn't mark as down
+	for size := len(slavesInfo.ConnPool); size > 0; size-- {
+		s.Lock()
+		var err error
+		index, err = slavesInfo.Balancer.next()
+		s.Unlock()
+		if err != nil {
+			return nil, err
+		}
+
+		if status, err := slavesInfo.GetStatus(index); err != nil {
+			log.Debug("get slave status addr:%s,err:%s", slavesInfo.ConnPool[index].Addr(), err)
+			continue
+		} else if status == StatusDown {
+			log.Debug("get slave status err or down,addr:%s", slavesInfo.ConnPool[index].Addr())
+			continue
+		}
+
+		// partial found slave cause slave status StatusUP
+		partialFoundIndex = index
+
+		// check localSlaveReadPriority and update foundIndex
+		if localSlaveReadPriority == LocalSlaveReadClosed {
+			foundIndex = partialFoundIndex
+			break
+		}
+		// check datacenter
+		if slavesInfo.ConnPool[index].Datacenter() == s.ProxyDatacenter {
+			foundIndex = index
+			break
+		}
+	}
+	if foundIndex >= 0 {
+		return slavesInfo.ConnPool[foundIndex].Get(context.TODO())
+	}
+	if partialFoundIndex >= 0 && localSlaveReadPriority != LocalSlaveReadForce {
+		return slavesInfo.ConnPool[partialFoundIndex].Get(context.TODO())
+	}
+	return nil, fmt.Errorf("get backend conn error,no local datacenter slaves")
 }
 
 // Close close the pool in slice
@@ -142,16 +372,18 @@ func (s *Slice) Close() error {
 	s.Lock()
 	defer s.Unlock()
 	// close master
-	s.Master.Close()
+	for i := range s.Master.ConnPool {
+		s.Master.ConnPool[i].Close()
+	}
 
 	// close slaves
-	for i := range s.Slave {
-		s.Slave[i].Close()
+	for i := range s.Slave.ConnPool {
+		s.Slave.ConnPool[i].Close()
 	}
 
 	// close statistic slaves
-	for i := range s.StatisticSlave {
-		s.StatisticSlave[i].Close()
+	for i := range s.StatisticSlave.ConnPool {
+		s.StatisticSlave.ConnPool[i].Close()
 	}
 
 	return nil
@@ -166,32 +398,56 @@ func (s *Slice) ParseMaster(masterStr string) error {
 	if err != nil {
 		return err
 	}
-	s.Master = NewConnectionPool(masterStr, s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID)
-	s.Master.Open()
+	dc, err := util.GetInstanceDatacenter(masterStr)
+	if err != nil {
+		log.Warn("get master(%s) datacenter err:%s,will use default proxy datacenter.", masterStr, err)
+		dc = s.ProxyDatacenter
+	}
+	connectionPool := NewConnectionPool(masterStr, s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability, s.Cfg.InitConnect, dc)
+	if err := connectionPool.Open(); err != nil {
+		return err
+	}
+
+	status := &sync.Map{}
+	status.Store(0, StatusUp)
+
+	s.Master = &DBInfo{[]ConnectionPool{connectionPool}, nil, status, []string{dc}}
 	return nil
 }
 
 // ParseSlave create connection pool of slaves
 // (127.0.0.1:3306@2,192.168.0.12:3306@3)
-func (s *Slice) ParseSlave(slaves []string) error {
+func (s *Slice) ParseSlave(slaves []string) (*DBInfo, error) {
 	if len(slaves) == 0 {
-		return nil
+		return &DBInfo{}, nil
 	}
 
 	var err error
 	var weight int
 
 	count := len(slaves)
-	s.Slave = make([]ConnectionPool, 0, count)
+	connPool := make([]ConnectionPool, 0, count)
 	slaveWeights := make([]int, 0, count)
+	datacenter := make([]string, 0, count)
 
 	//parse addr and weight
 	for i := 0; i < count; i++ {
+		if slaves[i] == "" {
+			continue
+		}
+		// slave[i] 格式: c3-mysql-test00.bj:3306@10#bj
+		dc := ""
+		addrAndWeightDatacenter := strings.Split(slaves[i], datacenterSplit)
+		if len(addrAndWeightDatacenter) == 2 {
+			dc = addrAndWeightDatacenter[1]
+			slaves[i] = addrAndWeightDatacenter[0]
+		}
+
 		addrAndWeight := strings.Split(slaves[i], weightSplit)
 		if len(addrAndWeight) == 2 {
 			weight, err = strconv.Atoi(addrAndWeight[1])
 			if err != nil {
-				return err
+				return nil, err
 			}
 		} else {
 			weight = 1
@@ -199,56 +455,174 @@ func (s *Slice) ParseSlave(slaves []string) error {
 		slaveWeights = append(slaveWeights, weight)
 		idleTimeout, err := util.Int2TimeDuration(s.Cfg.IdleTimeout)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID)
-		cp.Open()
-		s.Slave = append(s.Slave, cp)
-	}
-	s.slaveBalancer = newBalancer(slaveWeights, len(s.Slave))
-	return nil
-}
-
-// ParseStatisticSlave create connection pool of statistic slaves
-// slaveStr(127.0.0.1:3306@2,192.168.0.12:3306@3)
-func (s *Slice) ParseStatisticSlave(statisticSlaves []string) error {
-	if len(statisticSlaves) == 0 {
-		return nil
-	}
-
-	var err error
-	var weight int
-
-	count := len(statisticSlaves)
-	s.StatisticSlave = make([]ConnectionPool, 0, count)
-	statisticSlaveWeights := make([]int, 0, count)
-
-	//parse addr and weight
-	for i := 0; i < count; i++ {
-		addrAndWeight := strings.Split(statisticSlaves[i], weightSplit)
-		if len(addrAndWeight) == 2 {
-			weight, err = strconv.Atoi(addrAndWeight[1])
+		// if dc not config, get hostname prefix and suffix
+		if dc == "" {
+			dc, err = util.GetInstanceDatacenter(addrAndWeight[0])
 			if err != nil {
-				return err
+				log.Warn("get master(%s) datacenter err:%s,will use default proxy datacenter.", addrAndWeight[0], err)
+				dc = s.ProxyDatacenter
 			}
-		} else {
-			weight = 1
 		}
-		statisticSlaveWeights = append(statisticSlaveWeights, weight)
-		idleTimeout, err := util.Int2TimeDuration(s.Cfg.IdleTimeout)
-		if err != nil {
-			return err
+		datacenter = append(datacenter, dc)
+
+		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability, s.Cfg.InitConnect, dc)
+		if err = cp.Open(); err != nil {
+			return nil, err
 		}
-		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID)
-		cp.Open()
-		s.StatisticSlave = append(s.StatisticSlave, cp)
+		connPool = append(connPool, cp)
 	}
-	s.statisticSlaveBalancer = newBalancer(statisticSlaveWeights, len(s.StatisticSlave))
-	return nil
+
+	if len(slaveWeights) == 0 {
+		return &DBInfo{}, nil
+	}
+	slaveBalancer := newBalancer(slaveWeights, len(connPool))
+	StatusMap := &sync.Map{}
+	for idx := range connPool {
+		StatusMap.Store(idx, StatusUp)
+	}
+
+	return &DBInfo{connPool, slaveBalancer, StatusMap, datacenter}, nil
 }
 
 // SetCharsetInfo set charset
 func (s *Slice) SetCharsetInfo(charset string, collationID mysql.CollationID) {
 	s.charset = charset
 	s.collationID = collationID
+}
+
+type SlaveStatus struct {
+	SecondsBehindMaster uint64
+	SlaveIORunning      string
+	SlaveSQLRunning     string
+	MasterLogFile       string
+	ReadMasterLogPos    uint64
+	RelayMasterLogFile  string
+	ExecMasterLogPos    uint64
+}
+
+// checkSlaveSyncStatus check slave sync status, if slave is not sync, return false
+func checkSlaveSyncStatus(pc PooledConnect, secondsBehindMaster int) (bool, error) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Fatal("check slave sync status panic:%s", err)
+		}
+	}()
+
+	// if secondsBehindMaster is 0, we won't check slave sync status
+	if secondsBehindMaster == 0 {
+		return true, nil
+	}
+
+	skipCheck, slaveStatus, err := GetSlaveStatus(pc)
+	if err != nil {
+		return false, fmt.Errorf("get slave status error:%s", err)
+	}
+	// if suspectedMaster is true, we think this is a master
+	if skipCheck {
+		return true, nil
+	}
+
+	if slaveStatus.SecondsBehindMaster > uint64(secondsBehindMaster) {
+		return false, fmt.Errorf("SecondsBehindMaster(%d) larger than %d", slaveStatus.SecondsBehindMaster, secondsBehindMaster)
+	}
+
+	if slaveStatus.SlaveIORunning != "Yes" {
+		return false, fmt.Errorf("io thread not running")
+	}
+	if slaveStatus.SlaveSQLRunning != "Yes" {
+		return false, fmt.Errorf("sql thread not running")
+	}
+
+	return true, nil
+}
+
+// GetSlaveStatus get slave status, will check bellow cases:
+// 1. if we have no privileges to get slave status, will return skipCheck true.
+// 2. if slave status result is nil,maybe it's master but configured as slave, will return skipCheck true.
+// 3. return slave status result with skipCheck false.
+func GetSlaveStatus(conn PooledConnect) (bool, SlaveStatus, error) {
+	var slaveStatus SlaveStatus
+	res, err := conn.Execute("show slave status;", 0)
+
+	// if exec error is syntax error or no privilege, will return skipCheck true.
+	if err != nil {
+		if mysql.IsSQLNoPrivilegeErr(err) {
+			log.Warn("addr:%s, get slave status error,maybe configured error.err:%s.", conn.GetAddr(), err)
+			return true, slaveStatus, nil
+		}
+		return false, slaveStatus, fmt.Errorf("execute show slave status error:%s", err)
+	}
+
+	// if we have no privileges to get slave status, will return skipCheck true.
+	if res.RowNumber() == 0 {
+		log.Debug("addr:%s, slave status is empty,maybe is master\n", conn.GetAddr())
+		return true, slaveStatus, nil
+	}
+
+	for _, f := range res.Fields {
+		fieldName := string(f.Name)
+		var col interface{}
+		col, err = res.GetValueByName(0, fieldName)
+		if err != nil {
+			_ = log.Warn("get field name Get '%s' failed in SlaveStatus, err: %v", fieldName, err)
+			break
+		}
+
+		switch strings.ToLower(fieldName) {
+		case "seconds_behind_master":
+			switch col.(type) {
+			case uint64:
+				slaveStatus.SecondsBehindMaster = col.(uint64)
+			default:
+				slaveStatus.SecondsBehindMaster = 0
+			}
+		case "slave_io_running":
+			switch col.(type) {
+			case string:
+				slaveStatus.SlaveIORunning = col.(string)
+			default:
+				slaveStatus.SlaveIORunning = "No"
+			}
+		case "slave_sql_running":
+			switch col.(type) {
+			case string:
+				slaveStatus.SlaveSQLRunning = col.(string)
+			default:
+				slaveStatus.SlaveSQLRunning = "No"
+			}
+		case "master_log_file":
+			switch col.(type) {
+			case string:
+				slaveStatus.MasterLogFile = col.(string)
+			default:
+				slaveStatus.MasterLogFile = ""
+			}
+		case "read_master_log_pos":
+			switch col.(type) {
+			case uint64:
+				slaveStatus.ReadMasterLogPos = col.(uint64)
+			default:
+				slaveStatus.ReadMasterLogPos = 0
+			}
+		case "relay_master_log_file":
+			switch col.(type) {
+			case string:
+				slaveStatus.RelayMasterLogFile = col.(string)
+			default:
+				slaveStatus.RelayMasterLogFile = ""
+			}
+		case "exec_master_log_pos":
+			switch col.(type) {
+			case uint64:
+				slaveStatus.ExecMasterLogPos = col.(uint64)
+			default:
+				slaveStatus.ExecMasterLogPos = 0
+			}
+		default:
+			continue
+		}
+	}
+	return false, slaveStatus, err
 }

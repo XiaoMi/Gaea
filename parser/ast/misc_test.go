@@ -14,17 +14,14 @@
 package ast_test
 
 import (
-	. "github.com/pingcap/check"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/parser"
 	. "github.com/XiaoMi/Gaea/parser/ast"
 	"github.com/XiaoMi/Gaea/parser/auth"
 )
-
-var _ = Suite(&testMiscSuite{})
-
-type testMiscSuite struct {
-}
 
 type visitor struct{}
 
@@ -44,7 +41,7 @@ func (visitor1) Enter(in Node) (Node, bool) {
 	return in, true
 }
 
-func (ts *testMiscSuite) TestMiscVisitorCover(c *C) {
+func TestMiscVisitorCover(t *testing.T) {
 	valueExpr := NewValueExpr(42)
 	stmts := []Node{
 		&AdminStmt{},
@@ -85,7 +82,7 @@ func (ts *testMiscSuite) TestMiscVisitorCover(c *C) {
 	}
 }
 
-func (ts *testMiscSuite) TestDDLVisitorCover(c *C) {
+func TestDDLVisitorCoverMisc(t *testing.T) {
 	sql := `
 create table t (c1 smallint unsigned, c2 int unsigned);
 alter table t add column a smallint unsigned after b;
@@ -102,14 +99,14 @@ constraint foreign key (jobabbr) references ffxi_jobtype (jobabbr) on delete cas
 `
 	parse := parser.New()
 	stmts, _, err := parse.Parse(sql, "", "")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	for _, stmt := range stmts {
 		stmt.Accept(visitor{})
 		stmt.Accept(visitor1{})
 	}
 }
 
-func (ts *testMiscSuite) TestDMLVistorCover(c *C) {
+func TestDMLVistorCover(t *testing.T) {
 	sql := `delete from somelog where user = 'jcole' order by timestamp_column limit 1;
 delete t1, t2 from t1 inner join t2 inner join t3 where t1.id=t2.id and t2.id=t3.id;
 select * from t where exists(select * from t k where t.c = k.c having sum(c) = 1);
@@ -121,14 +118,14 @@ load data infile '/tmp/t.csv' into table t fields terminated by 'ab' enclosed by
 
 	p := parser.New()
 	stmts, _, err := p.Parse(sql, "", "")
-	c.Assert(err, IsNil)
+	require.NoError(t, err)
 	for _, stmt := range stmts {
 		stmt.Accept(visitor{})
 		stmt.Accept(visitor1{})
 	}
 }
 
-func (ts *testMiscSuite) TestSensitiveStatement(c *C) {
+func TestSensitiveStatement(t *testing.T) {
 	positive := []StmtNode{
 		&SetPwdStmt{},
 		&CreateUserStmt{},
@@ -137,7 +134,7 @@ func (ts *testMiscSuite) TestSensitiveStatement(c *C) {
 	}
 	for i, stmt := range positive {
 		_, ok := stmt.(SensitiveStmtNode)
-		c.Assert(ok, IsTrue, Commentf("%d, %#v fail", i, stmt))
+		require.Truef(t, ok, "%d, %#v fail", i, stmt)
 	}
 
 	negative := []StmtNode{
@@ -155,11 +152,11 @@ func (ts *testMiscSuite) TestSensitiveStatement(c *C) {
 	}
 	for _, stmt := range negative {
 		_, ok := stmt.(SensitiveStmtNode)
-		c.Assert(ok, IsFalse)
+		require.False(t, ok)
 	}
 }
 
-func (ts *testMiscSuite) TestUserSpec(c *C) {
+func TestUserSpec(t *testing.T) {
 	hashString := "*3D56A309CD04FA2EEF181462E59011F075C89548"
 	u := UserSpec{
 		User: &auth.UserIdentity{
@@ -172,25 +169,25 @@ func (ts *testMiscSuite) TestUserSpec(c *C) {
 		},
 	}
 	pwd, ok := u.EncodedPassword()
-	c.Assert(ok, IsTrue)
-	c.Assert(pwd, Equals, u.AuthOpt.HashString)
+	require.True(t, ok)
+	require.Equal(t, u.AuthOpt.HashString, pwd)
 
 	u.AuthOpt.HashString = "not-good-password-format"
 	pwd, ok = u.EncodedPassword()
-	c.Assert(ok, IsFalse)
+	require.False(t, ok)
 
 	u.AuthOpt.ByAuthString = true
 	pwd, ok = u.EncodedPassword()
-	c.Assert(ok, IsTrue)
-	c.Assert(pwd, Equals, hashString)
+	require.True(t, ok)
+	require.Equal(t, hashString, pwd)
 
 	u.AuthOpt.AuthString = ""
 	pwd, ok = u.EncodedPassword()
-	c.Assert(ok, IsTrue)
-	c.Assert(pwd, Equals, "")
+	require.True(t, ok)
+	require.Equal(t, "", pwd)
 }
 
-func (ts *testMiscSuite) TestTableOptimizerHintRestore(c *C) {
+func TestTableOptimizerHintRestore(t *testing.T) {
 	testCases := []NodeRestoreTestCase{
 		{"TIDB_SMJ(`t1`)", "TIDB_SMJ(`t1`)"},
 		{"TIDB_SMJ(t1)", "TIDB_SMJ(`t1`)"},
@@ -202,5 +199,5 @@ func (ts *testMiscSuite) TestTableOptimizerHintRestore(c *C) {
 	extractNodeFunc := func(node Node) Node {
 		return node.(*SelectStmt).TableHints[0]
 	}
-	RunNodeRestoreTest(c, testCases, "select /*+ %s */ * from t1 join t2", extractNodeFunc)
+	runNodeRestoreTest(t, testCases, "select /*+ %s */ * from t1 join t2", extractNodeFunc)
 }

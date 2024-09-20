@@ -29,8 +29,10 @@
 package mysql
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"crypto/sha256"
+	"encoding/hex"
 	"math/rand"
 	"time"
 	"unicode/utf8"
@@ -71,6 +73,32 @@ func CalcPassword(scramble, password []byte) []byte {
 	return scramble
 }
 
+// CheckHashPassword 以密文密码模式验证客户端密码
+func CheckHashPassword(clientResp, scramble, encryptPassword []byte) bool {
+	// Client
+	// SHA1('password') XOR SHA1("20-bytes rnd"+SHA1(SHA1('password')))
+	// Server
+	// SHA1(client-response XOR SHA1("20-bytes rnd"+mysql.user.password))
+	if len(encryptPassword) == 0 {
+		return false
+	}
+	hashBytes, _ := hex.DecodeString(string(encryptPassword))
+	crypt := sha1.New()
+	crypt.Write(scramble)
+	crypt.Write(hashBytes)
+	hash := crypt.Sum(nil)
+
+	for i := range clientResp {
+		clientResp[i] ^= hash[i]
+	}
+
+	crypt.Reset()
+	crypt.Write(clientResp)
+	hash = crypt.Sum(nil)
+
+	return bytes.Equal(hashBytes, hash)
+}
+
 func CalcCachingSha2Password(salt []byte, password string) []byte {
 	if len(password) == 0 {
 		return nil
@@ -94,6 +122,35 @@ func CalcCachingSha2Password(salt []byte, password string) []byte {
 	}
 
 	return message1
+}
+
+// CalcPasswordSHA1 根据一次sha1加密半成品生成最终加密串
+func CalcPasswordSHA1(scramble, passwordSHA1 []byte) []byte {
+	if len(passwordSHA1) == 0 {
+		return nil
+	}
+
+	// stage1 = SHA1(password)
+	stage1, _ := hex.DecodeString(string(passwordSHA1))
+
+	// scrambleHash = SHA1(scramble + SHA1(stage1Hash))
+	// inner Hash
+	crypt := sha1.New()
+	crypt.Reset()
+	crypt.Write(stage1)
+	hash := crypt.Sum(nil)
+
+	// outer Hash
+	crypt.Reset()
+	crypt.Write(scramble)
+	crypt.Write(hash)
+	scramble = crypt.Sum(nil)
+
+	// token = scrambleHash XOR stage1Hash
+	for i := range scramble {
+		scramble[i] ^= stage1[i]
+	}
+	return scramble
 }
 
 // RandomBuf return random salt, seed must be in the range of ascii

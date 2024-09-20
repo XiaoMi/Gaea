@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -31,6 +32,7 @@ import (
 	"github.com/XiaoMi/Gaea/proxy/sequence"
 	"github.com/XiaoMi/Gaea/util"
 	"github.com/XiaoMi/Gaea/util/cache"
+	"golang.org/x/time/rate"
 )
 
 const (
@@ -44,6 +46,10 @@ const (
 	defaultSlowSQLTime       = 1000  // millisecond
 	defaultMaxSqlExecuteTime = 0     // 默认为0，不开启慢sql熔断功能
 	defaultMaxSqlResultSize  = 10000 // 默认为10000, 限制查询返回的结果集大小不超过该阈值
+	defaultTimeAfterNoAlive  = 32    // 每间隔4秒进行一次检查， 默认 32秒后会探测到实例失败
+	// 认为Slave已下线，如果需要快速判定状态，可减少该值
+	defaultMaxClientConnections = 100000000 //Big enough
+
 )
 
 // UserProperty means runtime user properties
@@ -55,28 +61,41 @@ type UserProperty struct {
 
 // Namespace is struct driected used by server
 type Namespace struct {
-	name               string
-	allowedDBs         map[string]bool
-	defaultPhyDBs      map[string]string // logicDBName-phyDBName
-	sqls               map[string]string //key: sql fingerprint
-	slowSQLTime        int64             // session slow sql time, millisecond, default 1000
-	allowips           []util.IPInfo
-	router             *router.Router
-	sequences          *sequence.SequenceManager
-	slices             map[string]*backend.Slice // key: slice name
-	userProperties     map[string]*UserProperty  // key: user name ,value: user's properties
-	defaultCharset     string
-	defaultCollationID mysql.CollationID
-	openGeneralLog     bool
-	maxSqlExecuteTime  int // session max sql execute time,millisecond
-	maxSqlResultSize   int
-	defaultSlice       string
+	name                   string
+	allowedDBs             map[string]bool
+	defaultPhyDBs          map[string]string // logicDBName-phyDBName
+	sqls                   map[string]string //key: sql fingerprint
+	slowSQLTime            int64             // session slow sql time, millisecond, default 1000
+	allowips               []util.IPInfo
+	router                 *router.Router
+	sequences              *sequence.SequenceManager
+	slices                 map[string]*backend.Slice // key: slice name
+	userProperties         map[string]*UserProperty  // key: user name ,value: user's properties
+	defaultCharset         string
+	defaultCollationID     mysql.CollationID
+	openGeneralLog         bool // 已废弃
+	maxSqlExecuteTime      int  // session max sql execute time,millisecond
+	maxSqlResultSize       int
+	defaultSlice           string
+	downAfterNoAlive       int
+	secondsBehindMaster    uint64
+	supportMultiQuery      bool
+	maxClientConnections   int
+	CheckSelectLock        bool
+	localSlaveReadPriority int
+	setForKeepSession      bool
+	clientQPSLimit         uint32
+	supportLimitTx         bool
 
-	slowSQLCache         *cache.LRUCache
-	errorSQLCache        *cache.LRUCache
-	backendSlowSQLCache  *cache.LRUCache
-	backendErrorSQLCache *cache.LRUCache
-	planCache            *cache.LRUCache
+	slowSQLCache            *cache.LRUCache
+	errorSQLCache           *cache.LRUCache
+	backendSlowSQLCache     *cache.LRUCache
+	backendErrorSQLCache    *cache.LRUCache
+	planCache               *cache.LRUCache
+	CloseCancel             context.CancelFunc
+	limiter                 *rate.Limiter
+	namespaceChangeIndex    uint32
+	allowedSessionVariables map[string]string
 }
 
 // DumpToJSON  means easy encode json
@@ -85,19 +104,20 @@ func (n *Namespace) DumpToJSON() []byte {
 }
 
 // NewNamespace init namespace
-func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
+func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*Namespace, error) {
 	var err error
 	namespace := &Namespace{
-		name:                 namespaceConfig.Name,
-		sqls:                 make(map[string]string, 16),
-		userProperties:       make(map[string]*UserProperty, 2),
-		openGeneralLog:       namespaceConfig.OpenGeneralLog,
-		slowSQLCache:         cache.NewLRUCache(defaultSQLCacheCapacity),
-		errorSQLCache:        cache.NewLRUCache(defaultSQLCacheCapacity),
-		backendSlowSQLCache:  cache.NewLRUCache(defaultSQLCacheCapacity),
-		backendErrorSQLCache: cache.NewLRUCache(defaultSQLCacheCapacity),
-		planCache:            cache.NewLRUCache(defaultPlanCacheCapacity),
-		defaultSlice:         namespaceConfig.DefaultSlice,
+		name:                    namespaceConfig.Name,
+		sqls:                    make(map[string]string, 16),
+		userProperties:          make(map[string]*UserProperty, 2),
+		openGeneralLog:          namespaceConfig.OpenGeneralLog,
+		slowSQLCache:            cache.NewLRUCache(defaultSQLCacheCapacity),
+		errorSQLCache:           cache.NewLRUCache(defaultSQLCacheCapacity),
+		backendSlowSQLCache:     cache.NewLRUCache(defaultSQLCacheCapacity),
+		backendErrorSQLCache:    cache.NewLRUCache(defaultSQLCacheCapacity),
+		planCache:               cache.NewLRUCache(defaultPlanCacheCapacity),
+		defaultSlice:            namespaceConfig.DefaultSlice,
+		allowedSessionVariables: namespaceConfig.AllowedSessionVariables,
 	}
 
 	defer func() {
@@ -105,6 +125,20 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 			namespace.Close(false)
 		}
 	}()
+	var ctx context.Context
+	ctx, namespace.CloseCancel = context.WithCancel(context.TODO())
+
+	// init SupportMultiQuery default true
+	namespace.supportMultiQuery = false
+	if namespaceConfig.SupportMultiQuery {
+		namespace.supportMultiQuery = namespaceConfig.SupportMultiQuery
+	}
+
+	// init CheckSelectLock default true
+	namespace.CheckSelectLock = true
+	if namespaceConfig.CheckSelectLock {
+		namespace.CheckSelectLock = namespaceConfig.CheckSelectLock
+	}
 
 	// init black sql
 	namespace.sqls = parseBlackSqls(namespaceConfig.BlackSQL)
@@ -140,7 +174,7 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 		defaultPhyDBs[strings.TrimSpace(db)] = strings.TrimSpace(phyDB)
 	}
 
-	namespace.defaultPhyDBs, err = parseDefaultPhyDB(defaultPhyDBs, allowDBs)
+	namespace.defaultPhyDBs, err = parseDefaultPhyDB(defaultPhyDBs, allowDBs, namespaceConfig.ShardRules)
 	if err != nil {
 		return nil, fmt.Errorf("parse defaultPhyDBs error: %v", err)
 	}
@@ -163,10 +197,42 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 		namespace.userProperties[user.UserName] = up
 	}
 
+	if namespaceConfig.MaxClientConnections <= 0 {
+		namespace.maxClientConnections = defaultMaxClientConnections
+	} else {
+		namespace.maxClientConnections = namespaceConfig.MaxClientConnections
+	}
+
+	namespace.downAfterNoAlive = namespaceConfig.DownAfterNoAlive
+	if namespace.downAfterNoAlive < 0 {
+		return nil, fmt.Errorf("downAfterNoAlive should be greater than 0")
+	}
+	// not configurable yet, use default
+	if namespace.downAfterNoAlive == 0 {
+		namespace.downAfterNoAlive = defaultTimeAfterNoAlive
+	}
+
+	namespace.secondsBehindMaster = namespaceConfig.SecondsBehindMaster
+
+	// init localSlaveReadPriority
+	switch namespaceConfig.LocalSlaveReadPriority {
+	case backend.LocalSlaveReadPreferred:
+		namespace.localSlaveReadPriority = backend.LocalSlaveReadPreferred
+	case backend.LocalSlaveReadForce:
+		namespace.localSlaveReadPriority = backend.LocalSlaveReadForce
+	default:
+		namespace.localSlaveReadPriority = backend.LocalSlaveReadClosed
+	}
+
 	// init backend slices
-	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID)
+	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID, proxyDatacenter)
 	if err != nil {
 		return nil, fmt.Errorf("init slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
+	}
+
+	//Check slice master and slave status and mark them as unavailable when detect down
+	if namespace.downAfterNoAlive > 0 {
+		namespace.CheckSliceStatus(ctx)
 	}
 
 	// init router
@@ -184,10 +250,20 @@ func NewNamespace(namespaceConfig *models.Namespace) (*Namespace, error) {
 			return nil, fmt.Errorf("init global sequence error: slice not found, sequence: %v", v)
 		}
 		seqName := strings.ToUpper(v.DB) + "." + strings.ToUpper(v.Table)
-		seq := sequence.NewMySQLSequence(globalSequenceSlice, seqName, v.PKName)
+		seq := sequence.NewMySQLSequence(globalSequenceSlice, seqName, v.PKName, v.MaxLimit)
 		sequences.SetSequence(v.DB, v.Table, seq)
 	}
 	namespace.sequences = sequences
+
+	// init global keepSession in namespace
+	namespace.setForKeepSession = namespaceConfig.SetForKeepSession
+
+	// init client qps limit config
+	if namespaceConfig.ClientQPSLimit > 0 {
+		namespace.clientQPSLimit = namespaceConfig.ClientQPSLimit
+		namespace.limiter = rate.NewLimiter(rate.Limit(namespaceConfig.ClientQPSLimit), int(namespaceConfig.ClientQPSLimit))
+		namespace.supportLimitTx = namespaceConfig.SupportLimitTransaction
+	}
 
 	return namespace, nil
 }
@@ -200,6 +276,11 @@ func (n *Namespace) GetName() string {
 // GetSlice return slice of namespace
 func (n *Namespace) GetSlice(name string) *backend.Slice {
 	return n.slices[name]
+}
+
+// GetDefaultSessionVariables return default session variables of namespace
+func (n *Namespace) GetAllowedSessionVariables() map[string]string {
+	return n.allowedSessionVariables
 }
 
 // GetRouter return router of namespace
@@ -261,10 +342,7 @@ func (n *Namespace) IsSQLAllowed(reqCtx *util.RequestContext, sql string) bool {
 	if len(n.sqls) == 0 {
 		return true
 	}
-
-	fingerprint := mysql.GetFingerprint(sql)
-	reqCtx.Set("fingerprint", fingerprint)
-	md5 := mysql.GetMd5(fingerprint)
+	md5 := getSQLFingerprintMd5(reqCtx, sql)
 	if _, ok := n.sqls[md5]; ok {
 		return false
 	}
@@ -450,6 +528,9 @@ func (n *Namespace) ClearBackendErrorSQLFingerprints() {
 // Close recycle resources of namespace
 func (n *Namespace) Close(delay bool) {
 	var err error
+	// close check alive
+	n.CloseCancel()
+
 	// delay close time
 	if delay {
 		time.Sleep(time.Second * namespaceDelayClose)
@@ -465,14 +546,29 @@ func (n *Namespace) Close(delay bool) {
 	n.errorSQLCache.Clear()
 	n.backendSlowSQLCache.Clear()
 	n.backendErrorSQLCache.Clear()
+	n.planCache.Clear()
+	_ = log.Warn("close ns:%s", n.name)
 }
 
-func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID) (*backend.Slice, error) {
+func (n *Namespace) CheckSliceStatus(ctx context.Context) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Notice("checkSlicesStatus recover error: %s", err)
+		}
+	}()
+
+	for _, slice := range n.slices {
+		slice.CheckStatus(ctx, n.name, n.downAfterNoAlive, int(n.secondsBehindMaster))
+	}
+}
+
+func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID, dc string) (*backend.Slice, error) {
 	var err error
 	s := new(backend.Slice)
 	s.Cfg = *cfg
+	s.ProxyDatacenter = dc
 	s.SetCharsetInfo(charset, collationID)
-
+	s.HealthCheckSql = cfg.HealthCheckSql
 	// parse master
 	err = s.ParseMaster(cfg.Master)
 	if err != nil {
@@ -480,21 +576,22 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	}
 
 	// parse slaves
-	err = s.ParseSlave(cfg.Slaves)
+	slaveInfo, err := s.ParseSlave(cfg.Slaves)
 	if err != nil {
 		return nil, err
 	}
+	s.Slave = slaveInfo
 
 	// parse statistic slaves
-	err = s.ParseStatisticSlave(cfg.StatisticSlaves)
+	statisticSalve, err := s.ParseSlave(cfg.StatisticSlaves)
 	if err != nil {
 		return nil, err
 	}
-
+	s.StatisticSlave = statisticSalve
 	return s, nil
 }
 
-func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.CollationID) (map[string]*backend.Slice, error) {
+func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.CollationID, dc string) (map[string]*backend.Slice, error) {
 	slices := make(map[string]*backend.Slice, len(cfgSlices))
 	for _, v := range cfgSlices {
 		v.Name = strings.TrimSpace(v.Name) // modify origin slice name, trim space
@@ -502,7 +599,7 @@ func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.Co
 			return nil, fmt.Errorf("duplicate slice [%s]", v.Name)
 		}
 
-		s, err := parseSlice(v, charset, collationID)
+		s, err := parseSlice(v, charset, collationID, dc)
 		if err != nil {
 			return nil, err
 		}
@@ -582,7 +679,7 @@ func parseCharset(charset, collation string) (string, mysql.CollationID, error) 
 	return charset, collationID, nil
 }
 
-func parseDefaultPhyDB(defaultPhyDBs map[string]string, allowedDBs map[string]bool) (map[string]string, error) {
+func parseDefaultPhyDB(defaultPhyDBs map[string]string, allowedDBs map[string]bool, shardRules []*models.Shard) (map[string]string, error) {
 	// no logic database mode
 	if len(defaultPhyDBs) == 0 {
 		result := make(map[string]string, len(allowedDBs))
@@ -598,5 +695,17 @@ func parseDefaultPhyDB(defaultPhyDBs map[string]string, allowedDBs map[string]bo
 			return nil, fmt.Errorf("db %s have no phy db", db)
 		}
 	}
+
+	// add real phyDB to phyDBs
+	for _, rule := range shardRules {
+		realDBs, err := router.GetRealDatabases(rule.Databases)
+		if err != nil {
+			return defaultPhyDBs, err
+		}
+		for _, realDB := range realDBs {
+			defaultPhyDBs[realDB] = realDB
+		}
+	}
+
 	return defaultPhyDBs, nil
 }

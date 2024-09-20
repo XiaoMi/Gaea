@@ -30,21 +30,23 @@ import (
 )
 
 var (
-	timeWheelUnit       = time.Second * 1
+	timeWheelUnit       = time.Second * 5
 	timeWheelBucketsNum = 3600
 )
 
 // Server means proxy that serve client request
 type Server struct {
-	closed         sync2.AtomicBool
-	listener       net.Listener
-	sessionTimeout time.Duration
-	tw             *util.TimeWheel
-	adminServer    *AdminServer
-	manager        *Manager
-	EncryptKey     string
-	ServerVersion  string
-	AuthPlugin     string
+	closed                     sync2.AtomicBool
+	listener                   net.Listener
+	sessionTimeout             time.Duration
+	tw                         *util.TimeWheel
+	adminServer                *AdminServer
+	manager                    *Manager
+	EncryptKey                 string
+	ServerVersion              string
+	ServerVersionCompareStatus *util.VersionCompareStatus
+	AuthPlugin                 string
+	ServerConfig               *models.Proxy
 }
 
 // NewServer create new server
@@ -54,9 +56,12 @@ func NewServer(cfg *models.Proxy, manager *Manager) (*Server, error) {
 
 	// init key
 	s.EncryptKey = cfg.EncryptKey
+	s.ServerConfig = cfg
 	s.manager = manager
-	s.ServerVersion = cfg.ServerVersion
+	s.ServerVersion = util.CompactServerVersion(cfg.ServerVersion)
+	s.ServerVersionCompareStatus = util.NewVersionCompareStatus(cfg.ServerVersion)
 	s.AuthPlugin = cfg.AuthPlugin
+
 	if len(s.AuthPlugin) > 0 {
 		DefaultCapability |= mysql.ClientPluginAuth
 	}
@@ -124,30 +129,30 @@ func (s *Server) onConn(c net.Conn) {
 		cc.Close()
 	}()
 
-	if err := cc.Handshake(); err != nil {
-		log.Warn("[server] onConn error: %s", err.Error())
-		if err != mysql.ErrBadConn {
+	if _, err := cc.Handshake(); err != nil {
+		if err.Error() != mysql.ErrBadConn.Error() && err.Error() != mysql.ErrResetConn.Error() {
+			log.Warn("[server] onConn error: %s", err.Error())
 			cc.c.writeErrorPacket(err)
 		}
 		return
 	}
 
-	// must invoke after handshake
-	if allowConnect := cc.IsAllowConnect(); allowConnect == false {
-		err := mysql.NewError(mysql.ErrAccessDenied, "ip address access denied by gaea")
-		cc.c.writeErrorPacket(err)
-		return
-	}
+	// set keep session flag
+	cc.executor.keepSession = cc.getNamespace().setForKeepSession
+
+	// set user privileges flag
+	cc.executor.userPriv = cc.getNamespace().userProperties[cc.executor.user].RWFlag
 
 	// added into time wheel
 	s.tw.Add(s.sessionTimeout, cc, cc.Close)
-	log.Notice("Connected conn_id=%d, %s@%s (%s) namespace:%s capability: %d",
+	_ = s.manager.statistics.generalLogger.Notice("Connected - conn_id=%d, ns=%s, %s@%s/%s, capability: %d",
 		cc.c.ConnectionID,
+		cc.executor.namespace,
 		cc.executor.user,
 		cc.executor.clientAddr,
 		cc.executor.db,
-		cc.executor.namespace,
 		cc.c.capability)
+
 	cc.Run()
 }
 
@@ -232,5 +237,34 @@ func (s *Server) DeleteNamespace(name string) error {
 	}
 
 	log.Notice("delete namespace end: %s", name)
+	return nil
+}
+
+func (s *Server) ReloadProxyConfig() error {
+	cfg := s.ServerConfig
+	log.Notice("reload proxy config,old config:%#v", cfg)
+	newCfg, err := models.ParseProxyConfigFromFile(cfg.ConfigFile)
+	if err != nil {
+		return fmt.Errorf("parse config file error:%s", err)
+	}
+	cfg.LogFileName = newCfg.LogFileName
+	cfg.LogLevel = newCfg.LogLevel
+	cfg.LogOutput = newCfg.LogOutput
+	cfg.LogPath = newCfg.LogPath
+	cfg.LogKeepDays = newCfg.LogKeepDays
+	cfg.LogKeepCounts = newCfg.LogKeepCounts
+	log.Notice("reload proxy config,new config:%#v", cfg)
+	// reload sys log
+	if err = models.InitXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service, cfg.LogKeepDays, cfg.LogKeepCounts); err != nil {
+		return fmt.Errorf("init xlog error:%s", err)
+	}
+	// reload general log
+	stm := s.manager.GetStatisticManager()
+	oldGeneralLogger := stm.generalLogger
+	if stm.generalLogger, err = initGeneralLogger(cfg); err != nil {
+		return fmt.Errorf("reset general logger error:%s", err)
+	}
+	oldGeneralLogger.Close()
+
 	return nil
 }

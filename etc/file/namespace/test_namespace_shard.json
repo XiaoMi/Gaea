@@ -25,7 +25,8 @@
             "statistic_slaves": [],
             "capacity": 12,
             "max_capacity": 24,
-            "idle_timeout": 60
+            "idle_timeout": 60,
+            "init_connect": ""
         },
         {
             "name": "slice-1",

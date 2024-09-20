@@ -23,11 +23,11 @@ import (
 func Test_isErrNoNode(t *testing.T) {
 	err := client.Error{}
 	err.Code = client.ErrorCodeKeyNotFound
-	if !isErrNoNode(err) {
+	if !IsErrNoNode(err) {
 		t.Fatalf("test isErrNoNode failed, %v", err)
 	}
 	err.Code = client.ErrorCodeNotFile
-	if isErrNoNode(err) {
+	if IsErrNoNode(err) {
 		t.Fatalf("test isErrNoNode failed, %v", err)
 	}
 }
