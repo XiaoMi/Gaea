@@ -34,5 +34,3 @@ jobs:
 
       - name: Run Linelint
         uses: fernandrone/linelint@0.0.4
-        with:
-          args: "--config linelint.yml"
