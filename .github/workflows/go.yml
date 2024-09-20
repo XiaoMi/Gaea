@@ -99,12 +99,12 @@ jobs:
 
       - name: Pull Docker image
         run: |
-          docker pull fieelina/gaea-test-amd64:v2.4  # 确认这个镜像是可用的
+          docker pull fieelina/gaea-test-amd64-mysql8:v2.4  # 确认这个镜像是可用的
 
       - name: Run Mysql8 E2E tests
         run: |
           docker run --rm \
             -v $(pwd):/workspace \
             -w /workspace \
-            fieelina/gaea-test-amd64:v2.4 \
+            fieelina/gaea-test-amd64-mysql8:v2.4 \
             make e2e-test-mysql8
