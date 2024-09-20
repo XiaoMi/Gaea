@@ -751,6 +751,7 @@ func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backen
 
 	select {
 	case <-ctx.Done():
+		pc.Close()
 		log.Warn("exec sql: %s, error: %s", sql, errors.ErrTimeLimitExceeded.Error())
 		return nil, fmt.Errorf("%v %dms", errors.ErrTimeLimitExceeded, maxExecuteTime)
 	case <-done:

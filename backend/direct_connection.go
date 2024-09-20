@@ -926,6 +926,7 @@ func (dc *DirectConnection) readResultRows(result *mysql.Result, isBinary bool, 
 		result.RowDatas = append(result.RowDatas, data)
 		if maxRows > 0 && len(result.RowDatas) >= maxRows {
 			if err := dc.drainResults(); err != nil {
+				dc.pkgErr = fmt.Errorf("%v", sqlerr.ErrInvalidPacket)
 				return fmt.Errorf("%v %d, drain error: %v", sqlerr.ErrRowsLimitExceeded, maxRows, err)
 			}
 			return fmt.Errorf("%v %d", sqlerr.ErrRowsLimitExceeded, maxRows)
