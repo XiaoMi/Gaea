@@ -1,4 +1,4 @@
-name: Go
+name: Codecov
 
 on:
   push:
