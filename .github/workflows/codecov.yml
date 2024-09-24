@@ -1,23 +1,35 @@
-name: Codecov
+name: Example workflow for Codecov
 
-on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+on: [push]
 
 jobs:
-  code_cov:
-    runs-on: ubuntu-latest
+  run:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    env:
+      OS: ${{ matrix.os }}
+      GO_VERSION: '1.16'  # 选择你需要的 Go 版本
     steps:
       - uses: actions/checkout@v3
-
+      
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: '1.16'
-
+          go-version: ${{ env.GO_VERSION }}
+      
       - name: Run tests and generate coverage report
         run: |
           go test -coverprofile=coverage.out -gcflags="all=-l -N" $(go list ./...) -short
-      -  uses: codecov/codecov-action@v3
+      
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: coverage.out
+          env_vars: OS,GO_VERSION
+          fail_ci_if_error: true
+          flags: unittests
+          name: codecov-umbrella
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
