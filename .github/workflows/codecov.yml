@@ -20,8 +20,4 @@ jobs:
       - name: Run tests and generate coverage report
         run: |
           go test -coverprofile=coverage.out -gcflags="all=-l -N" $(go list ./...) -short
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
-        with:
-          file: coverage.out
+      -  uses: codecov/codecov-action@v3
