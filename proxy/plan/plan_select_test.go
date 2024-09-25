@@ -2740,350 +2740,349 @@ func TestSelectKingshardNumRangeReverse(t *testing.T) {
 	}
 }
 
-/*
-	func TestSelectKingshardDateYear(t *testing.T) {
-		ns, err := preparePlanInfo()
-		if err != nil {
-			t.Fatalf("prepare namespace error: %v", err)
-		}
-
-		tests := []SQLTestcase{
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_year where create_time > 1564070400", // 2019/07/26 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-1": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_year_2019` WHERE `create_time`>1564070400",
-						},
-					},
-				},
-			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_year where create_time > 1406304000", // 2014/07/26 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-0": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_year_2014` WHERE `create_time`>1406304000",
-							"SELECT * FROM `tbl_ks_year_2015` WHERE `create_time`>1406304000",
-							"SELECT * FROM `tbl_ks_year_2016` WHERE `create_time`>1406304000",
-							"SELECT * FROM `tbl_ks_year_2017` WHERE `create_time`>1406304000",
-						},
-					},
-					"slice-1": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_year_2018` WHERE `create_time`>1406304000",
-							"SELECT * FROM `tbl_ks_year_2019` WHERE `create_time`>1406304000",
-						},
-					},
-				},
-			},
-			{
-				db:   "db_ks",
-				sql:  "select * from tbl_ks_year where create_time < 1388505600", // 2014/01/01 00:00:00
-				sqls: map[string]map[string][]string{},
-			},
-			{
-				db:   "db_ks",
-				sql:  "select * from tbl_ks_year where create_time < 1385827200", // 2013/12/01 00:00:00
-				sqls: map[string]map[string][]string{},
-			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_year where create_time <= 1388505600", // 2014/01/01 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-0": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_year_2014` WHERE `create_time`<=1388505600",
-						},
-					},
-				},
-			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_year where create_time <= 1388505600", // 2014/01/01 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-0": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_year_2014` WHERE `create_time`<=1388505600",
-						},
-					},
-				},
-			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_year where create_time > 1514735999", // 2017/12/31 23:59:59
-				sqls: map[string]map[string][]string{
-					"slice-0": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_year_2017` WHERE `create_time`>1514735999",
-						},
-					},
-					"slice-1": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_year_2018` WHERE `create_time`>1514735999",
-							"SELECT * FROM `tbl_ks_year_2019` WHERE `create_time`>1514735999",
-						},
-					},
-				},
-			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_year where create_time >= 1514736000", // 2018/01/01 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-1": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_year_2018` WHERE `create_time`>=1514736000",
-							"SELECT * FROM `tbl_ks_year_2019` WHERE `create_time`>=1514736000",
-						},
-					},
-				},
-			},
-			{
-				db:   "db_ks",
-				sql:  "select * from tbl_ks_year where create_time >= 1577808000", // 2020/01/01 00:00:00
-				sqls: map[string]map[string][]string{},
-			},
-		}
-
-		for _, test := range tests {
-			t.Run(test.sql, getTestFunc(ns, test))
-		}
+func TestSelectKingshardDateYear(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
 	}
 
-	func TestSelectKingshardDateMonth(t *testing.T) {
-		ns, err := preparePlanInfo()
-		if err != nil {
-			t.Fatalf("prepare namespace error: %v", err)
-		}
-
-		tests := []SQLTestcase{
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_month where create_time > 1398873600", // 2014/05/01 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-0": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_month_201405` WHERE `create_time`>1398873600",
-							"SELECT * FROM `tbl_ks_month_201406` WHERE `create_time`>1398873600",
-						},
-					},
-					"slice-1": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_month_201408` WHERE `create_time`>1398873600",
-							"SELECT * FROM `tbl_ks_month_201409` WHERE `create_time`>1398873600",
-						},
+	tests := []SQLTestcase{
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_year where create_time > 1564070400", // 2019/07/26 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_year_2019` WHERE `create_time`>1564070400",
 					},
 				},
 			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_month where create_time > 1398614400", // 2014/04/28 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-0": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_month_201405` WHERE `create_time`>1398614400",
-							"SELECT * FROM `tbl_ks_month_201406` WHERE `create_time`>1398614400",
-						},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_year where create_time > 1406304000", // 2014/07/26 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_year_2014` WHERE `create_time`>1406304000",
+						"SELECT * FROM `tbl_ks_year_2015` WHERE `create_time`>1406304000",
+						"SELECT * FROM `tbl_ks_year_2016` WHERE `create_time`>1406304000",
+						"SELECT * FROM `tbl_ks_year_2017` WHERE `create_time`>1406304000",
 					},
-					"slice-1": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_month_201408` WHERE `create_time`>1398614400",
-							"SELECT * FROM `tbl_ks_month_201409` WHERE `create_time`>1398614400",
-						},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_year_2018` WHERE `create_time`>1406304000",
+						"SELECT * FROM `tbl_ks_year_2019` WHERE `create_time`>1406304000",
 					},
 				},
 			},
-			{
-				db:   "db_ks",
-				sql:  "select * from tbl_ks_month where create_time < 1398873600", // 2014/05/01 00:00:00
-				sqls: map[string]map[string][]string{},
-			},
-			{
-				db:   "db_ks",
-				sql:  "select * from tbl_ks_month where create_time < 1398614400", // 2014/04/28 00:00:00
-				sqls: map[string]map[string][]string{},
-			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_month where create_time < 1404144000", // 2014/07/01 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-0": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_month_201405` WHERE `create_time`<1404144000",
-							"SELECT * FROM `tbl_ks_month_201406` WHERE `create_time`<1404144000",
-						},
+		},
+		{
+			db:   "db_ks",
+			sql:  "select * from tbl_ks_year where create_time < 1388505600", // 2014/01/01 00:00:00
+			sqls: map[string]map[string][]string{},
+		},
+		{
+			db:   "db_ks",
+			sql:  "select * from tbl_ks_year where create_time < 1385827200", // 2013/12/01 00:00:00
+			sqls: map[string]map[string][]string{},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_year where create_time <= 1388505600", // 2014/01/01 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_year_2014` WHERE `create_time`<=1388505600",
 					},
 				},
 			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_month where create_time >= 1404144000", // 2014/07/01 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-1": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_month_201408` WHERE `create_time`>=1404144000",
-							"SELECT * FROM `tbl_ks_month_201409` WHERE `create_time`>=1404144000",
-						},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_year where create_time <= 1388505600", // 2014/01/01 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_year_2014` WHERE `create_time`<=1388505600",
 					},
 				},
 			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_month where create_time > 1412092799", // 2014/09/30 23:59:59
-				sqls: map[string]map[string][]string{
-					"slice-1": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_month_201409` WHERE `create_time`>1412092799",
-						},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_year where create_time > 1514735999", // 2017/12/31 23:59:59
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_year_2017` WHERE `create_time`>1514735999",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_year_2018` WHERE `create_time`>1514735999",
+						"SELECT * FROM `tbl_ks_year_2019` WHERE `create_time`>1514735999",
 					},
 				},
 			},
-			{
-				db:   "db_ks",
-				sql:  "select * from tbl_ks_month where create_time >= 1412092800", // 2014/10/01 00:00:00
-				sqls: map[string]map[string][]string{},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_year where create_time >= 1514736000", // 2018/01/01 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_year_2018` WHERE `create_time`>=1514736000",
+						"SELECT * FROM `tbl_ks_year_2019` WHERE `create_time`>=1514736000",
+					},
+				},
 			},
-			{
-				db:   "db_ks",
-				sql:  "select * from tbl_ks_month where create_time >= 1412438400", // 2014/10/05 00:00:00
-				sqls: map[string]map[string][]string{},
-			},
-		}
-
-		for _, test := range tests {
-			t.Run(test.sql, getTestFunc(ns, test))
-		}
+		},
+		{
+			db:   "db_ks",
+			sql:  "select * from tbl_ks_year where create_time >= 1577808000", // 2020/01/01 00:00:00
+			sqls: map[string]map[string][]string{},
+		},
 	}
 
-	func TestSelectKingshardDateDay(t *testing.T) {
-		ns, err := preparePlanInfo()
-		if err != nil {
-			t.Fatalf("prepare namespace error: %v", err)
-		}
-
-		tests := []SQLTestcase{
-			{
-				db:   "db_ks",
-				sql:  "select * from tbl_ks_day where create_time < 1409500800", // 2014/09/01 00:00:00
-				sqls: map[string]map[string][]string{},
-			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_day where create_time <= 1409500800", // 2014/09/01 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-0": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_day_20140901` WHERE `create_time`<=1409500800",
-						},
-					},
-				},
-			},
-			{
-				db:   "db_ks",
-				sql:  "select * from tbl_ks_day where create_time >= 1410278400", // 2014/09/10 00:00:00
-				sqls: map[string]map[string][]string{},
-			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_day where create_time = 1409846400", // 2014/09/05 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-0": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_day_20140905` WHERE `create_time`=1409846400",
-						},
-					},
-				},
-			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_day where create_time = 1409932800", // 2014/09/06 00:00:00
-			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_day where create_time = 1410019200", // 2014/09/07 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-1": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_day_20140907` WHERE `create_time`=1410019200",
-						},
-					},
-				},
-			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_day where create_time > 1410019200", // 2014/09/07 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-1": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_day_20140907` WHERE `create_time`>1410019200",
-							"SELECT * FROM `tbl_ks_day_20140908` WHERE `create_time`>1410019200",
-						},
-					},
-				},
-			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_day where create_time > 1410019200", // 2014/09/07 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-1": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_day_20140907` WHERE `create_time`>1410019200",
-							"SELECT * FROM `tbl_ks_day_20140908` WHERE `create_time`>1410019200",
-						},
-					},
-				},
-			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_day where create_time < 1410278400", // 2014/09/10 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-0": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_day_20140901` WHERE `create_time`<1410278400",
-							"SELECT * FROM `tbl_ks_day_20140902` WHERE `create_time`<1410278400",
-							"SELECT * FROM `tbl_ks_day_20140903` WHERE `create_time`<1410278400",
-							"SELECT * FROM `tbl_ks_day_20140904` WHERE `create_time`<1410278400",
-							"SELECT * FROM `tbl_ks_day_20140905` WHERE `create_time`<1410278400",
-						},
-					},
-					"slice-1": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_day_20140907` WHERE `create_time`<1410278400",
-							"SELECT * FROM `tbl_ks_day_20140908` WHERE `create_time`<1410278400",
-						},
-					},
-				},
-			},
-			{
-				db:  "db_ks",
-				sql: "select * from tbl_ks_day where create_time >= 1408464000", // 2014/08/20 00:00:00
-				sqls: map[string]map[string][]string{
-					"slice-0": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_day_20140901` WHERE `create_time`>=1408464000",
-							"SELECT * FROM `tbl_ks_day_20140902` WHERE `create_time`>=1408464000",
-							"SELECT * FROM `tbl_ks_day_20140903` WHERE `create_time`>=1408464000",
-							"SELECT * FROM `tbl_ks_day_20140904` WHERE `create_time`>=1408464000",
-							"SELECT * FROM `tbl_ks_day_20140905` WHERE `create_time`>=1408464000",
-						},
-					},
-					"slice-1": {
-						"db_ks": {
-							"SELECT * FROM `tbl_ks_day_20140907` WHERE `create_time`>=1408464000",
-							"SELECT * FROM `tbl_ks_day_20140908` WHERE `create_time`>=1408464000",
-						},
-					},
-				},
-			},
-		}
-
-		for _, test := range tests {
-			t.Run(test.sql, getTestFunc(ns, test))
-		}
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
 	}
-*/
+}
+
+func TestSelectKingshardDateMonth(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_month where create_time > 1398873600", // 2014/05/01 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_month_201405` WHERE `create_time`>1398873600",
+						"SELECT * FROM `tbl_ks_month_201406` WHERE `create_time`>1398873600",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_month_201408` WHERE `create_time`>1398873600",
+						"SELECT * FROM `tbl_ks_month_201409` WHERE `create_time`>1398873600",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_month where create_time > 1398614400", // 2014/04/28 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_month_201405` WHERE `create_time`>1398614400",
+						"SELECT * FROM `tbl_ks_month_201406` WHERE `create_time`>1398614400",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_month_201408` WHERE `create_time`>1398614400",
+						"SELECT * FROM `tbl_ks_month_201409` WHERE `create_time`>1398614400",
+					},
+				},
+			},
+		},
+		{
+			db:   "db_ks",
+			sql:  "select * from tbl_ks_month where create_time < 1398873600", // 2014/05/01 00:00:00
+			sqls: map[string]map[string][]string{},
+		},
+		{
+			db:   "db_ks",
+			sql:  "select * from tbl_ks_month where create_time < 1398614400", // 2014/04/28 00:00:00
+			sqls: map[string]map[string][]string{},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_month where create_time < 1404144000", // 2014/07/01 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_month_201405` WHERE `create_time`<1404144000",
+						"SELECT * FROM `tbl_ks_month_201406` WHERE `create_time`<1404144000",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_month where create_time >= 1404144000", // 2014/07/01 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_month_201408` WHERE `create_time`>=1404144000",
+						"SELECT * FROM `tbl_ks_month_201409` WHERE `create_time`>=1404144000",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_month where create_time > 1412092799", // 2014/09/30 23:59:59
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_month_201409` WHERE `create_time`>1412092799",
+					},
+				},
+			},
+		},
+		{
+			db:   "db_ks",
+			sql:  "select * from tbl_ks_month where create_time >= 1412092800", // 2014/10/01 00:00:00
+			sqls: map[string]map[string][]string{},
+		},
+		{
+			db:   "db_ks",
+			sql:  "select * from tbl_ks_month where create_time >= 1412438400", // 2014/10/05 00:00:00
+			sqls: map[string]map[string][]string{},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
+func TestSelectKingshardDateDay(t *testing.T) {
+	ns, err := preparePlanInfo()
+	if err != nil {
+		t.Fatalf("prepare namespace error: %v", err)
+	}
+
+	tests := []SQLTestcase{
+		{
+			db:   "db_ks",
+			sql:  "select * from tbl_ks_day where create_time < 1409500800", // 2014/09/01 00:00:00
+			sqls: map[string]map[string][]string{},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_day where create_time <= 1409500800", // 2014/09/01 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_day_20140901` WHERE `create_time`<=1409500800",
+					},
+				},
+			},
+		},
+		{
+			db:   "db_ks",
+			sql:  "select * from tbl_ks_day where create_time >= 1410278400", // 2014/09/10 00:00:00
+			sqls: map[string]map[string][]string{},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_day where create_time = 1409846400", // 2014/09/05 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_day_20140905` WHERE `create_time`=1409846400",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_day where create_time = 1409932800", // 2014/09/06 00:00:00
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_day where create_time = 1410019200", // 2014/09/07 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_day_20140907` WHERE `create_time`=1410019200",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_day where create_time > 1410019200", // 2014/09/07 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_day_20140907` WHERE `create_time`>1410019200",
+						"SELECT * FROM `tbl_ks_day_20140908` WHERE `create_time`>1410019200",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_day where create_time > 1410019200", // 2014/09/07 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_day_20140907` WHERE `create_time`>1410019200",
+						"SELECT * FROM `tbl_ks_day_20140908` WHERE `create_time`>1410019200",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_day where create_time < 1410278400", // 2014/09/10 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_day_20140901` WHERE `create_time`<1410278400",
+						"SELECT * FROM `tbl_ks_day_20140902` WHERE `create_time`<1410278400",
+						"SELECT * FROM `tbl_ks_day_20140903` WHERE `create_time`<1410278400",
+						"SELECT * FROM `tbl_ks_day_20140904` WHERE `create_time`<1410278400",
+						"SELECT * FROM `tbl_ks_day_20140905` WHERE `create_time`<1410278400",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_day_20140907` WHERE `create_time`<1410278400",
+						"SELECT * FROM `tbl_ks_day_20140908` WHERE `create_time`<1410278400",
+					},
+				},
+			},
+		},
+		{
+			db:  "db_ks",
+			sql: "select * from tbl_ks_day where create_time >= 1408464000", // 2014/08/20 00:00:00
+			sqls: map[string]map[string][]string{
+				"slice-0": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_day_20140901` WHERE `create_time`>=1408464000",
+						"SELECT * FROM `tbl_ks_day_20140902` WHERE `create_time`>=1408464000",
+						"SELECT * FROM `tbl_ks_day_20140903` WHERE `create_time`>=1408464000",
+						"SELECT * FROM `tbl_ks_day_20140904` WHERE `create_time`>=1408464000",
+						"SELECT * FROM `tbl_ks_day_20140905` WHERE `create_time`>=1408464000",
+					},
+				},
+				"slice-1": {
+					"db_ks": {
+						"SELECT * FROM `tbl_ks_day_20140907` WHERE `create_time`>=1408464000",
+						"SELECT * FROM `tbl_ks_day_20140908` WHERE `create_time`>=1408464000",
+					},
+				},
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.sql, getTestFunc(ns, test))
+	}
+}
+
 func TestSelectMultiTablesOnConditionKingshard(t *testing.T) {
 	ns, err := preparePlanInfo()
 	if err != nil {
