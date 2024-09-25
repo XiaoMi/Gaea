@@ -19,7 +19,7 @@ jobs:
             go-version: '1.16'
       
       - name: Run tests
-        run: go test $(go list ./...) -coverprofile=coverage.txt 
+        run: go test $(go list ./...) -gcflags="all=-l -N" -short -coverprofile=coverage.txt 
 
       - name: Upload results to Codecov
         uses: codecov/codecov-action@v4
