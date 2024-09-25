@@ -1,27 +1,27 @@
-name: Go
+name: Run tests and upload coverage
 
-on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+on: 
+  push
 
 jobs:
-  code_cov:
+  test:
+    name: Run tests and collect coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
-          go-version: '1.16'
+            go-version: '1.16'
+      
+      - name: Run tests
+        run: go test $(go list ./...) -coverprofile=coverage.txt 
 
-      - name: Run tests and generate coverage report
-        run: |
-          go test -coverprofile=coverage.out -gcflags="all=-l -N" $(go list ./...) -short
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+      - name: Upload results to Codecov
+        uses: codecov/codecov-action@v4
         with:
-          file: coverage.out
+          token: ${{ secrets.CODECOV_TOKEN }}
