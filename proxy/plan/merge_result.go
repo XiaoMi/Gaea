@@ -387,28 +387,30 @@ type AggregateFuncGroupConcatMerger struct {
 	aggregateFuncBaseMerger
 }
 
-func (a *AggregateFuncGroupConcatMerger) concatToString(from, to ResultRow) error {
+// from 合并到 origin
+func (a *AggregateFuncGroupConcatMerger) concatToString(from, origin ResultRow) error {
 	idx := a.fieldIndex // does not need to check
 	valueToMerge := fmt.Sprintf("%s", from.GetValue(idx))
-	originValue := fmt.Sprintf("%s", to.GetValue(idx))
+	originValue := fmt.Sprintf("%s", origin.GetValue(idx))
 	// if distinct will remove duplicates
 	if a.distinct {
-		originSplits := strings.Split(originValue, ",")
+		originSplit := strings.Split(originValue, ",")
 		valueSplit := strings.Split(valueToMerge, ",")
-		mergedSlice := removeDuplicatesString(originSplits, valueSplit)
-		to.SetValue(idx, strings.Join(mergedSlice, ","))
+		mergedSlice := removeDuplicatesString(originSplit, valueSplit)
+		origin.SetValue(idx, strings.Join(mergedSlice, ","))
 		return nil
 	}
 
 	if originValue == "" {
-		to.SetValue(idx, valueToMerge)
+		origin.SetValue(idx, valueToMerge)
 		return nil
 	}
-	to.SetValue(idx, originValue+","+valueToMerge)
+	origin.SetValue(idx, originValue+","+valueToMerge)
 	return nil
 }
 
 // MergeTo implement AggregateFuncGroupConcatMerger
+// from 合并到 to
 func (a *AggregateFuncGroupConcatMerger) MergeTo(from, to ResultRow) error {
 	idx := a.fieldIndex
 	if idx >= len(from) || idx >= len(to) {
@@ -567,7 +569,7 @@ func buildSelectGroupByResult(p *SelectPlan, r *mysql.Result) error {
 		// 用找到的第一个结果行作为聚合结果
 		_, ok := resultMap[mk]
 		if !ok {
-			resultMap[mk] = ResultRow(r.Values[i])
+			resultMap[mk] = r.Values[i]
 			continue
 		}
 

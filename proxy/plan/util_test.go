@@ -240,6 +240,6 @@ func TestRemoveDuplicatesString(t *testing.T) {
 
 	for _, tc := range testCases {
 		output := removeDuplicatesString(tc.arr1, tc.arr2)
-		assert.Equal(t, len(output), len(tc.expected))
+		assert.Equal(t, output, tc.expected)
 	}
 }
