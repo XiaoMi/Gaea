@@ -70,8 +70,40 @@ func (s *Server) registerURL() {
 	api.GET("/namespace/detail/:name", s.detailNamespace)
 	api.PUT("/namespace/modify", s.modifyNamespace)
 	api.PUT("/namespace/delete/:name", s.delNamespace)
+	api.PUT("/node/delete/:ip/:port", s.delGaeaNode)
 	api.GET("/namespace/sqlfingerprint/:name", s.sqlFingerprint)
 	api.GET("/proxy/config/fingerprint", s.proxyConfigFingerprint)
+	api.GET("/node/list", s.listGaeaNode)
+}
+
+// ListGaeaNodeResp list names of all register gaea node
+type ListGaeaNodeResp struct {
+	RetHeader *RetHeader `json:"ret_header"`
+	Data      []string   `json:"data"`
+}
+
+// @Summary 返回所有注册的gaea节点
+// @Description 获取集群名称, 返回所有gaea节点名称, 未传入为默认集群
+// @Produce  json
+// @Param cluster header string false "cluster name"
+// @Success 200 {object} ListGaeaNodeResp
+// @Security BasicAuth
+// @Router /api/cc/gaea/list [get]
+func (s *Server) listGaeaNode(c *gin.Context) {
+	var err error
+	r := &ListGaeaNodeResp{RetHeader: &RetHeader{RetCode: -1, RetMessage: ""}}
+	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
+	r.Data, err = service.ListGaeaNode(s.cfg, cluster)
+	if err != nil {
+		log.Warn("list names of all gaea node failed, %v", err)
+		r.RetHeader.RetMessage = err.Error()
+		c.JSON(http.StatusOK, r)
+		return
+	}
+	r.RetHeader.RetCode = 0
+	r.RetHeader.RetMessage = "SUCC"
+	c.JSON(http.StatusOK, r)
+	return
 }
 
 // ListNamespaceResp list names of all namespace response
@@ -214,6 +246,39 @@ func (s *Server) modifyNamespace(c *gin.Context) {
 		log.Warn("modifyNamespace failed, err: %v", err)
 		h.RetMessage = err.Error()
 		c.JSON(http.StatusBadRequest, h)
+		return
+	}
+
+	h.RetCode = 0
+	h.RetMessage = "SUCC"
+	c.JSON(http.StatusOK, h)
+	return
+}
+
+// @Summary Delete Gaea process is shut down, but the registered node is not cleared and is forcibly deleted.
+// @Description 强删下线但未下线的Gaea节点
+// @Produce  json
+// @Param cluster header string false "cluster name"
+// @Param ip path string true "node ip"
+// @Param port header string true "node port"
+// @Success 200 {object} RetHeader
+// @Security BasicAuth
+// @Router /api/cc/gaea/delete/{ip}/{port} [put]
+func (s *Server) delGaeaNode(c *gin.Context) {
+	var err error
+	h := &RetHeader{RetCode: -1, RetMessage: ""}
+	ip := strings.TrimSpace(c.Param("ip"))
+	port := strings.TrimSpace(c.Param("port"))
+	if ip == "" || port == "" {
+		h.RetMessage = "input ip or port is empty"
+		c.JSON(http.StatusBadRequest, h)
+		return
+	}
+	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
+	err = service.DelGaeaNode(ip, port, s.cfg, cluster)
+	if err != nil {
+		h.RetMessage = fmt.Sprintf("delete gaea node  faild, %v", err.Error())
+		c.JSON(http.StatusOK, h)
 		return
 	}
 

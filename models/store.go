@@ -100,6 +100,11 @@ func (s *Store) Close() error {
 }
 
 // NamespaceBase return namespace path base
+func (s *Store) GaeaProxyBase() string {
+	return filepath.Join(s.prefix, "proxy")
+}
+
+// NamespaceBase return namespace path base
 func (s *Store) NamespaceBase() string {
 	return filepath.Join(s.prefix, "namespace")
 }
@@ -107,6 +112,11 @@ func (s *Store) NamespaceBase() string {
 // NamespacePath concat namespace path
 func (s *Store) NamespacePath(name string) string {
 	return filepath.Join(s.prefix, "namespace", name)
+}
+
+// GaeaNodePath concat gaea node path by ip and port
+func (s *Store) GaeaNodePath(ip string, port string) string {
+	return filepath.Join(s.prefix, "proxy", "proxy-"+ip+":"+port)
 }
 
 // ProxyBase return proxy path base
@@ -128,6 +138,19 @@ func (s *Store) CreateProxy(p *ProxyInfo) error {
 // DeleteProxy delete proxy path
 func (s *Store) DeleteProxy(token string) error {
 	return s.client.Delete(s.ProxyPath(token))
+}
+
+// ListNamespace list namespace
+func (s *Store) ListGaeaNode() ([]string, error) {
+	files, err := s.client.List(s.GaeaProxyBase())
+	if err != nil {
+		return nil, err
+	}
+	for i := 0; i < len(files); i++ {
+		tmp := strings.Split(files[i], "/")
+		files[i] = tmp[len(tmp)-1]
+	}
+	return files, nil
 }
 
 // ListNamespace list namespace
@@ -180,6 +203,14 @@ func (s *Store) UpdateNamespace(p *Namespace) error {
 // DelNamespace delete namespace
 func (s *Store) DelNamespace(name string) error {
 	return s.client.Delete(s.NamespacePath(name))
+}
+
+// DelGaeaPort delete gaea node
+func (s *Store) DelGaeaPort(ip string, port string) error {
+	if _, err := s.client.List(s.GaeaNodePath(ip, port)); err != nil {
+		return err
+	}
+	return s.client.Delete(s.GaeaNodePath(ip, port))
 }
 
 // ListProxyMonitorMetrics list proxies in proxy register path

@@ -36,6 +36,14 @@ func getCoordinatorRoot(cluster string) string {
 	return cluster
 }
 
+// ListGaeaNode return names of all register gaea node
+func ListGaeaNode(cfg *models.CCConfig, cluster string) ([]string, error) {
+	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	mConn := models.NewStore(client)
+	defer mConn.Close()
+	return mConn.ListGaeaNode()
+}
+
 // ListNamespace return names of all namespace
 func ListNamespace(cfg *models.CCConfig, cluster string) ([]string, error) {
 	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
@@ -161,6 +169,19 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig, cluster 
 		}
 	}
 
+	return nil
+}
+
+// DelGaeaNode delete gaea node by ip and port
+func DelGaeaNode(ip string, port string, cfg *models.CCConfig, cluster string) error {
+	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	mConn := models.NewStore(client)
+	defer mConn.Close()
+
+	if err := mConn.DelGaeaPort(ip, port); err != nil {
+		log.Warn("delete gaea node %s:%s failed, %s", ip, port)
+		return err
+	}
 	return nil
 }
 
