@@ -38,7 +38,9 @@ func (pc *pooledConnectImpl) Recycle() {
 	if pc.directConnection.pkgErr != nil {
 		pc.Close()
 	}
-
+	if pc.MoreRowsExist() || pc.MoreResultsExist() {
+		pc.Close()
+	}
 	if pc.IsClosed() {
 		pc.pool.Put(nil)
 	} else {

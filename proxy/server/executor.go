@@ -543,6 +543,25 @@ func (se *SessionExecutor) recycleBackendConn(pc backend.PooledConnect) {
 	pc.Recycle()
 }
 
+func (se *SessionExecutor) recycleContinueConn(pc backend.PooledConnect) {
+	if pc == nil {
+		return
+	}
+	if pc.IsClosed() {
+		se.recycleTx()
+		pc.Recycle()
+		return
+	}
+	if se.IsKeepSession() {
+		se.session.clearKsConns(se.nsChangeIndexOld)
+		return
+	}
+	if se.isInTransaction() {
+		return
+	}
+	pc.Recycle()
+}
+
 func (se *SessionExecutor) recycleBackendConns(pcs map[string]backend.PooledConnect, rollback bool) {
 	if se.isInTransaction() || se.IsKeepSession() {
 		return

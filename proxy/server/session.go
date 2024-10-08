@@ -326,7 +326,7 @@ func (cc *Session) Run() {
 
 func (cc *Session) writeResponse(r Response) error {
 	defer func() {
-		cc.executor.recycleBackendConn(cc.continueConn)
+		cc.executor.recycleContinueConn(cc.continueConn)
 		cc.continueConn = nil
 	}()
 	switch r.RespType {

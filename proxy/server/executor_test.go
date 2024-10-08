@@ -17,6 +17,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/bytedance/mockey"
 	"reflect"
 	"strings"
 	"sync"
@@ -1350,4 +1351,41 @@ func BenchmarkGetNamespace(b *testing.B) {
 			se.GetNamespace()
 		}
 	}
+}
+
+func TestRecycleContinueConn(t *testing.T) {
+	mockey.PatchConvey("test", t, func() {
+		var recycled = false
+		mockey.Mock((*backend.MockPooledConnect).Rollback).Return(nil).Build()
+		mockey.Mock((*backend.MockPooledConnect).Close).Return().Build()
+		mockey.Mock((*backend.MockPooledConnect).Recycle).To(func() {
+			recycled = true
+		}).Build()
+		mockey.Mock((*backend.MockPooledConnect).IsClosed).Return(true).Build()
+
+		se, _ := newDefaultSessionExecutor(nil)
+		se.session.continueConn = nil
+		se.recycleContinueConn(se.session.continueConn)
+		assert.False(t, recycled)
+		se.session.continueConn = &backend.MockPooledConnect{}
+		se.session.continueConn.IsClosed()
+		se.recycleContinueConn(se.session.continueConn)
+		assert.True(t, recycled)
+	})
+
+	mockey.PatchConvey("test", t, func() {
+		var recycled = false
+		mockey.Mock((*backend.MockPooledConnect).Rollback).Return(nil).Build()
+		mockey.Mock((*backend.MockPooledConnect).Close).Return().Build()
+		mockey.Mock((*backend.MockPooledConnect).Recycle).To(func() {
+			recycled = true
+		}).Build()
+		mockey.Mock((*backend.MockPooledConnect).IsClosed).Return(false).Build()
+		se, _ := newDefaultSessionExecutor(nil)
+		assert.False(t, recycled)
+		se.session.continueConn = &backend.MockPooledConnect{}
+		se.session.continueConn.IsClosed()
+		se.recycleContinueConn(se.session.continueConn)
+		assert.True(t, recycled)
+	})
 }
