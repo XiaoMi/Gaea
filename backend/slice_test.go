@@ -310,3 +310,34 @@ func TestCheckSlaveSyncStatus(t *testing.T) {
 		})
 	}
 }
+func TestSlice_Close(t *testing.T) {
+	//requirement := require.New(t)
+	mockCtl := gomock.NewController(t)
+	defer mockCtl.Finish()
+
+	// 初始化 MockConnectionPool
+	mockMasterPool := NewMockConnectionPool(mockCtl)
+	mockSlavePool := NewMockConnectionPool(mockCtl)
+	mockStatisticSlavePool := NewMockConnectionPool(mockCtl)
+
+	// 设置每个连接池的 Close 方法应当被调用一次
+	mockMasterPool.EXPECT().Close().Times(1)
+	mockSlavePool.EXPECT().Close().Times(1)
+	mockStatisticSlavePool.EXPECT().Close().Times(1)
+
+	// 创建 Slice 实例并使用 mock 连接池
+	slice := &Slice{
+		Master: &DBInfo{
+			ConnPool: []ConnectionPool{mockMasterPool},
+		},
+		Slave: &DBInfo{
+			ConnPool: []ConnectionPool{mockSlavePool},
+		},
+		StatisticSlave: &DBInfo{
+			ConnPool: []ConnectionPool{mockStatisticSlavePool},
+		},
+	}
+
+	// 调用 Close 方法
+	slice.Close()
+}

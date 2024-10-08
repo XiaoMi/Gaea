@@ -1,5 +1,70 @@
 # Gaea Changelog
 
+## Gaea 2.3 Release Notes
+
+### 新功能
+
+- 支持 group_concat_max_len 变量设置
+- 支持可配置的 session 级别变量
+- 支持分库分表情况下，显示详细的 sql explain 信息
+- 支持客户端使用 hash 后的密码连接 Gaea
+- 支持非分片情况下使用 MySQL 8.0
+- 支持非分片情况下大结果集流式返回，避免较大内存占用问题
+- 支持日志配置热加载
+- 支持日志文件保留数量的配置
+- 新增 keep session 功能，keep session 模式下，会一对一保持前后端数据库连接会话
+- 新增 分片情况下 group by ... order by max(col) 语句 ORDER BY 使用聚合函数
+- 新增 SQL 支持：子查询中的多括号支持
+- 新增 SQL 支持：create table t (... on update current_timestamp(NUMBER))
+- 新增 SQL 行为支持：select @@read_only 及 show variables like "%read_only%" 发送至主库，避免应用框架通过从库获取数据库只读状态导致业务报错
+- 新增 SQL 支持：默认支持 multistatement
+- 新增 API 用于获取当前 Gaea 版本，便于后续自动化升级降级操作
+- 新增了大量只读 SQL 测试 Case，提高后续版本稳定性
+
+### 优化提升
+
+- 优化 Gaea session timeout 功能，在高 qps 情况下，cpu 使用率较高问题
+- 优化日志功能，更换日志库，新增异步日志写入能力，提高日志性能
+- 优化请求处理逻辑，提高单条 SQL 处理效率
+- 优化 result 结果集对象复用，降低内存使用
+- 优化 MySQL 协议写入数据包逻辑，提升网络写入效率，降低 P99延迟
+- 优化计算 p99/p95 cpu 资源占用率过高问题
+- 优化 prepare execute 参数过多时 cpu 占用率过高问题
+- 优化 SQL 黑名单和连接数过多的报错信息
+- 优化获取 buffer pool 性能
+- 优化 gaea_proxy_sql_error_counts 监控项，只记录 Gaea 处理过程中的错误，不记录后端 MySQL 执行的错误
+- 优化 general 日志展示，增加用户名及执行从库显示
+- 忽略 `lock table ...` 语句，解决避免后端未解锁表导致复用失败的问题
+- 调整 gaea_proxy_cpu_busy 监控项名为 gaea_proxy_cpu_busy_by_core，区分新旧版本值
+- 修改 CheckSelectLock 默认值为 True，避免旧版兼容性。并优化部分语句的主从路由
+
+
+### Bug修复
+
+- 修复高版本 JDBC 连接低版本 MySQL 时报错 `Unknown system variable 'transaction_isolation'`
+- 修复修改 namespace 旧的探活连接未关闭的问题，并限制探活连接为独立的连接
+- 修复分库场景下 explain 语句报错问题
+- 修复 2.3.7 版本引入的 prepare 结果集 > 16M gorm panic 问题
+- 修复偶发 Cannot execute statement in a READ ONLY transaction 问题
+- 修复设置 sql_mode 使用 replace 函数报错问题
+- 修复忽略 /*!40103 xxx */ sql 存在语法错误情况下，执行的报错问题
+- 修复keep session 事务场景和配置变更场景连接回收 bug
+- 修复查询 8.0 mysql 偶发的空指针 panic 问题
+- 修复 set character_set_client=binary 语法不支持问题
+- 修复 mysql 8.0 字符集排序规则 utf8mb4_0900_ai_ci 设置不符合预期问题
+- 修复没有流量时，p99/p95 值不更新问题
+- 修复 sql 被 kill 时，客户端数据库连接未被断开问题
+- 修复 executeInSlice 慢查询 panic 问题
+- 修复 mysql > 8.0.3 版本 tx_read_only 报错问题
+- 修复 net_buffer_size 配置不生效问题
+- 修复 select last_insert_id() 返回值类型错误 string->int
+- 修复 warning 日志未被清理的问题
+- 修复非分片情况下多语句默认全部发送到后端 MySQL，避免多语句拆分高并发情况下负载高问题
+- 修复默认支持多语句导致 QPS 高的情况下 CPU 负载升高的问题
+- 修复部分 SQL 语句类型识别错误的问题
+- 修复 2.0 版本部分 union 语句无法执行的问题
+
+
 ## Gaea 2.2 Release Notes
 
 ### 新功能
