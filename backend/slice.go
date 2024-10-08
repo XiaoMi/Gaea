@@ -368,24 +368,32 @@ func (s *Slice) GetSlaveConn(slavesInfo *DBInfo, localSlaveReadPriority int) (Po
 }
 
 // Close close the pool in slice
+// Concurrently close the connection to prevent the main database transaction from not being committed
+// and causing the slave database connection to not be released.
 func (s *Slice) Close() error {
 	s.Lock()
 	defer s.Unlock()
-	// close master
-	for i := range s.Master.ConnPool {
-		s.Master.ConnPool[i].Close()
+
+	var wg sync.WaitGroup
+	closePool := func(connPools []ConnectionPool) {
+		defer wg.Done()
+		for i := range connPools {
+			connPools[i].Close()
+		}
 	}
+	// close master
+	wg.Add(1)
+	go closePool(s.Master.ConnPool)
 
 	// close slaves
-	for i := range s.Slave.ConnPool {
-		s.Slave.ConnPool[i].Close()
-	}
+	wg.Add(1)
+	go closePool(s.Slave.ConnPool)
 
 	// close statistic slaves
-	for i := range s.StatisticSlave.ConnPool {
-		s.StatisticSlave.ConnPool[i].Close()
-	}
+	wg.Add(1)
+	go closePool(s.StatisticSlave.ConnPool)
 
+	wg.Wait()
 	return nil
 }
 
