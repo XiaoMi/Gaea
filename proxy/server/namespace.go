@@ -37,6 +37,7 @@ import (
 
 const (
 	namespaceDelayClose = 60
+	informationSchemaDB = "information_schema"
 )
 
 const (
@@ -167,6 +168,7 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 	for db, allowed := range namespaceConfig.AllowedDBS {
 		allowDBs[strings.TrimSpace(db)] = allowed
 	}
+	allowDBs[informationSchemaDB] = true
 	namespace.allowedDBs = allowDBs
 
 	defaultPhyDBs := make(map[string]string, len(namespaceConfig.DefaultPhyDBS))
@@ -690,6 +692,7 @@ func parseDefaultPhyDB(defaultPhyDBs map[string]string, allowedDBs map[string]bo
 	}
 
 	// logic database mode
+	defaultPhyDBs[informationSchemaDB] = informationSchemaDB
 	for db := range allowedDBs {
 		if _, ok := defaultPhyDBs[db]; !ok {
 			return nil, fmt.Errorf("db %s have no phy db", db)

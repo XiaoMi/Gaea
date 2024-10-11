@@ -248,6 +248,10 @@ func (se *SessionExecutor) handleUseDB(dbName string) error {
 		return fmt.Errorf("must have database, the length of dbName is zero")
 	}
 
+	if util.LowerEqual(dbName, informationSchemaDB) {
+		dbName = informationSchemaDB
+	}
+
 	if se.GetNamespace().IsAllowedDB(dbName) {
 		se.db = dbName
 		return nil

@@ -18,7 +18,7 @@ func TestParsePhyDBs(t *testing.T) {
 		{defaultPhyDBs: map[string]string{"db_mycat": "db_mycat"},
 			allowedDBs: map[string]bool{"db_mycat": true},
 			shardRules: []*models.Shard{{Databases: []string{"db_mycat_[0-1]"}}},
-			realPhyDBs: map[string]string{"db_mycat": "db_mycat", "db_mycat_0": "db_mycat_0", "db_mycat_1": "db_mycat_1"}},
+			realPhyDBs: map[string]string{"db_mycat": "db_mycat", "db_mycat_0": "db_mycat_0", "db_mycat_1": "db_mycat_1", "information_schema": "information_schema"}},
 		{defaultPhyDBs: map[string]string{},
 			allowedDBs: map[string]bool{"db_mycat": true},
 			shardRules: []*models.Shard{},
