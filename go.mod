@@ -1,4 +1,4 @@
-module github.com/XiaoMi/Gaea
+module github.com/XiaoMi/Gaea/v2
 
 go 1.16
 
