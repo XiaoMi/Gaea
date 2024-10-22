@@ -232,7 +232,7 @@ func (rp *ResourcePool) get(ctx context.Context, wait bool) (resource Resource, 
 		select {
 		case <-ctx.Done():
 			rp.resources <- resourceWrapper{}
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("new connection timeout: %s", ctx.Err())
 		case err1 := <-errChan:
 			if err1 != nil {
 				rp.resources <- resourceWrapper{}
