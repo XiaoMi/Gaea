@@ -189,7 +189,9 @@ func (s *Slice) checkBackendMasterStatus(ctx context.Context, name string, downA
 				log.Warn("[ns:%s, %s:%s] check master StatusDown for %ds. err: %s", name, s.Cfg.Name, cp.Addr(), time.Now().Unix()-cp.GetLastChecked(), err)
 				continue
 			}
-
+			if err != nil {
+				log.Warn("[ns:%s, %s:%s] check master error:%s", name, s.Cfg.Name, cp.Addr(), err)
+			}
 			oldStatus, err := s.GetMasterStatus()
 			if err != nil {
 				log.Warn("[ns:%s, %s:%s] get master master status error:%s", name, s.Cfg.Name, cp.Addr(), err)
@@ -247,7 +249,11 @@ func (s *Slice) checkBackendSlaveStatus(ctx context.Context, db *DBInfo, name st
 				}
 
 				if pc == nil {
-					log.Warn("[ns:%s, %s:%s] skip check slave sync, get nil conn", name, s.Cfg.Name, cp.Addr())
+					errInfo := "get nil conn"
+					if err != nil {
+						errInfo += ", " + err.Error()
+					}
+					log.Warn("[ns:%s, %s:%s] skip check slave sync, %s", name, s.Cfg.Name, cp.Addr(), errInfo)
 					continue
 				}
 
