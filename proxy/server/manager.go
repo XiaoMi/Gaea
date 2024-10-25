@@ -29,6 +29,8 @@ import (
 	"time"
 
 	"github.com/XiaoMi/Gaea/log/zap"
+	etcdclient "github.com/XiaoMi/Gaea/models/etcd"
+	"github.com/shirou/gopsutil/process"
 
 	"github.com/XiaoMi/Gaea/backend"
 	"go.uber.org/atomic"
@@ -42,7 +44,6 @@ import (
 	"github.com/XiaoMi/Gaea/stats/prometheus"
 	"github.com/XiaoMi/Gaea/util"
 	"github.com/XiaoMi/Gaea/util/sync2"
-	"github.com/shirou/gopsutil/process"
 )
 
 const (
@@ -61,7 +62,7 @@ const (
 
 // LoadAndCreateManager load namespace config, and create manager
 func LoadAndCreateManager(cfg *models.Proxy) (*Manager, error) {
-	namespaceConfigs, err := loadAllNamespace(cfg)
+	namespaceConfigs, err := LoadAllNamespace(cfg)
 	if err != nil {
 		log.Warn("init namespace manager failed, %v", err)
 		return nil, err
@@ -77,73 +78,91 @@ func LoadAndCreateManager(cfg *models.Proxy) (*Manager, error) {
 	return mgr, nil
 }
 
-func loadAllNamespace(cfg *models.Proxy) (map[string]*models.Namespace, error) {
-	// get names of all namespace
+func LoadAllNamespace(cfg *models.Proxy) (map[string]*models.Namespace, error) {
+	namespaces, err := loadNamespacesFromClient(cfg)
+	if err != nil {
+		return nil, err
+	}
+	res := make(map[string]*models.Namespace)
+	for _, namespace := range namespaces {
+		res[namespace.Name] = namespace
+	}
+	return res, nil
+}
+
+func loadNamespacesFromClient(cfg *models.Proxy) (map[string]*models.Namespace, error) {
 	root := cfg.CoordinatorRoot
 	if cfg.ConfigType == models.ConfigFile {
 		root = cfg.FileConfigPath
 	}
 
-	client := models.NewClient(cfg.ConfigType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, root)
+	remoteClient, _ := models.NewClient(cfg.ConfigType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, root)
+	localClient, _ := models.NewLocalClient(cfg.LocalNamespaceStoragePath, root)
+
+	if remoteClient == nil && localClient == nil {
+		return nil, fmt.Errorf("no client available")
+	}
+	if remoteClient == nil && localClient != nil {
+		return LoadDecryptNamespaces(localClient, cfg.EncryptKey)
+	}
+	if remoteClient != nil && localClient == nil {
+		return LoadDecryptNamespaces(remoteClient, cfg.EncryptKey)
+	}
+
+	return SyncNamespaces(remoteClient, localClient, cfg.EncryptKey)
+}
+
+// Note that the key values ​​in the returned Namespace Map are complete keys, such as /gaea_test_cluster/namespace/test_namespace
+func LoadDecryptNamespaces(client models.Client, key string) (map[string]*models.Namespace, error) {
 	if client == nil {
-		return map[string]*models.Namespace{}, fmt.Errorf("client is nil")
+		return nil, fmt.Errorf("client is not available")
 	}
 	store := models.NewStore(client)
 	defer store.Close()
-	var err error
-	var names []string
-	names, err = store.ListNamespace()
+	res, err := store.LoadNamespaces(key)
+	if err != nil && !etcdclient.IsErrNoNode(err) {
+		return map[string]*models.Namespace{}, err
+	}
+	return res, nil
+}
+
+func persistenceEncryptNamespaces(localClient *models.LocalClient, namespaces map[string]*models.Namespace) error {
+	if localClient == nil {
+		return fmt.Errorf("local client is not available")
+	}
+	store := models.NewStore(localClient)
+	defer store.Close()
+	err := localClient.Clean(store.NamespaceBase())
 	if err != nil {
-		log.Warn("list namespace failed, err: %v", err)
-		return nil, err
+		return fmt.Errorf("failed to clean directory error '%v'", err)
 	}
-
-	// query remote namespace models in worker goroutines
-	nameC := make(chan string)
-	namespaceC := make(chan *models.Namespace)
-	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			client := models.NewClient(cfg.ConfigType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, root)
-			store := models.NewStore(client)
-			defer store.Close()
-			defer wg.Done()
-			for name := range nameC {
-				namespace, e := store.LoadNamespace(cfg.EncryptKey, name)
-				if e != nil {
-					log.Warn("load namespace %s failed, err: %v", name, err)
-					// assign extent err out of this scope
-					err = e
-					return
-				}
-
-				namespaceC <- namespace
-			}
-		}()
-	}
-
-	// dispatch goroutine
-	go func() {
-		for _, name := range names {
-			nameC <- name
+	for name, ns := range namespaces {
+		if err := store.UpdateNamespace(ns); err != nil {
+			log.Warn("persistence namespace %s failed", name)
+			return err
 		}
-		close(nameC)
-		wg.Wait()
-		close(namespaceC)
-	}()
-
-	// collect all namespaces
-	namespaceModels := make(map[string]*models.Namespace, 64)
-	for namespace := range namespaceC {
-		namespaceModels[namespace.Name] = namespace
 	}
+	return nil
+}
+
+// SyncNamespaces loads encrypted namespaces from a remote client, decrypts them, and optionally persists them locally.
+// It returns the decrypted namespaces for further use.
+// Note that the key values ​​in the returned Namespace Map are complete keys, such as /gaea_test_cluster/namespace/test_namespace
+func SyncNamespaces(remote models.Client, local *models.LocalClient, key string) (map[string]*models.Namespace, error) {
+	if remote == nil {
+		return nil, fmt.Errorf("remote client is not available")
+	}
+
+	remoteStore := models.NewStore(remote)
+	defer remoteStore.Close()
+
+	originNamespaces, err := remoteStore.LoadOriginNamespaces()
 	if err != nil {
-		log.Warn("get namespace failed, err:%v", err)
 		return nil, err
 	}
 
-	return namespaceModels, nil
+	persistenceEncryptNamespaces(local, originNamespaces)
+	return models.DecryptNamespaces(originNamespaces, key)
 }
 
 // Manager contains namespace manager and user manager

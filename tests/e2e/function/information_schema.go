@@ -21,6 +21,7 @@ import (
 	"github.com/XiaoMi/Gaea/tests/e2e/util"
 
 	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 )
 
 var _ = ginkgo.Describe("default support information_schema db test", func() {
@@ -66,8 +67,12 @@ var _ = ginkgo.Describe("default support information_schema db test", func() {
 			gaeaConn, err := e2eMgr.GetWriteGaeaUserConn()
 			util.ExpectNoError(err)
 			for _, test := range sqlCases {
-				err = checkFunc(gaeaConn, test.testSql, test.expected)
+				rows, err := gaeaConn.Query(test.testSql)
 				util.ExpectNoError(err)
+				res, err := util.GetDataFromRows(rows)
+				util.ExpectNoError(err)
+				rows.Close()
+				gomega.Expect(res).To(gomega.ConsistOf(test.expected))
 			}
 		})
 	})

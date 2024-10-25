@@ -38,23 +38,32 @@ func getCoordinatorRoot(cluster string) string {
 
 // ListGaeaNode return names of all register gaea node
 func ListGaeaNode(cfg *models.CCConfig, cluster string) ([]string, error) {
-	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	client, err := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	if err != nil {
+		return []string{}, fmt.Errorf("remote client is unavailable")
+	}
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	return mConn.ListGaeaNode()
 }
 
 // ListNamespace return names of all namespace
-func ListNamespace(cfg *models.CCConfig, cluster string) ([]string, error) {
-	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+func ListNamespaceName(cfg *models.CCConfig, cluster string) ([]string, error) {
+	client, err := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	if err != nil {
+		return []string{}, fmt.Errorf("remote client is unavailable")
+	}
 	mConn := models.NewStore(client)
 	defer mConn.Close()
-	return mConn.ListNamespace()
+	return mConn.ListNamespaceName()
 }
 
 // QueryNamespace return information of namespace specified by names
 func QueryNamespace(names []string, cfg *models.CCConfig, cluster string) (data []*models.Namespace, err error) {
-	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	client, err := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	if err != nil {
+		return []*models.Namespace{}, fmt.Errorf("remote client is unavailable")
+	}
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	for _, v := range names {
@@ -85,12 +94,15 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig, cluster 
 	}
 
 	// sink namespace
-	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	client, err := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	if err != nil {
+		return fmt.Errorf("remote client is unavailable")
+	}
 	storeConn := models.NewStore(client)
 	defer storeConn.Close()
 
 	if err = checkForDuplicateUsernameAndPassword(cfg.EncryptKey, storeConn, *namespace); err != nil {
-		return fmt.Errorf("duplicate username and password in another namespace: %v", err)
+		return fmt.Errorf("check for duplicate username and password error: %v", err)
 	}
 
 	existNamespace, err := storeConn.LoadNamespace(cfg.EncryptKey, namespace.Name)
@@ -174,7 +186,10 @@ func ModifyNamespace(namespace *models.Namespace, cfg *models.CCConfig, cluster 
 
 // DelGaeaNode delete gaea node by ip and port
 func DelGaeaNode(ip string, port string, cfg *models.CCConfig, cluster string) error {
-	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	client, err := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	if err != nil {
+		return fmt.Errorf("remote client is unavailable")
+	}
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 
@@ -187,7 +202,10 @@ func DelGaeaNode(ip string, port string, cfg *models.CCConfig, cluster string) e
 
 // DelNamespace delete namespace
 func DelNamespace(name string, cfg *models.CCConfig, cluster string) error {
-	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	client, err := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	if err != nil {
+		return fmt.Errorf("remote client is unavailable")
+	}
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 
@@ -245,7 +263,10 @@ func SQLFingerprint(name string, cfg *models.CCConfig, cluster string) (slowSQLs
 	slowSQLs = make(map[string]string, 16)
 	errSQLs = make(map[string]string, 16)
 	// list proxy
-	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	client, err := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	if err != nil {
+		return map[string]string{}, map[string]string{}, fmt.Errorf("remote client is unavailable")
+	}
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	proxies, err := mConn.ListProxyMonitorMetrics()
@@ -289,7 +310,10 @@ func SQLFingerprint(name string, cfg *models.CCConfig, cluster string) (slowSQLs
 // ProxyConfigFingerprint return fingerprints of all proxy
 func ProxyConfigFingerprint(cfg *models.CCConfig, cluster string) (r map[string]string, err error) {
 	// list proxy
-	client := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	client, err := models.NewClient(cfg.CoordinatorType, cfg.CoordinatorAddr, cfg.UserName, cfg.Password, getCoordinatorRoot(cluster))
+	if err != nil {
+		return map[string]string{}, fmt.Errorf("remote client is unavailable")
+	}
 	mConn := models.NewStore(client)
 	defer mConn.Close()
 	proxies, err := mConn.ListProxyMonitorMetrics()
@@ -335,8 +359,8 @@ func ProxyConfigFingerprint(cfg *models.CCConfig, cluster string) (r map[string]
 // is not already encrypted, it encrypts it using the provided encryptKey. It then adds each
 // username and password combination from all namespaces to a map to check for duplicates.
 func checkForDuplicateUsernameAndPassword(encryptKey string, storeConn *models.Store, newNamespace models.Namespace) error {
-	allNamespaces, err := storeConn.ListNamespaces()
-	if err != nil {
+	allNamespaces, err := storeConn.LoadOriginNamespaces()
+	if err != nil && !etcdclient.IsErrNoNode(err) {
 		return fmt.Errorf("list Namespaces Error:%v", err)
 	}
 	existingUsers := make(map[string]string)

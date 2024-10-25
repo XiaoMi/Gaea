@@ -253,6 +253,7 @@ func (s *Server) ReloadProxyConfig() error {
 	cfg.LogPath = newCfg.LogPath
 	cfg.LogKeepDays = newCfg.LogKeepDays
 	cfg.LogKeepCounts = newCfg.LogKeepCounts
+	cfg.LocalNamespaceStoragePath = newCfg.LocalNamespaceStoragePath
 	log.Notice("reload proxy config,new config:%#v", cfg)
 	// reload sys log
 	if err = models.InitXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service, cfg.LogKeepDays, cfg.LogKeepCounts); err != nil {

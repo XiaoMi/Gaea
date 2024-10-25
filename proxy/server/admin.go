@@ -16,7 +16,6 @@ package server
 
 import (
 	"fmt"
-	"github.com/XiaoMi/Gaea/core"
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -24,6 +23,8 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/XiaoMi/Gaea/core"
 
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/models"
@@ -62,6 +63,8 @@ type AdminServer struct {
 	coordinatorUsername string
 	coordinatorPassword string
 	coordinatorRoot     string
+
+	localNamespaceStoragePath string
 }
 
 // NewAdminServer create new admin server
@@ -89,6 +92,7 @@ func NewAdminServer(proxy *Server, cfg *models.Proxy) (*AdminServer, error) {
 	s.coordinatorUsername = cfg.UserName
 	s.coordinatorPassword = cfg.Password
 	s.coordinatorRoot = cfg.CoordinatorRoot
+	s.localNamespaceStoragePath = cfg.LocalNamespaceStoragePath
 	s.configFile = cfg.ConfigFile
 	s.engine = gin.New()
 	l, err := net.Listen(cfg.ProtoType, cfg.AdminAddr)
@@ -248,26 +252,40 @@ func (s *AdminServer) registerProxy() error {
 		return nil
 	}
 	// 目前设定值 s.configType 可能为 models.ConfigEtcd 和 models.ConfigEtcdV3 两种
-	client := models.NewClient(s.configType, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword, s.coordinatorRoot)
-	store := models.NewStore(client)
-	defer store.Close()
-	if err := store.CreateProxy(s.model); err != nil {
-		return err
+	remote, err := models.NewClient(s.configType, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword, s.coordinatorRoot)
+	// register to the remote if the remote is available
+	if err == nil {
+		store := models.NewStore(remote)
+		defer store.Close()
+		return store.CreateProxy(s.model)
 	}
-	return nil
+	log.Warn("[admin server] register proxy failed: remote client is unavailable", err)
+	// if the local is enabled, no error is returned here so that the data can be read from the local normally in the future.
+	if len(s.localNamespaceStoragePath) > 0 {
+		log.Warn("[admin server] register proxy failed: remote is unavailable, switch to local", err)
+		return nil
+	}
+	return fmt.Errorf("[admin server] register proxy failed: no client available error:'%v'", err)
 }
 
 func (s *AdminServer) unregisterProxy() error {
 	if s.configType == models.ConfigFile {
 		return nil
 	}
-	client := models.NewClient(s.configType, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword, s.coordinatorRoot)
-	store := models.NewStore(client)
-	defer store.Close()
-	if err := store.DeleteProxy(s.model.Token); err != nil {
-		return err
+	remote, err := models.NewClient(s.configType, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword, s.coordinatorRoot)
+	// unregister to the remote if the remote is available
+	if err == nil {
+		store := models.NewStore(remote)
+		defer store.Close()
+		return store.DeleteProxy(s.model.Token)
 	}
-	return nil
+	log.Warn("[admin server] unregister proxy failed: remote client is unavailable", err)
+	// if the local is enabled, no error is returned here so that the data can be read from the local normally in the future.
+	if len(s.localNamespaceStoragePath) > 0 {
+		log.Warn("[admin server] unregister proxy failed: remote is unavailable, switch to local", err)
+		return nil
+	}
+	return fmt.Errorf("[admin server] unregister proxy failed: no client available error:'%v'", err)
 }
 
 // @Summary 获取proxy admin接口状态
@@ -306,11 +324,16 @@ func (s *AdminServer) prepareConfig(c *gin.Context) {
 		c.JSON(selfDefinedInternalError, "missing namespace name")
 		return
 	}
-	client := models.NewClient(s.configType, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword, s.coordinatorRoot)
+	client, err := models.NewClient(s.configType, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword, s.coordinatorRoot)
+	if client == nil || err != nil {
+		c.JSON(selfDefinedInternalError, fmt.Errorf("[admin server] prepare config failed: remote client unavailable error:'%v'", err))
+		return
+	}
 	defer client.Close()
-	err := s.proxy.ReloadNamespacePrepare(name, client)
+
+	err = s.proxy.ReloadNamespacePrepare(name, client)
 	if err != nil {
-		log.Warn("prepare config of namespace: %s failed, err: %v", name, err)
+		log.Warn("[admin server] prepare config of namespace: %s failed, err: %v", name, err)
 		c.JSON(selfDefinedInternalError, err.Error())
 		return
 	}
@@ -335,7 +358,44 @@ func (s *AdminServer) commitConfig(c *gin.Context) {
 		c.JSON(selfDefinedInternalError, err.Error())
 		return
 	}
+	go s.updateNamespaceLocal(name)
 	c.JSON(http.StatusOK, "OK")
+}
+
+// updateNamespaceLocal synchronizes a local namespace with its remote version.
+// This method is called to ensure the local data is up-to-date with the remote server.
+// Note: This method does not return any value and handles all errors internally by logging them.
+// It is critical that the `localNamespaceStoragePath` and remote server configurations are properly set before calling this method.
+func (s *AdminServer) updateNamespaceLocal(name string) {
+	if len(s.localNamespaceStoragePath) == 0 {
+		return
+	}
+	// Get updated Namespace from remote
+	remote, err := models.NewClient(s.configType, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword, s.coordinatorRoot)
+	if err != nil {
+		log.Warn("[admin server] update namespace local failed: remote client unavailable error:'%v'", err)
+		return
+	}
+	remoteStore := models.NewStore(remote)
+	defer remoteStore.Close()
+	ns, err := remoteStore.LoadOriginNamespace(name)
+	if err != nil {
+		log.Warn("[admin server] update namespace local failed: remote store:'%s' error:'%v'", name, err)
+		return
+	}
+	// Synchronize remote and local namespaces
+	local, err := models.NewLocalClient(s.localNamespaceStoragePath, s.coordinatorRoot)
+	if err != nil {
+		log.Warn("[admin server] update namespace local failed: local client unavailable error:'%v'", err)
+		return
+	}
+	localStore := models.NewStore(local)
+	defer localStore.Close()
+	err = localStore.UpdateNamespace(ns)
+	if err != nil {
+		log.Warn("[admin server] update namespace local '%s' failed, error:'%v'", name, err)
+		return
+	}
 }
 
 // @Summary 删除namespace配置
@@ -357,7 +417,31 @@ func (s *AdminServer) deleteNamespace(c *gin.Context) {
 		c.JSON(selfDefinedInternalError, err.Error())
 		return
 	}
+	go s.deleteNamespaceLocal(name)
 	c.JSON(http.StatusOK, "OK")
+}
+
+// deleteNamespaceLocal removes a namespace from the local storage.
+// This method is primarily used to ensure that local copies of namespaces are deleted when no longer needed or when updates require removal.
+// Note: This method does not return any value and handles all errors internally by logging them.
+// It is essential that the local namespace storage path is properly configured before this method is called.
+func (s *AdminServer) deleteNamespaceLocal(name string) {
+	if len(s.localNamespaceStoragePath) == 0 {
+		return
+	}
+	local, err := models.NewLocalClient(s.localNamespaceStoragePath, s.coordinatorRoot)
+	if err != nil {
+		log.Warn("[admin server] new local client error", err)
+		return
+	}
+
+	localStore := models.NewStore(local)
+	defer localStore.Close()
+	err = localStore.DelNamespace(name)
+	if err != nil {
+		log.Warn("[admin server] delete namespace local '%s' failed, error:'%v'", name, err)
+		return
+	}
 }
 
 // @Summary 返回配置指纹

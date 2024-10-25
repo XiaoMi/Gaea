@@ -55,35 +55,35 @@ type Store struct {
 }
 
 // NewClient constructor to create client by case etcd/file/zk etc.
-func NewClient(configType, addr, username, password, root string) Client {
+func NewClient(configType, addr, username, password, root string) (Client, error) {
 	switch configType {
 	case ConfigFile:
 		// 使用文档 File 去读取设定值
 		c, err := fileclient.New(root)
 		if err != nil {
 			log.Warn("create fileclient failed, %s", addr)
-			return nil
+			return nil, err
 		}
-		return c
+		return c, nil
 	case ConfigEtcd:
 		// 使用 Etcd V2 API 去读取设定值
-		c, err := etcdclient.New(addr, time.Minute, username, password, root)
+		c, err := etcdclient.New(addr, 10*time.Second, username, password, root)
 		if err != nil {
 			log.Fatal("create etcdclient v2 to %s failed, %v", addr, err)
-			return nil
+			return nil, err
 		}
-		return c
+		return c, nil
 	case ConfigEtcdV3:
 		// 使用 Etcd V3 API 去读取设定值
-		c, err := etcdclientv3.New(addr, time.Minute, username, password, root)
+		c, err := etcdclientv3.New(addr, 10*time.Second, username, password, root)
 		if err != nil {
 			log.Fatal("create etcdclient v3 to %s failed, %v", addr, err)
-			return nil
+			return nil, err
 		}
-		return c
+		return c, nil
 	}
 	log.Fatal("unknown config type")
-	return nil
+	return nil, fmt.Errorf("unknown config client type")
 }
 
 // NewStore constructor of Store
@@ -154,7 +154,7 @@ func (s *Store) ListGaeaNode() ([]string, error) {
 }
 
 // ListNamespace list namespace
-func (s *Store) ListNamespace() ([]string, error) {
+func (s *Store) ListNamespaceName() ([]string, error) {
 	files, err := s.client.List(s.NamespaceBase())
 	if err != nil {
 		return nil, err
@@ -164,35 +164,6 @@ func (s *Store) ListNamespace() ([]string, error) {
 		files[i] = tmp[len(tmp)-1]
 	}
 	return files, nil
-}
-
-// LoadNamespace load namespace value
-func (s *Store) LoadNamespace(key, name string) (*Namespace, error) {
-	b, err := s.client.Read(s.NamespacePath(name))
-	if err != nil {
-		return nil, err
-	}
-
-	if b == nil {
-		return nil, client.Error{
-			Code:    client.ErrorCodeKeyNotFound,
-			Message: fmt.Sprintf("node %s not exists", s.NamespacePath(name)),
-		}
-	}
-	p := &Namespace{}
-	if err = json.Unmarshal(b, p); err != nil {
-		return nil, err
-	}
-
-	if err = p.Verify(); err != nil {
-		return nil, err
-	}
-
-	if err = p.Decrypt(key); err != nil {
-		return nil, err
-	}
-
-	return p, nil
 }
 
 // UpdateNamespace update namespace path with data
@@ -234,22 +205,156 @@ func (s *Store) ListProxyMonitorMetrics() (map[string]*ProxyMonitorMetric, error
 	return proxy, nil
 }
 
-func (s *Store) ListNamespaces() (map[string]*Namespace, error) {
+// LoadNamespace loads and decrypts a namespace from the storage.
+// It reads the encrypted namespace data as a JSON blob from the storage, specified by the namespace name.
+// The data is then unmarshalled into a Namespace structure and subsequently decrypted using the provided key.
+func (s *Store) LoadNamespace(key, name string) (*Namespace, error) {
+	b, err := s.client.Read(s.NamespacePath(name))
+	if err != nil {
+		return nil, err
+	}
+
+	if b == nil {
+		return nil, client.Error{
+			Code:    client.ErrorCodeKeyNotFound,
+			Message: fmt.Sprintf("node %s not exists", s.NamespacePath(name)),
+		}
+	}
+	p := &Namespace{}
+	if err = json.Unmarshal(b, p); err != nil {
+		return nil, err
+	}
+
+	if err = p.Verify(); err != nil {
+		return nil, err
+	}
+
+	if err = p.Decrypt(key); err != nil {
+		return nil, err
+	}
+
+	return p, nil
+}
+
+// LoadNamespaces loads and decrypts a namespace from the storage.
+// It reads the encrypted namespace data as a JSON blob from the storage, specified by the namespace name.
+// The data is then unmarshalled into a Namespace structure and subsequently decrypted using the provided key.
+func (s *Store) LoadNamespaces(key string) (map[string]*Namespace, error) {
 	values, err := s.client.ListWithValues(s.NamespaceBase())
 	if err != nil {
 		return nil, err
 	}
-	// 初始化结果map
-	res := make(map[string]*Namespace, len(values))
-	for key, value := range values {
+
+	res := map[string]*Namespace{}
+	for name, value := range values {
 		ns := &Namespace{}
-		// 反序列化每个值到Namespace结构体
+		// Deserialize each value into the Namespace structure
 		if err := json.Unmarshal([]byte(value), ns); err != nil {
-			// 如果出现错误，处理错误，例如记录或返回错误
-			return nil, err
+			log.Warn("Failed to unmarshal namespace data for %s: %v", name, err)
+			return res, err
 		}
-		// 将反序列化的Namespace添加到结果map
-		res[key] = ns
+
+		// Verify namespace data
+		if err := ns.Verify(); err != nil {
+			log.Warn("Verification failed for namespace %s: %v", name, err)
+			return res, err // Verification failed, return error
+		}
+
+		// Decrypt namespace data
+		if err := ns.Decrypt(key); err != nil {
+			log.Warn("Failed to decrypt namespace %s: %v", name, err)
+			return res, err // Decryption failed, return error
+		}
+
+		// Add the deserialized and decrypted Namespace to the result map
+		res[name] = ns
 	}
 	return res, nil
+}
+
+// LoadOriginNamespace obtains a specific and specific Namespace based on the incoming name.
+// If the value of the Namespace is encrypted and stored remotely, the value returned is encrypted.
+// If the value stored remotely is not encrypted, the value returned is unencrypted.
+func (s *Store) LoadOriginNamespace(name string) (*Namespace, error) {
+	b, err := s.client.Read(s.NamespacePath(name))
+	if err != nil {
+		return nil, err
+	}
+
+	if b == nil {
+		return nil, client.Error{
+			Code:    client.ErrorCodeKeyNotFound,
+			Message: fmt.Sprintf("node %s not exists", s.NamespacePath(name)),
+		}
+	}
+	p := &Namespace{}
+	// Deserialize each value into the Namespace structure
+	if err = json.Unmarshal(b, p); err != nil {
+		return nil, err
+	}
+	// Verify namespace data
+	if err = p.Verify(); err != nil {
+		return nil, err
+	}
+
+	return p, nil
+}
+
+// LoadOriginNamespaces loads all Namespaces under a specific prefix from the remote.
+// If the remote ETCD stores an encrypted Namespace, the returned Namespace is the encrypted Namespace.
+// If the remote stored Namespace is not encrypted, the returned Namespace is not encrypted.
+func (s *Store) LoadOriginNamespaces() (map[string]*Namespace, error) {
+	values, err := s.client.ListWithValues(s.NamespaceBase())
+	if err != nil {
+		return nil, err
+	}
+	res := map[string]*Namespace{}
+	for name, value := range values {
+		ns := &Namespace{}
+		// Deserialize each value into the Namespace structure
+		if err := json.Unmarshal([]byte(value), ns); err != nil {
+			log.Warn("Failed to unmarshal namespace data for %s: %v", name, err)
+			return res, err
+		}
+
+		// Verify namespace data
+		if err := ns.Verify(); err != nil {
+			// Verification failed, return error
+			log.Warn("Verification failed for namespace %s: %v", name, err)
+			return res, err
+		}
+
+		// Add the deserialized and decrypted Namespace to the result map
+		res[name] = ns
+	}
+	return res, nil
+}
+
+func DecryptNamespaces(originNamespaces map[string]*Namespace, key string) (map[string]*Namespace, error) {
+	var errors []error
+	for name, ns := range originNamespaces {
+		// Verify namespace data
+		if err := ns.Verify(); err != nil {
+			errMsg := fmt.Errorf("verification failed for namespace %s: %v", name, err)
+			log.Warn("verification failed for namespace %s: %v", name, err)
+			errors = append(errors, errMsg)
+			continue
+		}
+		if ns.IsEncrypt {
+			// Decrypt namespace data
+			if err := ns.Decrypt(key); err != nil {
+				errMsg := fmt.Errorf("failed to decrypt namespace %s: %v", name, err)
+				log.Warn("failed to decrypt namespace %s: %v", name, err)
+				errors = append(errors, errMsg)
+				continue
+			}
+		}
+	}
+
+	if len(errors) > 0 {
+		// Aggregate errors and return
+		return originNamespaces, fmt.Errorf("failed to process some namespaces: %v", errors)
+	}
+
+	return originNamespaces, nil
 }

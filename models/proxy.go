@@ -16,11 +16,12 @@ package models
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/log/zap"
 	"github.com/XiaoMi/Gaea/mysql"
-	"strconv"
-	"strings"
 
 	"github.com/go-ini/ini"
 )
@@ -47,6 +48,8 @@ type Proxy struct {
 	Environ string `ini:"environ"`
 	Service string `ini:"service_name"`
 	Cluster string `ini:"cluster_name"`
+
+	LocalNamespaceStoragePath string `ini:"local_namespace_storage_path"`
 
 	LogPath       string `ini:"log_path"`
 	LogLevel      string `ini:"log_level"`

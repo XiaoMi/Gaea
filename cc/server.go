@@ -96,6 +96,7 @@ func (s *Server) listGaeaNode(c *gin.Context) {
 	r.Data, err = service.ListGaeaNode(s.cfg, cluster)
 	if err != nil {
 		log.Warn("list names of all gaea node failed, %v", err)
+		r.RetHeader.RetCode = http.StatusInternalServerError
 		r.RetHeader.RetMessage = err.Error()
 		c.JSON(http.StatusOK, r)
 		return
@@ -123,9 +124,10 @@ func (s *Server) listNamespace(c *gin.Context) {
 	var err error
 	r := &ListNamespaceResp{RetHeader: &RetHeader{RetCode: -1, RetMessage: ""}}
 	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
-	r.Data, err = service.ListNamespace(s.cfg, cluster)
+	r.Data, err = service.ListNamespaceName(s.cfg, cluster)
 	if err != nil {
 		log.Warn("list names of all namespace failed, %v", err)
+		r.RetHeader.RetCode = http.StatusInternalServerError
 		r.RetHeader.RetMessage = err.Error()
 		c.JSON(http.StatusOK, r)
 		return
@@ -173,6 +175,8 @@ func (s *Server) queryNamespace(c *gin.Context) {
 	r.Data, err = service.QueryNamespace(req.Names, s.cfg, cluster)
 	if err != nil {
 		log.Warn("query namespace failed, %v", err)
+		r.RetHeader.RetCode = http.StatusInternalServerError
+		r.RetHeader.RetMessage = err.Error()
 		c.JSON(http.StatusOK, r)
 		return
 	}
@@ -209,6 +213,8 @@ func (s *Server) detailNamespace(c *gin.Context) {
 	r.Data, err = service.QueryNamespace(names, s.cfg, cluster)
 	if err != nil {
 		log.Warn("query namespace failed, %v", err)
+		r.RetHeader.RetCode = http.StatusInternalServerError
+		r.RetHeader.RetMessage = err.Error()
 		c.JSON(http.StatusOK, r)
 		return
 	}
@@ -244,8 +250,9 @@ func (s *Server) modifyNamespace(c *gin.Context) {
 	err = service.ModifyNamespace(&namespace, s.cfg, cluster)
 	if err != nil {
 		log.Warn("modifyNamespace failed, err: %v", err)
+		h.RetCode = http.StatusInternalServerError
 		h.RetMessage = err.Error()
-		c.JSON(http.StatusBadRequest, h)
+		c.JSON(http.StatusOK, h)
 		return
 	}
 
@@ -277,6 +284,7 @@ func (s *Server) delGaeaNode(c *gin.Context) {
 	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
 	err = service.DelGaeaNode(ip, port, s.cfg, cluster)
 	if err != nil {
+		h.RetCode = http.StatusInternalServerError
 		h.RetMessage = fmt.Sprintf("delete gaea node  faild, %v", err.Error())
 		c.JSON(http.StatusOK, h)
 		return
@@ -308,6 +316,7 @@ func (s *Server) delNamespace(c *gin.Context) {
 	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
 	err = service.DelNamespace(name, s.cfg, cluster)
 	if err != nil {
+		h.RetCode = http.StatusInternalServerError
 		h.RetMessage = fmt.Sprintf("delete namespace faild, %v", err.Error())
 		c.JSON(http.StatusOK, h)
 		return
@@ -345,6 +354,7 @@ func (s *Server) sqlFingerprint(c *gin.Context) {
 	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
 	r.SlowSQLs, r.ErrSQLs, err = service.SQLFingerprint(name, s.cfg, cluster)
 	if err != nil {
+		r.RetHeader.RetCode = http.StatusInternalServerError
 		r.RetHeader.RetMessage = err.Error()
 		c.JSON(http.StatusOK, r)
 		return
@@ -373,6 +383,7 @@ func (s *Server) proxyConfigFingerprint(c *gin.Context) {
 	cluster := c.DefaultQuery("cluster", s.cfg.DefaultCluster)
 	r.Data, err = service.ProxyConfigFingerprint(s.cfg, cluster)
 	if err != nil {
+		r.RetHeader.RetCode = http.StatusInternalServerError
 		r.RetHeader.RetMessage = err.Error()
 		c.JSON(http.StatusOK, r)
 		return
