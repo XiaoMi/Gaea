@@ -71,6 +71,9 @@ net_buffer_size=128
 ;auth plugin mysql_native_password or caching_sha2_password or ''
 ;自定义认证插件，支持 5.x 和 8.x 版本认证，认证插件为 caching_sha2_password 时，不支持低版本客户端认证
 ;auth_plugin=mysql_native_password
+;relative path to localized persistent etcd namespace
+;recommended configuration  local_namespace_storage_path=./storage
+local_namespace_storage_path =./storage
 
 ```
 
