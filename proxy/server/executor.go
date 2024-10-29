@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -745,27 +746,37 @@ func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backen
 	}
 
 	// Control go routine execution
-	done := make(chan struct{})
+	done := make(chan error, 1)
 
 	var rs *mysql.Result
 	var err error
 	go func() {
-		defer close(done)
+		defer func() {
+			if r := recover(); r != nil {
+				// Capture panic and record error log
+				log.Warn("recovered from panic in executeInSlice goroutine: %v\nStack trace:\n%s\n", r, debug.Stack())
+				// Set error information for the main function to return
+				done <- fmt.Errorf("panic in executeInSlice goroutine: %v", r)
+			}
+			// Make sure to close the done channel no matter what
+			close(done)
+		}()
+
 		if pc == nil {
 			err = fmt.Errorf("no backend connection")
-			done <- struct{}{}
+			done <- err
 			return
 		}
 		err = initBackendConn(pc, phyDb, se.GetCharset(), se.GetCollationID(), se.GetVariables())
 		if err != nil {
-			done <- struct{}{}
+			done <- err
 			return
 		}
 		startTime := time.Now()
 		rs, err = pc.Execute(sql, se.GetNamespace().GetMaxResultSize())
 
 		se.manager.RecordBackendSQLMetrics(reqCtx, se, "slice0", sql, pc.GetAddr(), startTime, err)
-		done <- struct{}{}
+		done <- err
 	}()
 
 	select {
@@ -773,7 +784,7 @@ func (se *SessionExecutor) executeInSlice(reqCtx *util.RequestContext, pc backen
 		pc.Close()
 		log.Warn("exec sql: %s, error: %s", sql, errors.ErrTimeLimitExceeded.Error())
 		return nil, fmt.Errorf("%v %dms", errors.ErrTimeLimitExceeded, maxExecuteTime)
-	case <-done:
+	case err := <-done:
 		return rs, err
 	}
 }
