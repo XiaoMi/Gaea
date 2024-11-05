@@ -650,7 +650,19 @@ func (se *SessionExecutor) executeInMultiSlices(reqCtx *util.RequestContext, pcs
 		}
 	}
 	rs := make([]interface{}, resultCount)
-	f := func(reqCtx *util.RequestContext, rs []interface{}, i int, sliceName string, execSqls map[string][]string, pc backend.PooledConnect) {
+	f := func(reqCtx *util.RequestContext, rs []interface{}, startIndex int, sliceName string, execSqls map[string][]string, pc backend.PooledConnect) {
+		defer func() {
+			if r := recover(); r != nil {
+				// Log, including panic information and stack
+				log.Warn("recovered from panic in executeInMultiSlices sliceName: '%s' execSqls: '%s'\ngoroutine: %v\nStack trace:\n%s\n", sliceName, execSqls, r, debug.Stack())
+				// Set errors in the result slice
+				err := fmt.Errorf("caught panic: %v in slice %s", sliceName, r)
+				rs[startIndex] = err
+				// Ensure goroutine is signaled done even after panicking
+				done <- sliceName
+			}
+		}()
+		i := startIndex
 		// 对 execSqls 排序后处理
 		dbs := make([]string, 0, len(execSqls))
 		for k := range execSqls {
