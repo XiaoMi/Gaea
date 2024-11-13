@@ -1438,7 +1438,7 @@ func TestMycatSelectPatternLogicOperator(t *testing.T) {
 			sql: "select * from tbl_mycat where id = 0 or id in (1,2)",
 			sqls: map[string]map[string][]string{
 				"slice-0": {
-					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id`=0 OR `id` IN ()"},
+					"db_mycat_0": {"SELECT * FROM `tbl_mycat` WHERE `id`=0 OR 1=0"},
 					"db_mycat_1": {"SELECT * FROM `tbl_mycat` WHERE `id`=0 OR `id` IN (1)"},
 				},
 				"slice-1": {

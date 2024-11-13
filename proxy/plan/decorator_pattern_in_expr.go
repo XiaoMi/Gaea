@@ -178,6 +178,18 @@ func (p *PatternInExprDecorator) Restore(ctx *format.RestoreCtx) error {
 		return err
 	}
 
+	valueList, exists := p.indexValueMap[tableIndex]
+	if !exists || len(valueList) == 0 {
+		// 当值列表为空时，处理为永假或永真
+		if p.Not {
+			// NOT IN 空集，总是为真
+			ctx.WritePlain("1=1")
+		} else {
+			// IN 空集，总是为假
+			ctx.WritePlain("1=0")
+		}
+		return nil
+	}
 	if err := p.Expr.Restore(ctx); err != nil {
 		return fmt.Errorf("an error occurred while restore PatternInExpr.Expr: %v", err)
 	}
