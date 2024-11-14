@@ -16,6 +16,7 @@ package plan
 
 import (
 	"fmt"
+
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/ast"
 	"github.com/XiaoMi/Gaea/parser/opcode"
@@ -475,11 +476,13 @@ func rewriteTableSource(p *TableAliasStmtInfo, tableSource *ast.TableSource) err
 	case *ast.TableName:
 		return rewriteTableNameInTableSource(p, tableSource)
 	case *ast.SelectStmt:
+		// 递归处理子查询
 		if err := handleSubquerySelectStmt(p, ss); err != nil {
 			return fmt.Errorf("handleSubquerySelectStmt error: %v", err)
 		}
 		alias := tableSource.AsName.L
 		if alias != "" {
+			// 记录子查询的别名
 			if _, err := p.RecordSubqueryTableAlias(alias); err != nil {
 				return fmt.Errorf("record subquery alias error: %v", err)
 			}

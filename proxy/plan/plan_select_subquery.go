@@ -62,7 +62,7 @@ func handleSubquerySelectStmt(p *TableAliasStmtInfo, subquery *ast.SelectStmt) (
 			err = fmt.Errorf("handleSubqueryExpr panic: %v", v)
 		}
 	}()
-
+	// 递归处理嵌套的子查询
 	if err = handleSubqueryTableRefs(p, subquery); err != nil {
 		return fmt.Errorf("handle From error: %v", err)
 	}
@@ -150,11 +150,22 @@ func handleSubqueryJoin(p *TableAliasStmtInfo, join *ast.Join) error {
 
 // gaea规定在子查询的FROM表名中不能再出现子查询
 func rewriteSubqueryTableSource(p *TableAliasStmtInfo, tableSource *ast.TableSource) error {
-	switch tableSource.Source.(type) {
+	switch ts := tableSource.Source.(type) {
 	case *ast.TableName:
 		return rewriteSubqueryTableNameInTableSource(p, tableSource)
 	case *ast.SelectStmt:
-		return fmt.Errorf("cannot handle subquery in subquery")
+		// 递归处理嵌套的子查询
+		if err := handleSubquerySelectStmt(p, ts); err != nil {
+			return fmt.Errorf("handleSubquerySelectStmt error: %v", err)
+		}
+		alias := tableSource.AsName.L
+		if alias != "" {
+			// 记录子查询的别名
+			if _, err := p.RecordSubqueryTableAlias(alias); err != nil {
+				return fmt.Errorf("record subquery alias error: %v", err)
+			}
+		}
+		return nil
 	default:
 		return fmt.Errorf("field Source cannot handle, type: %T", tableSource.Source)
 	}
