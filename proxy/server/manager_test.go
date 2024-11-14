@@ -14,6 +14,7 @@
 package server
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/XiaoMi/Gaea/models"
@@ -300,6 +301,47 @@ func TestUserManager_CheckPassword(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUserManager_ClearNamespaceUsers_DuplicatePasswords(t *testing.T) {
+	// Prepare namespace user configuration containing duplicate passwords
+	nsCfg := prepareNamespaceUsersWithDuplicatePasswords()
+	userManager, err := CreateUserManager(nsCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Clean up namespaces containing duplicate passwords
+	userManager.ClearNamespaceUsers("namespace1")
+
+	// Define test cases to verify whether the user has been deleted correctly
+	tests := []usercase{
+		{username: "superroot", password: "superroot", namespace: ""},
+		{username: "superroot", password: "password123", namespace: ""},
+	}
+
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("%s_%s", test.username, test.password), func(t *testing.T) {
+			actualNamespace := userManager.GetNamespaceByUser(test.username, test.password)
+			if actualNamespace != test.namespace {
+				t.Errorf("GetNamespaceByUser error, username: %s, password: %s, expect: %s, actual: %s",
+					test.username, test.password, test.namespace, actualNamespace)
+			}
+		})
+	}
+}
+
+// Prepare namespace user configuration containing duplicate passwords
+func prepareNamespaceUsersWithDuplicatePasswords() map[string]*models.Namespace {
+	nsMap := make(map[string]*models.Namespace)
+	ns1 := "namespace1"
+	user1 := &userinfo{username: "superroot", password: "superroot"}
+	user2 := &userinfo{username: "superroot", password: "superroot"}
+	user3 := &userinfo{username: "superroot", password: "password123"}
+	namespace1 := createNamespaceUsers(ns1, []*userinfo{user1, user2, user3})
+	nsMap[ns1] = namespace1
+
+	return nsMap
 }
 
 func prepareNamespaceUsers() map[string]*models.Namespace {

@@ -16,11 +16,12 @@ package server
 
 import (
 	"fmt"
-	"github.com/XiaoMi/Gaea/backend"
 	"net"
 	"runtime"
 	"strings"
 	"sync"
+
+	"github.com/XiaoMi/Gaea/backend"
 
 	"sync/atomic"
 
@@ -114,6 +115,9 @@ func (cc *Session) clientConnectionReachLimit() (bool, int) {
 // IsAllowConnect check if allow to connect
 func (cc *Session) IsAllowConnect() bool {
 	ns := cc.getNamespace() // maybe nil, and panic!
+	if ns == nil {
+		return false
+	}
 	clientHost, _, err := net.SplitHostPort(cc.c.RemoteAddr().String())
 	if err != nil {
 		log.Warn("[server] Session parse host error: %v", err)

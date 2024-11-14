@@ -676,13 +676,19 @@ func (u *UserManager) ClearNamespaceUsers(namespace string) {
 
 			// delete user password in users
 			username, password := getUserAndPasswordFromKey(key)
-			var s []string
-			for i := range u.users[username] {
-				if u.users[username][i] == password {
-					s = append(u.users[username][:i], u.users[username][i+1:]...)
+			passwords := u.users[username]
+			var newPasswords []string
+			for _, pwd := range passwords {
+				if pwd != password {
+					newPasswords = append(newPasswords, pwd)
 				}
 			}
-			u.users[username] = s
+
+			if len(newPasswords) == 0 {
+				delete(u.users, username)
+			} else {
+				u.users[username] = newPasswords
+			}
 		}
 	}
 }
