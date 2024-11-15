@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -551,7 +552,14 @@ func (dc *DirectConnection) writeComFieldList(table string, wildcard string) err
 }
 
 // Ping implements mysql ping command.
-func (dc *DirectConnection) Ping() error {
+func (dc *DirectConnection) Ping() (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			stack := debug.Stack()
+			log.Warn("panic in DirectConnection Ping(): %v\nStack trace:\n%s", r, stack)
+			err = fmt.Errorf("panic in DirectConnection Ping(): %v", r)
+		}
+	}()
 	if dc.conn == nil {
 		return fmt.Errorf("get mysql conn of DirectConnection error.dc addr:%s", dc.GetAddr())
 	}
@@ -562,6 +570,10 @@ func (dc *DirectConnection) Ping() error {
 	data, err := dc.readPacket()
 	if err != nil {
 		return err
+	}
+	// 添加了对 data 长度的检查，防止 data[0] 访问越界
+	if len(data) == 0 {
+		return fmt.Errorf("received empty data in Ping")
 	}
 	switch data[0] {
 	case mysql.OKHeader:
