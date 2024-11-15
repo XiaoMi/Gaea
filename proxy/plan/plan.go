@@ -236,6 +236,13 @@ func buildShardPlan(stmt ast.StmtNode, db string, sql string, router *router.Rou
 			return nil, err
 		}
 		return plan, nil
+	case *ast.UnionStmt:
+		plan := NewUnionPlan(db, sql, router, seq, hintPlan)
+		if err := plan.HandleUnionStmt(s); err != nil {
+			return nil, err
+		}
+		return plan, nil
+
 	default:
 		return nil, fmt.Errorf("stmt type does not support shard now")
 	}
