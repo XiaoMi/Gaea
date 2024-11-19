@@ -132,15 +132,22 @@ func persistenceEncryptNamespaces(localClient *models.LocalClient, namespaces ma
 	}
 	store := models.NewStore(localClient)
 	defer store.Close()
+	// Clean up the storage directory
 	err := localClient.Clean(store.NamespaceBase())
 	if err != nil {
 		return fmt.Errorf("failed to clean directory error '%v'", err)
 	}
+	// A map used to collect errors, the key is the namespace name, the value is the error message
+	errorsMap := make(map[string]error)
 	for name, ns := range namespaces {
 		if err := store.UpdateNamespace(ns); err != nil {
-			log.Warn("persistence namespace %s failed", name)
-			return err
+			log.Warn("local client update namespace: %s: %v", name, err)
+			errorsMap[name] = err
 		}
+	}
+	// If there are any errors, return a summary of the error messages
+	if len(errorsMap) > 0 {
+		return fmt.Errorf("local client update namespace: %v", errorsMap)
 	}
 	return nil
 }
@@ -161,7 +168,9 @@ func SyncNamespaces(remote models.Client, local *models.LocalClient, key string)
 		return nil, err
 	}
 
-	persistenceEncryptNamespaces(local, originNamespaces)
+	if err := persistenceEncryptNamespaces(local, originNamespaces); err != nil {
+		log.Warn("failed to persistenceEncryptNamespaces: %v", err)
+	}
 	return models.DecryptNamespaces(originNamespaces, key)
 }
 
@@ -477,7 +486,7 @@ func (m *Manager) startConnectPoolMetricsTask(interval int) {
 				m.statistics.CalcCPUBusy(interval - 5)
 
 				current, _, _ := m.switchIndex.Get()
-				for nameSpaceName, _ := range m.namespaces[current].namespaces {
+				for nameSpaceName := range m.namespaces[current].namespaces {
 					m.recordBackendConnectPoolMetrics(nameSpaceName)
 				}
 			case <-tSQLRecordTime.C:
