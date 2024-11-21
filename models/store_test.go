@@ -21,37 +21,67 @@ import (
 	"github.com/bytedance/mockey"
 )
 
-func newTestStore() *Store {
-	c, _ := NewClient(ConfigEtcd, "127.0.0.1:2381", "test", "test", "")
-
-	return NewStore(c)
-}
-
 func TestNewStore(t *testing.T) {
-	c, _ := NewClient(ConfigEtcd, "127.0.0.1:2381", "test", "test", "")
-	store := NewStore(c)
-	defer store.Close()
-	if store == nil {
-		t.Fatalf("test NewStore failed")
+	// 创建 Mock 客户端
+	mockClient := new(MockClient)
+
+	// 设置 Mock 客户端的行为
+	mockClient.On("BasePrefix").Return("/gaea_default_cluster")
+
+	// 使用 Mock 客户端创建 Store
+	store := NewStore(mockClient)
+
+	// 检查 Store 的 prefix 是否正确
+	expectedPrefix := "/gaea_default_cluster"
+	actualPrefix := store.prefix
+	if actualPrefix != expectedPrefix {
+		t.Fatalf("Expected prefix '%s', got '%s'", expectedPrefix, actualPrefix)
 	}
+
+	// 确保所有预期的调用都被执行
+	mockClient.AssertExpectations(t)
 }
 
 func TestNamespaceBase(t *testing.T) {
-	store := newTestStore()
-	defer store.Close()
-	base := store.NamespaceBase()
-	if base != "/gaea/namespace" {
-		t.Fatalf("test NamespaceBase failed, %v", base)
+	// 创建 Mock 客户端
+	mockClient := new(MockClient)
+
+	// 设置 Mock 客户端的行为
+	mockClient.On("BasePrefix").Return("/gaea_default_cluster")
+
+	// 使用 Mock 客户端创建 Store
+	store := NewStore(mockClient)
+
+	// 测试 NamespaceBase 方法
+	expectedBase := "/gaea_default_cluster/namespace"
+	actualBase := store.NamespaceBase()
+	if actualBase != expectedBase {
+		t.Fatalf("Expected base '%s', got '%s'", expectedBase, actualBase)
 	}
+
+	// 确保所有预期的调用都被执行
+	mockClient.AssertExpectations(t)
 }
 
 func TestNamespacePath(t *testing.T) {
-	store := newTestStore()
-	defer store.Close()
-	path := store.NamespacePath("test")
-	if path != "/gaea/namespace/test" {
-		t.Fatalf("test NamespacePath failed, %v", path)
+	// 创建 Mock 客户端
+	mockClient := new(MockClient)
+
+	// 设置 Mock 客户端的行为
+	mockClient.On("BasePrefix").Return("/gaea_default_cluster")
+
+	// 使用 Mock 客户端创建 Store
+	store := NewStore(mockClient)
+
+	// 测试 NamespacePath 方法
+	expectedPath := "/gaea_default_cluster/namespace/test_namespace"
+	actualPath := store.NamespacePath("test_namespace")
+	if actualPath != expectedPath {
+		t.Fatalf("Expected path '%s', got '%s'", expectedPath, actualPath)
 	}
+
+	// 确保所有预期的调用都被执行
+	mockClient.AssertExpectations(t)
 }
 
 func TestLoadNamespace(t *testing.T) {

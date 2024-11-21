@@ -100,13 +100,39 @@ func loadNamespacesFromClient(cfg *models.Proxy) (map[string]*models.Namespace, 
 	localClient, _ := models.NewLocalClient(cfg.LocalNamespaceStoragePath, root)
 
 	if remoteClient == nil && localClient == nil {
-		return nil, fmt.Errorf("no client available")
+		return nil, fmt.Errorf(
+			"no client available; remote client config: (ConfigType: %s, CoordinatorAddr: %s, UserName: %s, Root: %s), local client config: (LocalNamespaceStoragePath: %s)",
+			cfg.ConfigType, cfg.CoordinatorAddr, cfg.UserName, root, cfg.LocalNamespaceStoragePath,
+		)
 	}
 	if remoteClient == nil && localClient != nil {
-		return LoadDecryptNamespaces(localClient, cfg.EncryptKey)
+		namespaces, err := LoadDecryptNamespaces(localClient, cfg.EncryptKey)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to load namespaces from local client (LocalNamespaceStoragePath: %s): %v",
+				cfg.LocalNamespaceStoragePath, err,
+			)
+		}
+		// If namespaces is empty, an error will be reported
+		if len(namespaces) == 0 {
+			return nil, fmt.Errorf(
+				"no namespaces found in local client (LocalNamespaceStoragePath: %s)",
+				cfg.LocalNamespaceStoragePath,
+			)
+		}
+		return namespaces, nil
+
 	}
+
 	if remoteClient != nil && localClient == nil {
-		return LoadDecryptNamespaces(remoteClient, cfg.EncryptKey)
+		namespaces, err := LoadDecryptNamespaces(remoteClient, cfg.EncryptKey)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to load namespaces from remote client (CoordinatorAddr: %s, UserName: %s, Root: %s): %v",
+				cfg.CoordinatorAddr, cfg.UserName, root, err,
+			)
+		}
+		return namespaces, nil
 	}
 
 	return SyncNamespaces(remoteClient, localClient, cfg.EncryptKey)

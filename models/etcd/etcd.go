@@ -65,6 +65,13 @@ func New(addr string, timeout time.Duration, username, passwd, root string) (*Et
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	_, err = c.GetVersion(ctx)
+	if err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(root) == "" {
 		root = defaultEtcdPrefix
 	}

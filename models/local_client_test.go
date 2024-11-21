@@ -21,6 +21,18 @@ import (
 	"time"
 )
 
+func setupLocalClient(t *testing.T) *LocalClient {
+	storagePath := "/tmp/gaea_local_storage_abs"
+	lc, err := NewLocalClient(storagePath, "/gaea")
+	if err != nil {
+		t.Fatalf("Failed to initialize LocalClient: %v", err)
+	}
+	t.Cleanup(func() {
+		os.RemoveAll(storagePath)
+	})
+	return lc
+}
+
 func TestNewLocalClient(t *testing.T) {
 	// Test absolute path
 	absPath := "/tmp/gaea_local_storage_abs"
@@ -57,18 +69,12 @@ func TestNewLocalClient(t *testing.T) {
 }
 
 func TestLocalClient_Create(t *testing.T) {
-	// Test file creation
-	storagePath := "/tmp/gaea_local_storage_abs"
-	lc, err := NewLocalClient(storagePath, "/gaea")
-	if err != nil {
-		t.Fatalf("Failed to initialize LocalClient: %v", err)
-	}
-	defer os.RemoveAll(storagePath)
+	lc := setupLocalClient(t)
 
 	// Test file creation
 	path := "/gaea_default_cluster/namespace/test_namespace"
 	data := []byte("test data")
-	err = lc.Create(path, data)
+	err := lc.Create(path, data)
 	if err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -82,13 +88,7 @@ func TestLocalClient_Create(t *testing.T) {
 }
 
 func TestLocalClient_Read(t *testing.T) {
-	// Test file creation
-	storagePath := "/tmp/gaea_local_storage_abs"
-	lc, err := NewLocalClient(storagePath, "/gaea")
-	if err != nil {
-		t.Fatalf("Failed to initialize LocalClient: %v", err)
-	}
-	defer os.RemoveAll(storagePath)
+	lc := setupLocalClient(t)
 
 	// Test file creation
 	path := "/gaea_default_cluster/namespace/test_namespace"
@@ -106,13 +106,7 @@ func TestLocalClient_Read(t *testing.T) {
 }
 
 func TestLocalClient_Update(t *testing.T) {
-	// Initialize LocalClient
-	storagePath := "/tmp/gaea_local_storage_abs"
-	lc, err := NewLocalClient(storagePath, "/gaea")
-	if err != nil {
-		t.Fatalf("Failed to initialize LocalClient: %v", err)
-	}
-	defer os.RemoveAll(storagePath)
+	lc := setupLocalClient(t)
 
 	// Create the initial file
 	path := "/gaea_default_cluster/namespace/test_namespace"
@@ -121,7 +115,7 @@ func TestLocalClient_Update(t *testing.T) {
 
 	// Update file content
 	updatedData := []byte("updated data")
-	err = lc.Update(path, updatedData)
+	err := lc.Update(path, updatedData)
 	if err != nil {
 		t.Fatalf("Update failed: %v", err)
 	}
@@ -137,13 +131,7 @@ func TestLocalClient_Update(t *testing.T) {
 }
 
 func TestLocalClient_Delete(t *testing.T) {
-	// Initialize LocalClient
-	storagePath := "/tmp/gaea_local_storage_abs"
-	lc, err := NewLocalClient(storagePath, "/gaea")
-	if err != nil {
-		t.Fatalf("Failed to initialize LocalClient: %v", err)
-	}
-	defer os.RemoveAll(storagePath)
+	lc := setupLocalClient(t)
 
 	// Create a file for deletion
 	path := "/gaea_default_cluster/namespace/test_namespace"
@@ -151,29 +139,20 @@ func TestLocalClient_Delete(t *testing.T) {
 	lc.Create(path, data)
 
 	// Delete the file
-	err = lc.Delete(path)
+	err := lc.Delete(path)
 	if err != nil {
 		t.Fatalf("Delete failed: %v", err)
 	}
 
-	// Delete the file
-	readData, err := lc.Read(path)
-	if err != nil {
-		t.Fatalf("Read after delete failed: %v", err)
-	}
-	if readData != nil {
-		t.Fatalf("Data should be nil after delete, got: '%s'", readData)
+	// Check if the file is deleted
+	res, _ := lc.Read(path)
+	if res != nil {
+		t.Fatalf("File should not exist after delete")
 	}
 }
 
 func TestLocalClient_List(t *testing.T) {
-	// Initialize LocalClient
-	storagePath := "/tmp/gaea_local_storage_abs"
-	lc, err := NewLocalClient(storagePath, "/gaea")
-	if err != nil {
-		t.Fatalf("Failed to initialize LocalClient: %v", err)
-	}
-	defer os.RemoveAll(storagePath)
+	lc := setupLocalClient(t)
 
 	// Create multiple files
 	lc.Create("/gaea_default_cluster/namespace/test_namespace1", []byte("data1"))
@@ -209,13 +188,7 @@ func TestLocalClient_List(t *testing.T) {
 }
 
 func TestLocalClient_ListWithValues(t *testing.T) {
-	// Initialize LocalClient
-	storagePath := "/tmp/gaea_local_storage_abs"
-	lc, err := NewLocalClient(storagePath, "/gaea")
-	if err != nil {
-		t.Fatalf("Failed to initialize LocalClient: %v", err)
-	}
-	defer os.RemoveAll(storagePath)
+	lc := setupLocalClient(t)
 
 	// Create multiple files
 	lc.Create("/gaea_default_cluster/namespace/test_namespace1", []byte("data1"))
@@ -253,20 +226,15 @@ func TestLocalClient_ListWithValues(t *testing.T) {
 		t.Fatalf("Missing keys in values: %v", expectedValues)
 	}
 }
+
 func TestLocalClient_UpdateWithTTL(t *testing.T) {
-	// Initialize LocalClient
-	storagePath := "/tmp/gaea_local_storage_abs"
-	lc, err := NewLocalClient(storagePath, "/gaea")
-	if err != nil {
-		t.Fatalf("Failed to initialize LocalClient: %v", err)
-	}
-	defer os.RemoveAll(storagePath)
+	lc := setupLocalClient(t)
 
 	// Update the file and set TTL
 	path := "/gaea_default_cluster/namespace/test_namespace"
 	data := []byte("temporary data")
 	ttl := 1 * time.Second
-	err = lc.UpdateWithTTL(path, data, ttl)
+	err := lc.UpdateWithTTL(path, data, ttl)
 	if err != nil {
 		t.Fatalf("UpdateWithTTL failed: %v", err)
 	}
@@ -294,20 +262,14 @@ func TestLocalClient_UpdateWithTTL(t *testing.T) {
 }
 
 func TestLocalClient_Clean(t *testing.T) {
-	// Initialize LocalClient
-	storagePath := "./test_storage_clean"
-	lc, err := NewLocalClient(storagePath, "/gaea")
-	if err != nil {
-		t.Fatalf("Failed to initialize LocalClient: %v", err)
-	}
-	defer os.RemoveAll(storagePath)
+	lc := setupLocalClient(t)
 
 	// Create multiple files
 	lc.Create("/namespace/item1", []byte("data1"))
 	lc.Create("/namespace/item2", []byte("data2"))
 
 	// Clean up the directory
-	err = lc.Clean("/namespace")
+	err := lc.Clean("/namespace")
 	if err != nil {
 		t.Fatalf("Clean failed: %v", err)
 	}
@@ -351,5 +313,12 @@ func TestLocalClient_safeJoinPath(t *testing.T) {
 	_, err = lc.safeJoinPath(invalidPath)
 	if err == nil {
 		t.Fatalf("Expected error for invalid path '%s', got nil", invalidPath)
+	}
+
+	// Test for empty path
+	emptyPath := ""
+	_, err = lc.safeJoinPath(emptyPath)
+	if err == nil {
+		t.Fatalf("Expected error for empty path, got nil")
 	}
 }

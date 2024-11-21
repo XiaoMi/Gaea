@@ -15,6 +15,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -45,6 +46,9 @@ type SQLFingerprint struct {
 
 // AdminServer means admin server
 type AdminServer struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	exit struct {
 		C chan struct{}
 	}
@@ -82,7 +86,9 @@ func NewAdminServer(proxy *Server, cfg *models.Proxy) (*AdminServer, error) {
 			s.Close()
 		}
 	}()
-
+	ctx, cancel := context.WithCancel(context.Background())
+	s.ctx = ctx
+	s.cancel = cancel
 	s.exit.C = make(chan struct{})
 	s.proxy = proxy
 	s.adminUser = cfg.AdminUser
@@ -142,6 +148,7 @@ func (s *AdminServer) Run() {
 // Close close admin server
 func (s *AdminServer) Close() error {
 	close(s.exit.C)
+	s.cancel()
 	if err := s.unregisterProxy(); err != nil {
 		log.Fatal("unregister proxy failed, %v", err)
 		return err
@@ -260,11 +267,15 @@ func (s *AdminServer) registerProxy() error {
 		return store.CreateProxy(s.model)
 	}
 	log.Warn("[admin server] register proxy failed: remote client is unavailable", err)
-	// if the local is enabled, no error is returned here so that the data can be read from the local normally in the future.
+
+	// If the local storage is enabled, start a background task to retry registration
 	if len(s.localNamespaceStoragePath) > 0 {
-		log.Warn("[admin server] register proxy failed: remote is unavailable, switch to local", err)
+		log.Warn("[admin server] Remote is unavailable, switching to local storage")
+		// Start a background task to keep trying to register and alert until successful
+		go s.startRegistrationRetry()
 		return nil
 	}
+	// No client available and no local storage, return an error
 	return fmt.Errorf("[admin server] register proxy failed: no client available error:'%v'", err)
 }
 
@@ -286,6 +297,49 @@ func (s *AdminServer) unregisterProxy() error {
 		return nil
 	}
 	return fmt.Errorf("[admin server] unregister proxy failed: no client available error:'%v'", err)
+}
+
+func (s *AdminServer) startRegistrationRetry() {
+	retryInterval := 5 * time.Second
+	for {
+		select {
+		case <-s.ctx.Done():
+			// The AdminServer is shutting down
+			log.Warn("[admin server] Shutting down registration retry routine")
+			return
+		case <-time.After(retryInterval):
+			log.Warn("[admin server] Attempting to re-register proxy to remote ETCD")
+			err := s.tryRegisterProxy()
+			if err == nil {
+				log.Warn("[admin server] Successfully re-registered proxy to remote ETCD")
+				// Registration succeeded, exit the retry loop
+				return
+			} else {
+				// Optionally, alert here
+				log.Warn("[admin server] Re-register proxy failed: %v", err)
+			}
+		}
+	}
+}
+
+func (s *AdminServer) tryRegisterProxy() error {
+	// Attempt to create a new client for the remote ETCD service
+	remote, err := models.NewClient(s.configType, s.coordinatorAddr, s.coordinatorUsername, s.coordinatorPassword, s.coordinatorRoot)
+	if err != nil {
+		return fmt.Errorf("failed to create remote client: %v", err)
+	}
+	defer remote.Close()
+
+	store := models.NewStore(remote)
+	defer store.Close()
+
+	// Attempt to create the proxy in the remote store
+	err = store.CreateProxy(s.model)
+	if err != nil {
+		return fmt.Errorf("failed to create proxy in remote store: %v", err)
+	}
+
+	return nil
 }
 
 // @Summary 获取proxy admin接口状态
