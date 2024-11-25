@@ -18,11 +18,13 @@ package util
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 
 	"github.com/XiaoMi/Gaea/util/sync2"
 )
@@ -518,7 +520,7 @@ func TestIdleTimeout(t *testing.T) {
 	}
 	p.Put(r)
 	if lastID.Get() != 1 {
-		t.Errorf("Expecting 1, received %d", count.Get())
+		t.Errorf("Expecting 1, received %d", lastID.Get())
 	}
 	if count.Get() != 1 {
 		t.Errorf("Expecting 1, received %d", count.Get())
@@ -539,7 +541,7 @@ func TestIdleTimeout(t *testing.T) {
 		t.Errorf("Unexpected error %v", err)
 	}
 	if lastID.Get() != 2 {
-		t.Errorf("Expecting 2, received %d", count.Get())
+		t.Errorf("Expecting 2, received %d", lastID.Get())
 	}
 	if count.Get() != 1 {
 		t.Errorf("Expecting 1, received %d", count.Get())
@@ -552,7 +554,7 @@ func TestIdleTimeout(t *testing.T) {
 	// then make sure things are still as we expect
 	time.Sleep(20 * time.Millisecond)
 	if lastID.Get() != 2 {
-		t.Errorf("Expecting 2, received %d", count.Get())
+		t.Errorf("Expecting 2, received %d", lastID.Get())
 	}
 	if count.Get() != 1 {
 		t.Errorf("Expecting 1, received %d", count.Get())
@@ -566,7 +568,7 @@ func TestIdleTimeout(t *testing.T) {
 		t.Errorf("Unexpected error %v", err)
 	}
 	if lastID.Get() != 2 {
-		t.Errorf("Expecting 2, received %d", count.Get())
+		t.Errorf("Expecting 2, received %d", lastID.Get())
 	}
 	if count.Get() != 1 {
 		t.Errorf("Expecting 1, received %d", count.Get())
@@ -582,7 +584,7 @@ func TestIdleTimeout(t *testing.T) {
 
 	time.Sleep(20 * time.Millisecond)
 	if lastID.Get() != 2 {
-		t.Errorf("Expecting 2, received %d", count.Get())
+		t.Errorf("Expecting 2, received %d", lastID.Get())
 	}
 	if count.Get() != 1 {
 		t.Errorf("Expecting 1, received %d", count.Get())
@@ -594,10 +596,10 @@ func TestIdleTimeout(t *testing.T) {
 	p.SetIdleTimeout(10 * time.Millisecond)
 	time.Sleep(20 * time.Millisecond)
 	if lastID.Get() != 2 {
-		t.Errorf("Expecting 2, received %d", count.Get())
+		t.Errorf("Expecting 2, received %d", lastID.Get())
 	}
 	if count.Get() != 0 {
-		t.Errorf("Expecting 1, received %d", count.Get())
+		t.Errorf("Expecting 0, received %d", count.Get())
 	}
 	if p.IdleClosed() != 2 {
 		t.Errorf("Expecting 2, received %d", p.IdleClosed())
@@ -611,13 +613,47 @@ func TestCreateFail(t *testing.T) {
 	p, _ := NewResourcePool(FailFactory, 5, 5, time.Second)
 	p.SetDynamic(false)
 	defer p.Close()
-	if _, err := p.Get(ctx); err.Error() != "Failed" {
+	if _, err := p.Get(ctx); err == nil || err.Error() != "Failed" {
 		t.Errorf("Expecting Failed, received %v", err)
 	}
 	stats := p.StatsJSON()
-	expected := `{"Capacity": 5, "Available": 5, "Active": 0, "InUse": 0, "MaxCapacity": 5, "WaitCount": 0, "WaitTime": 0, "IdleTimeout": 1000000000, "IdleClosed": 0}`
-	if stats != expected {
-		t.Errorf(`expecting '%s', received '%s'`, expected, stats)
+	// Parse the JSON stats
+	var statsMap map[string]interface{}
+	err := json.Unmarshal([]byte(stats), &statsMap)
+	if err != nil {
+		t.Errorf("Failed to parse stats JSON: %v", err)
+	}
+
+	// Check that WaitCount is greater than or equal to 1
+	waitCount := int(statsMap["WaitCount"].(float64))
+	if waitCount < 1 {
+		t.Errorf("Expecting WaitCount >= 1, got %d", waitCount)
+	}
+
+	// Check that WaitTime is greater than zero
+	waitTime := int64(statsMap["WaitTime"].(float64))
+	if waitTime <= 0 {
+		t.Errorf("Expecting WaitTime > 0, got %d", waitTime)
+	}
+
+	// Check other stats as before
+	if int(statsMap["Capacity"].(float64)) != 5 {
+		t.Errorf("Expecting Capacity 5, got %v", statsMap["Capacity"])
+	}
+	if int(statsMap["Available"].(float64)) != 5 {
+		t.Errorf("Expecting Available 5, got %v", statsMap["Available"])
+	}
+	if int(statsMap["Active"].(float64)) != 0 {
+		t.Errorf("Expecting Active 0, got %v", statsMap["Active"])
+	}
+	if int(statsMap["InUse"].(float64)) != 0 {
+		t.Errorf("Expecting InUse 0, got %v", statsMap["InUse"])
+	}
+	if int(statsMap["MaxCapacity"].(float64)) != 5 {
+		t.Errorf("Expecting MaxCapacity 5, got %v", statsMap["MaxCapacity"])
+	}
+	if int(statsMap["IdleClosed"].(float64)) != 0 {
+		t.Errorf("Expecting IdleClosed 0, got %v", statsMap["IdleClosed"])
 	}
 }
 

@@ -39,6 +39,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/XiaoMi/Gaea/util/bucketpool"
 	"github.com/XiaoMi/Gaea/util/sync2"
@@ -657,6 +658,40 @@ func (c *Conn) WriteEOFPacket(flags uint16, warnings uint16) error {
 	pos = WriteUint16(data, pos, flags)
 
 	return c.WriteEphemeralPacket()
+}
+
+// SetReadWriteDeadline sets the read and write deadlines based on the timeout duration.
+func (c *Conn) SetReadWriteDeadline(timeout time.Duration) error {
+	if c.conn == nil {
+		return fmt.Errorf("connection is nil")
+	}
+
+	deadline := time.Now().Add(timeout)
+
+	if err := c.conn.SetReadDeadline(deadline); err != nil {
+		return fmt.Errorf("failed to set read deadline: %w", err)
+	}
+	if err := c.conn.SetWriteDeadline(deadline); err != nil {
+		return fmt.Errorf("failed to set write deadline: %w", err)
+	}
+
+	return nil
+}
+
+// ResetReadWriteDeadline resets the read and write deadlines by setting them to zero time.
+func (c *Conn) ResetReadWriteDeadline() error {
+	if c.conn == nil {
+		return fmt.Errorf("connection is nil")
+	}
+
+	if err := c.conn.SetReadDeadline(time.Time{}); err != nil {
+		return fmt.Errorf("failed to reset read deadline: %w", err)
+	}
+	if err := c.conn.SetWriteDeadline(time.Time{}); err != nil {
+		return fmt.Errorf("failed to reset write deadline: %w", err)
+	}
+
+	return nil
 }
 
 //

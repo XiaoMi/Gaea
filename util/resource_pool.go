@@ -25,8 +25,10 @@ import (
 	"sync"
 	"time"
 
+	log "github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/util/sync2"
 	"github.com/XiaoMi/Gaea/util/timer"
+	"github.com/google/uuid"
 )
 
 var (
@@ -206,6 +208,7 @@ func (rp *ResourcePool) get(ctx context.Context, wait bool) (resource Resource, 
 			select {
 			case wrapper, ok = <-rp.resources:
 			case <-ctx.Done():
+				rp.recordWait(startTime)
 				return nil, ErrTimeout
 			}
 			endTime := time.Now()
@@ -219,32 +222,84 @@ func (rp *ResourcePool) get(ctx context.Context, wait bool) (resource Resource, 
 	}
 
 	if wrapper.resource == nil {
-		errChan := make(chan error)
-		go func() {
-			wrapper.resource, err = rp.factory()
-			if err != nil {
-				errChan <- err
-				return
-			}
-			errChan <- nil
-		}()
-
-		select {
-		case <-ctx.Done():
+		wrapper.resource, err = rp.createResourceWithRetry(ctx)
+		if err != nil {
 			rp.resources <- resourceWrapper{}
-			return nil, fmt.Errorf("new connection timeout: %s", ctx.Err())
-		case err1 := <-errChan:
-			if err1 != nil {
-				rp.resources <- resourceWrapper{}
-				return nil, err1
-			}
+			return nil, err
 		}
-
 		rp.active.Add(1)
 	}
 	rp.available.Add(-1)
 	rp.inUse.Add(1)
 	return wrapper.resource, err
+}
+
+func (rp *ResourcePool) createResourceWithRetry(ctx context.Context) (Resource, error) {
+	var resource Resource
+	var err error
+
+	// Generate a UUID for this connection attempt
+	connectionUUID, uuidErr := uuid.NewRandom()
+	if uuidErr != nil {
+		// Handle UUID generation error
+		log.Warn("Failed to generate UUID for connection attempt: %v", uuidErr)
+		connectionUUID = uuid.UUID{} // Zero UUID
+	}
+
+	// Initialize retry count
+	retryCount := 0
+	var startTime = time.Now()
+
+	for i := 0; i < 3; i++ {
+		// Increment retry count
+		retryCount = i + 1
+
+		// Create a channel to receive the factory result
+		resultChan := make(chan struct {
+			resource Resource
+			err      error
+		}, 1)
+
+		// Start a goroutine to call rp.factory()
+		go func() {
+			res, err := rp.factory()
+			resultChan <- struct {
+				resource Resource
+				err      error
+			}{resource: res, err: err}
+		}()
+
+		// Wait for either the factory to finish or the context to be canceled
+		select {
+		case <-ctx.Done():
+			rp.recordWait(startTime)
+			log.Warn("Connection attempt canceled. UUID: %s, Retry: %d, Error: %v", connectionUUID.String(), retryCount, ctx.Err())
+			return nil, fmt.Errorf("new connection timeout: %s", ctx.Err())
+		case result := <-resultChan:
+			resource = result.resource
+			err = result.err
+		}
+
+		if err == nil {
+			// Successfully created the resource
+			break
+		}
+		// If the first attempt fails, start the wait timer
+		// Log the error with UUID and retry count
+		log.Warn("Connection attempt failed. UUID: %s, Retry: %d, Error: %v", connectionUUID.String(), retryCount, err)
+	}
+
+	// If we needed to wait (first attempt failed), record the wait time once
+	if retryCount > 1 {
+		rp.recordWait(startTime)
+	}
+
+	if err != nil {
+		log.Warn("All connection attempts failed. UUID: %s, Total Retries: %d, Last Error: %v", connectionUUID.String(), retryCount, err)
+		return nil, err
+	}
+
+	return resource, nil
 }
 
 // Put will return a resource to the pool. For every successful Get,

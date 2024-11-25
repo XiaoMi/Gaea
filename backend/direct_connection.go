@@ -16,6 +16,7 @@ package backend
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
@@ -91,22 +92,43 @@ func NewDirectConnection(addr string, user string, password string, db string, c
 
 // connect means real connection to backend mysql after authorization
 func (dc *DirectConnection) connect() error {
+	// Used to record operation steps
+	var steps []string
+
+	// Close the existing connection
 	if dc.conn != nil {
 		dc.conn.Close()
+		steps = append(steps, "Existing connection closed")
 	}
 
+	// Determine the connection type
 	typ := "tcp"
 	if strings.Contains(dc.addr, "/") {
 		typ = "unix"
 	}
+	steps = append(steps, fmt.Sprintf("Connection type determined: %s", typ))
 
-	dialer := net.Dialer{
-		Timeout: GetConnTimeout,
-	}
-	netConn, err := dialer.Dial(typ, dc.addr)
+	// Set up the dialer
+	dialer := net.Dialer{}
+	steps = append(steps, "Dialer created")
+
+	// Set a separate timeout for dialing
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), handshakeTimeout)
+	defer dialCancel()
+
+	// Establish a connection
+	netConn, err := dialer.DialContext(dialCtx, typ, dc.addr)
 	if err != nil {
-		return err
+		steps = append(steps, fmt.Sprintf("Failed to connect to %s: %v", dc.addr, err))
+		// Close netConn if it's not nil to prevent resource leaks
+		if netConn != nil {
+			netConn.Close()
+			steps = append(steps, "Partially established netConn closed")
+		}
+		logError(steps, err)
+		return fmt.Errorf("failed to establish a connection: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
 	}
+	steps = append(steps, fmt.Sprintf("Connection established with %s", dc.addr))
 
 	tcpConn := netConn.(*net.TCPConn)
 	// SetNoDelay controls whether the operating system should delay packet transmission
@@ -114,44 +136,87 @@ func (dc *DirectConnection) connect() error {
 	// The default is true (no delay),
 	// meaning that data is sent as soon as possible after a Write.
 	tcpConn.SetNoDelay(true)
+	steps = append(steps, "TCP NoDelay enabled")
 	tcpConn.SetKeepAlive(true)
+	steps = append(steps, "TCP KeepAlive enabled")
+	// After wrapping the TCP connection
 	dc.conn = mysql.NewConn(tcpConn)
+	steps = append(steps, "MySQL connection wrapper created")
 
+	// Set read and write deadlines for handshake operations
+	if err := dc.conn.SetReadWriteDeadline(handshakeTimeout); err != nil {
+		steps = append(steps, fmt.Sprintf("Failed to set read/write deadlines: %v", err))
+		dc.conn.Close()
+		logError(steps, err)
+		return fmt.Errorf("failed to set read/write deadlines: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
+	}
+	steps = append(steps, fmt.Sprintf("Read and write deadlines set to %v", handshakeTimeout))
+
+	// Proceed with the MySQL handshake
 	// step1: read handshake requirements
 	if err := dc.readInitialHandshake(); err != nil {
+		steps = append(steps, "Failed to read initial handshake")
 		dc.conn.Close()
-		return err
+		logError(steps, err)
+		return fmt.Errorf("failed to read handshake requirements: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
 	}
+	steps = append(steps, "Initial handshake read successfully")
 
 	// step2: write handshake response
 	if err := dc.writeHandshakeResponse41(); err != nil {
+		steps = append(steps, "Failed to write handshake response")
 		dc.conn.Close()
-		return err
+		logError(steps, err)
+		return fmt.Errorf("failed to write handshake response: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
 	}
+	steps = append(steps, "Handshake response written successfully")
 
+	// Step 3: Read authentication information
 	var cipher []byte
 	var newPlugin string
 	cipher, newPlugin, err = dc.readAuth()
 	if err != nil {
+		steps = append(steps, "Failed to read authentication information")
 		dc.conn.Close()
-		return err
+		logError(steps, err)
+		return fmt.Errorf("failed to read authentication information: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
 	}
+	steps = append(steps, "Authentication information read successfully")
 
+	// Step 4: Send authentication response
 	if err := dc.authResponse(cipher, newPlugin); err != nil {
+		steps = append(steps, "Failed to send authentication response")
 		dc.conn.Close()
-		return err
+		logError(steps, err)
+		return fmt.Errorf("failed to send authentication response: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
 	}
+	steps = append(steps, "Authentication response sent successfully")
+
+	// Reset read and write deadlines after handshake
+	if err := dc.conn.ResetReadWriteDeadline(); err != nil {
+		steps = append(steps, fmt.Sprintf("Failed to reset read/write deadlines: %v", err))
+		dc.conn.Close()
+		logError(steps, err)
+		return fmt.Errorf("failed to reset read and write deadlines after handshake: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
+	}
+	steps = append(steps, "Read and write deadlines reset")
 
 	// we must always use autocommit
 	if !dc.IsAutoCommit() {
 		if _, err := dc.exec("set autocommit = 1", 0); err != nil {
+			steps = append(steps, "Failed to set autocommit = 1")
 			dc.conn.Close()
-
-			return err
+			logError(steps, err)
+			return fmt.Errorf("failed to use autocommit: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
 		}
 	}
-
+	// Connection successful
 	return nil
+}
+
+func logError(steps []string, err error) {
+	log.Warn(fmt.Sprintf("[ERROR] Connection process failed: %v\n[ERROR] Steps:\n%s",
+		err, strings.Join(steps, "\n")))
 }
 
 // Close close connection to backend mysql and reset conn structure
