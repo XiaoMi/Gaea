@@ -263,7 +263,6 @@ admin_password=admin
 ;proxy addr
 proto_type=tcp4
 proxy_addr=0.0.0.0:13306
-proxy_charset=utf8
 
 ;slow sql time, when execute time is higher than this, log it, unit: ms
 slow_sql_time=100

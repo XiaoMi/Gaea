@@ -45,8 +45,8 @@ admin_password=admin
 proto_type=tcp4
 proxy_addr=0.0.0.0:13306
 
-; 默认编码
-proxy_charset=utf8
+; 默认编码 (已废弃)
+; proxy_charset=utf8
 ;慢sql阈值，单位: 毫秒
 slow_sql_time=100
 ;空闲会话超时时间,单位: 秒
