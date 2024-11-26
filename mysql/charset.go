@@ -940,3 +940,10 @@ func VerifyCharset(charset, collation string) error {
 
 	return nil
 }
+
+func GetClientHandshakeCollationID(charset string) CollationID {
+	if collationID, ok := CharsetIds[charset]; ok {
+		return collationID
+	}
+	return DefaultCollationID
+}

@@ -105,7 +105,7 @@ func (cc *ClientConn) writeInitialHandshakeV10() error {
 	pos = mysql.WriteUint16(data, pos, uint16(DefaultCapability))
 
 	// Character set.
-	pos = mysql.WriteByte(data, pos, byte(mysql.DefaultCollationID))
+	pos = mysql.WriteByte(data, pos, byte(mysql.GetClientHandshakeCollationID(cc.proxy.ServerConfig.DefaultCharset)))
 
 	// Status flag.
 	pos = mysql.WriteUint16(data, pos, initClientConnStatus)

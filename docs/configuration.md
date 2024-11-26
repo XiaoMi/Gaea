@@ -75,6 +75,9 @@ net_buffer_size=128
 ;recommended configuration  local_namespace_storage_path=./storage
 local_namespace_storage_path =./storage
 
+;default charset for client handshake
+;default_charset=utf8mb4
+
 ```
 
 ## namespace配置说明

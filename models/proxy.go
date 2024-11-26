@@ -72,11 +72,12 @@ type Proxy struct {
 
 	EncryptKey string `ini:"encrypt_key"`
 
-	ServerVersion string `ini:"server_version"`
-	AuthPlugin    string `ini:"auth_plugin"`
-	NumCPU        int    `ini:"num_cpu"`
-	NetBufferSize int    `ini:"net_buffer_size"`
-	ConfigFile    string
+	ServerVersion  string `ini:"server_version"`
+	AuthPlugin     string `ini:"auth_plugin"`
+	NumCPU         int    `ini:"num_cpu"`
+	NetBufferSize  int    `ini:"net_buffer_size"`
+	DefaultCharset string `ini:"default_charset"`
+	ConfigFile     string
 }
 
 // ParseProxyConfigFromFile parser proxy config from file
