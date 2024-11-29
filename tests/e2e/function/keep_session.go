@@ -15,6 +15,7 @@
 package function
 
 import (
+	"context"
 	"fmt"
 	"github.com/onsi/gomega"
 	"time"
@@ -49,83 +50,15 @@ var _ = ginkgo.Describe("keep session test", func() {
 		util.ExpectNoError(err)
 		_, err = masterAdminConn.Exec(fmt.Sprintf("truncate table `%s`.`%s`", db, table))
 		util.ExpectNoError(err)
+		initNs.SetForKeepSession = true
 		err = e2eMgr.ModifyNamespace(initNs)
 		util.ExpectNoError(err)
 		// wait mysql data  sync and namespace load
 		time.Sleep(500 * time.Millisecond)
 	})
 
-	// 这个 测试用例会导致其他测试用例被阻塞 300 秒，所以暂时注释掉
-	//ginkgo.Context("test xa transaction stmts", func() {
-	//	ginkgo.It("should handle xa transactions and normal transactions correctly", func() {
-	//		sqlCases := []struct {
-	//			TestSQLs    []string
-	//			CheckSQL    string
-	//			ExpectRes   [][]string
-	//			ExpectErr   string
-	//			KeepSession bool
-	//		}{
-	//			{
-	//				TestSQLs: []string{`xa start "xa_test1"`, fmt.Sprintf(`insert into %s.%s values(1001, "xa_test1")`, db, table),
-	//					`xa end "xa_test1"`, `xa prepare "xa_test1"`, `xa commit "xa_test1"`},
-	//				CheckSQL: fmt.Sprintf("SELECT * FROM %s.%s WHERE id = %d limit 1", db, table, 1001),
-	//				ExpectRes: [][]string{{
-	//					"1001", "xa_test1",
-	//				}},
-	//				KeepSession: true,
-	//			},
-	//			{
-	//				TestSQLs: []string{`xa start "xa_test2"`, fmt.Sprintf(`insert into %s.%s values(1002, "xa_test2")`, db, table),
-	//					`xa end "xa_test2"`, `xa commit "xa_test2"`},
-	//				ExpectErr:   "Error 1399: XAER_RMFAIL: The command cannot be executed when global transaction is in the  IDLE state",
-	//				KeepSession: true,
-	//			},
-	//			{
-	//				TestSQLs: []string{`begin`, fmt.Sprintf(`insert into %s.%s values(1003, "tx_test3")`, db, table), `commit`},
-	//				CheckSQL: fmt.Sprintf("SELECT * FROM %s.%s WHERE id = %d limit 1", db, table, 1003),
-	//				ExpectRes: [][]string{{
-	//					"1003", "tx_test3",
-	//				}},
-	//				KeepSession: true,
-	//			},
-	//			{
-	//				TestSQLs:    []string{`xa start "xa_test4"`, `xa end "xa_test4"`},
-	//				ExpectErr:   "Error 1399: XAER_RMFAIL: The command cannot be executed when global transaction is in the  NON-EXISTING state",
-	//				KeepSession: false,
-	//			},
-	//		}
-	//
-	//		for _, sqlCase := range sqlCases {
-	//			// set keep session config
-	//			initNs.SetForKeepSession = sqlCase.KeepSession
-	//			err = e2eMgr.ModifyNamespace(initNs)
-	//			util.ExpectNoError(err)
-	//			gaeaTestConn, err := e2eMgr.GetReadWriteGaeaUserConn()
-	//			util.ExpectNoError(err)
-	//			for _, testSql := range sqlCase.TestSQLs {
-	//				_, err = gaeaTestConn.Exec(testSql)
-	//			}
-	//
-	//			if sqlCase.ExpectErr != "" {
-	//				if sqlCase.ExpectErr != err.Error() {
-	//					fmt.Printf("sql exec error: %s\n", err.Error())
-	//					util.ExpectNoError(err)
-	//				}
-	//				continue
-	//			}
-	//
-	//			gaeaCheckConn, err := e2eMgr.GetReadWriteGaeaUserConn()
-	//			util.ExpectNoError(err)
-	//			err = checkFunc(gaeaCheckConn, sqlCase.CheckSQL, sqlCase.ExpectRes)
-	//			util.ExpectNoError(err)
-	//		}
-	//	})
-	//})
-
 	// 测试事务时，keepsession 模式的行为
 	ginkgo.Context("test transaction when use keep session", func() {
-		initNs.SetForKeepSession = true
-		err = e2eMgr.ModifyNamespace(initNs)
 		// 模拟事务中配置变更的情况
 		ginkgo.It("should commit success when use keep session", func() {
 			var testSqlCases = []struct {
@@ -243,8 +176,6 @@ var _ = ginkgo.Describe("keep session test", func() {
 
 	// 测试事务时，keepsession 模式的行为
 	ginkgo.Context("test transaction when use keep session", func() {
-		initNs.SetForKeepSession = true
-		err = e2eMgr.ModifyNamespace(initNs)
 		// 模拟事务中配置变更的情况
 		ginkgo.It("should commit success when use keep session", func() {
 			var testSqlCases = []struct {
@@ -356,6 +287,116 @@ var _ = ginkgo.Describe("keep session test", func() {
 				gomega.Expect(res[0]).Should(gomega.HaveLen(1))
 				gomega.Expect(res[0][0]).Should(gomega.Equal(testCase.ExpectSuccess))
 				gaeaConnNew.Close()
+			}
+		})
+	})
+
+	// 测试事务时，keepsession 模式 autocommit 问题
+	ginkgo.Context("test set autocommit when use keep session", func() {
+		// 模拟事务中配置变更的情况
+		ginkgo.It("should commit success when use keep session", func() {
+			initNs.SetForKeepSession = true
+			err = e2eMgr.ModifyNamespace(initNs)
+			util.ExpectNoError(err, "modify namespace")
+			masterConn, err := slice.GetMasterAdminConn(0)
+			util.ExpectNoError(err)
+			defer masterConn.Close()
+			_, err = masterConn.Exec(fmt.Sprintf("truncate table `%s`.`%s`", db, table))
+			util.ExpectNoError(err)
+			var testSqlCases = []struct {
+				TestSQL  string
+				CheckSQL string
+				Action   string
+				Expect   string
+			}{
+				{
+					TestSQL:  "select /*master*/ 1",
+					CheckSQL: fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:   "",
+					Expect:   "0",
+				},
+				{
+					TestSQL:  "set autocommit=0",
+					CheckSQL: fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:   "",
+					Expect:   "0",
+				},
+				{
+					TestSQL:  fmt.Sprintf("insert into %s values(100, 'a')", table),
+					CheckSQL: fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:   "",
+					Expect:   "0",
+				},
+				{
+					TestSQL:  fmt.Sprintf("insert into %s values(101, 'a')", table),
+					CheckSQL: fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:   "commit",
+					Expect:   "2",
+				},
+				{
+					TestSQL:  fmt.Sprintf("insert into %s values(102, 'a')", table),
+					CheckSQL: fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:   "",
+					Expect:   "2",
+				},
+				{
+					TestSQL:  fmt.Sprintf("insert into %s values(103, 'a')", table),
+					CheckSQL: fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:   "rollback",
+					Expect:   "2",
+				},
+				{
+					TestSQL:  fmt.Sprintf("insert into %s values(104, 'a')", table),
+					CheckSQL: fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:   "commit",
+					Expect:   "3",
+				},
+				{
+					TestSQL:  "set autocommit=1",
+					CheckSQL: fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:   "",
+					Expect:   "3",
+				},
+				{
+					TestSQL:  fmt.Sprintf("insert into %s values(105, 'a')", table),
+					CheckSQL: fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:   "",
+					Expect:   "4",
+				},
+				{
+					TestSQL:  fmt.Sprintf("insert into %s values(106, 'a')", table),
+					CheckSQL: fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:   "rollback",
+					Expect:   "5",
+				},
+				{
+					TestSQL:  fmt.Sprintf("insert into %s values(107, 'a')", table),
+					CheckSQL: fmt.Sprintf("select /*master*/ count(*) from %s", table),
+					Action:   "commit",
+					Expect:   "6",
+				},
+			}
+			gaeaConn, err := e2eMgr.GetReadWriteGaeaUserDBConn(db)
+			util.ExpectNoError(err)
+			defer gaeaConn.Close()
+			ctx := context.Background()
+			for _, testCase := range testSqlCases {
+				_, err = gaeaConn.ExecContext(ctx, testCase.TestSQL)
+				util.ExpectNoError(err)
+				switch testCase.Action {
+				case "rollback":
+					_, err = gaeaConn.ExecContext(ctx, "rollback")
+				case "commit":
+					_, err = gaeaConn.ExecContext(ctx, "commit")
+				}
+				// 重新获取 gaea 连接
+				gaeaConnNew, err := e2eMgr.GetReadWriteGaeaUserDBConn(db)
+				util.ExpectNoError(err)
+				res, err := util.MysqlQuery(gaeaConnNew, testCase.CheckSQL)
+				util.ExpectNoError(err)
+				gomega.Expect(res).Should(gomega.HaveLen(1))
+				gomega.Expect(res[0]).Should(gomega.HaveLen(1))
+				gomega.Expect(res[0][0]).Should(gomega.Equal(testCase.Expect))
 			}
 		})
 	})

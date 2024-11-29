@@ -526,6 +526,7 @@ func (se *SessionExecutor) handleSetAutoCommit(autocommit bool) (err error) {
 	se.txLock.Lock()
 	defer se.txLock.Unlock()
 
+	// set autocommit = 1
 	if autocommit {
 		se.status |= mysql.ServerStatusAutocommit
 		if se.status&mysql.ServerStatusInTrans > 0 {
@@ -537,10 +538,21 @@ func (se *SessionExecutor) handleSetAutoCommit(autocommit bool) (err error) {
 			}
 			pc.Recycle()
 		}
+		for _, pc := range se.ksConns {
+			if e := pc.SetAutoCommit(1); e != nil {
+				err = fmt.Errorf("set autocommit error, %v", e)
+			}
+		}
 		se.txConns = make(map[string]backend.PooledConnect)
 		return
 	}
 
+	// set autocommit = 0
+	for _, pc := range se.ksConns {
+		if e := pc.SetAutoCommit(0); e != nil {
+			err = fmt.Errorf("set autocommit error, %v", e)
+		}
+	}
 	se.status &= ^mysql.ServerStatusAutocommit
 	return
 }
