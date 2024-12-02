@@ -15,6 +15,7 @@
 package types_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 	gotime "time"
@@ -453,6 +454,544 @@ func TestExtractTimeValue(t *testing.T) {
 				assert.Equal(t, tt.wantDay, gotDay)
 				assert.Equal(t, tt.wantFloat, gotFloat)
 			}
+		})
+	}
+}
+
+func TestString(t *testing.T) {
+	t1 := types.Time{
+		Time: types.FromDate(2023, 10, 1, 12, 30, 45, 0),
+		Type: mysql.TypeDatetime,
+		Fsp:  0,
+	}
+
+	expected := "2023-10-01 12:30:45"
+	assert.Equal(t, expected, t1.String())
+
+	t2 := types.Time{
+		Time: types.FromDate(2023, 10, 1, 12, 30, 45, 123456),
+		Type: mysql.TypeDatetime,
+		Fsp:  6,
+	}
+
+	expectedWithFsp := "2023-10-01 12:30:45.123456"
+	assert.Equal(t, expectedWithFsp, t2.String())
+}
+
+func TestConvert(t *testing.T) {
+	t1 := types.Time{
+		Time: types.FromDate(2023, 10, 1, 12, 30, 45, 0),
+		Type: mysql.TypeDatetime,
+		Fsp:  0,
+	}
+
+	sc := &stmtctx.StatementContext{}
+	sc.TimeZone = time.Local
+	converted, err := t1.Convert(sc, mysql.TypeTimestamp)
+	assert.NoError(t, err)
+	assert.Equal(t, mysql.TypeTimestamp, converted.Type)
+	assert.Equal(t, t1.Time, converted.Time)
+	assert.Equal(t, t1.Fsp, converted.Fsp)
+}
+
+func TestConvertToDuration(t *testing.T) {
+	t1 := types.Time{
+		Time: types.FromDate(2023, 10, 1, 12, 30, 45, 0),
+		Type: mysql.TypeDatetime,
+		Fsp:  0,
+	}
+
+	duration, err := t1.ConvertToDuration()
+	assert.NoError(t, err)
+	assert.Equal(t, time.Duration(12*3600+30*60+45)*time.Second, duration.Duration)
+	assert.Equal(t, 0, duration.Fsp)
+}
+
+func TestCompareString(t *testing.T) {
+	sc := &stmtctx.StatementContext{}
+	tm := types.Time{
+		Time: types.FromDate(2023, 10, 1, 12, 30, 45, 0),
+		Type: mysql.TypeDatetime,
+		Fsp:  0,
+	}
+
+	// 比较成功
+	result, err := tm.CompareString(sc, "2023-10-1 12:30:45")
+	assert.NoError(t, err)
+	assert.Equal(t, 0, result)
+
+	// 比较失败
+	_, err = tm.CompareString(sc, "invalid-time")
+	assert.Error(t, err)
+}
+
+func TestGetFsp(t *testing.T) {
+	// 没有小数部分
+	assert.Equal(t, 0, types.GetFsp("2023-10-1 12:30:45"))
+
+	// 有小数部分
+	assert.Equal(t, 3, types.GetFsp("2023-10-1 12:30:45.123"))
+
+	// 小数部分超过6位
+	assert.Equal(t, 6, types.GetFsp("2023-10-1 12:30:45.123456789"))
+}
+
+func TestToPackedUint(t *testing.T) {
+	tm := types.Time{
+		Time: types.FromDate(2023, 10, 1, 12, 30, 45, 500000),
+		Type: mysql.TypeDatetime,
+		Fsp:  0,
+	}
+
+	_, err := tm.ToPackedUint()
+	assert.NoError(t, err)
+}
+
+func TestFromPackedUint(t *testing.T) {
+	var tm types.Time
+	tm.FromPackedUint(0x07E70A010C1E2)
+}
+
+func TestTimestampDiff(t *testing.T) {
+	t1 := types.Time{
+		Time: types.FromDate(2023, 10, 1, 12, 30, 45, 0),
+		Type: mysql.TypeDatetime,
+		Fsp:  0,
+	}
+	t2 := types.Time{
+		Time: types.FromDate(2023, 10, 2, 12, 30, 45, 0),
+		Type: mysql.TypeDatetime,
+		Fsp:  0,
+	}
+
+	// 测试 "DAY" 单位
+	assert.Equal(t, int64(1), types.TimestampDiff("DAY", t1, t2))
+
+	// 测试 "HOUR" 单位
+	assert.Equal(t, int64(24), types.TimestampDiff("HOUR", t1, t2))
+
+	// 测试 "MINUTE" 单位
+	assert.Equal(t, int64(1440), types.TimestampDiff("MINUTE", t1, t2))
+
+	// 测试 "SECOND" 单位
+	assert.Equal(t, int64(86400), types.TimestampDiff("SECOND", t1, t2))
+}
+
+func TestParseDateFormat(t *testing.T) {
+	// 测试有效的日期格式
+	assert.Equal(t, []string{"2023", "10", "01"}, types.ParseDateFormat("2023-10-01"))
+}
+
+func TestParseDatetime(t *testing.T) {
+	sc := &stmtctx.StatementContext{TimeZone: time.UTC}
+
+	// 测试有效的日期时间格式
+	types.ParseDatetime(sc, "2023-10-01 12:30:45.123456")
+
+	// 测试无效的日期时间格式
+	types.ParseDatetime(sc, "2023-10-01 12:30:45.1234567")
+}
+
+func TestParseYear(t *testing.T) {
+	// 测试有效的年份格式
+	_, err := types.ParseYear("2023")
+	assert.NoError(t, err)
+
+	// 测试无效的年份格式
+	_, err = types.ParseYear("2023a")
+}
+
+func TestAdjustYear(t *testing.T) {
+	// 测试调整年份
+	types.AdjustYear(0, true)
+	types.AdjustYear(69, false)
+	types.AdjustYear(69, false)
+	types.AdjustYear(70, false)
+	types.AdjustYear(99, false)
+}
+
+func TestDurationAdd(t *testing.T) {
+	d1 := types.Duration{Duration: time.Hour, Fsp: 0}
+	d2 := types.Duration{Duration: time.Hour * 2, Fsp: 0}
+
+	result, err := d1.Add(d2)
+	assert.NoError(t, err)
+	assert.Equal(t, time.Hour*3, result.Duration)
+	assert.Equal(t, 0, result.Fsp)
+}
+
+func TestDurationSub(t *testing.T) {
+	d1 := types.Duration{Duration: time.Hour * 3, Fsp: 0}
+	d2 := types.Duration{Duration: time.Hour * 2, Fsp: 0}
+
+	result, err := d1.Sub(d2)
+	assert.NoError(t, err)
+	assert.Equal(t, time.Hour, result.Duration)
+	assert.Equal(t, 0, result.Fsp)
+}
+
+func TestDurationString(t *testing.T) {
+	d := types.Duration{Duration: time.Hour + time.Minute + time.Second, Fsp: 0}
+	assert.Equal(t, "01:01:01", d.String())
+}
+
+func TestDurationToNumber(t *testing.T) {
+	d := types.Duration{Duration: time.Hour + time.Minute + time.Second, Fsp: 0}
+	d.ToNumber()
+}
+
+func TestDurationConvertToTime(t *testing.T) {
+	sc := &stmtctx.StatementContext{TimeZone: time.UTC}
+	d := types.Duration{Duration: time.Hour + time.Minute + time.Second, Fsp: 0}
+
+	_, err := d.ConvertToTime(sc, mysql.TypeDatetime)
+	assert.NoError(t, err)
+}
+
+func TestDurationRoundFrac(t *testing.T) {
+	d := types.Duration{Duration: time.Hour + time.Minute + time.Second + 500*time.Millisecond, Fsp: 0}
+
+	d.RoundFrac(1)
+}
+
+func TestDurationCompare(t *testing.T) {
+	d1 := types.Duration{Duration: time.Hour, Fsp: 0}
+	d2 := types.Duration{Duration: time.Hour * 2, Fsp: 0}
+
+	assert.Equal(t, -1, d1.Compare(d2))
+	assert.Equal(t, 0, d1.Compare(d1))
+	assert.Equal(t, 1, d2.Compare(d1))
+}
+
+func TestDurationCompareString(t *testing.T) {
+	sc := &stmtctx.StatementContext{TimeZone: time.UTC}
+	d1 := types.Duration{Duration: time.Hour, Fsp: 0}
+
+	result, err := d1.CompareString(sc, "02:00:00")
+	assert.NoError(t, err)
+	assert.Equal(t, -1, result)
+}
+
+func TestDurationHour(t *testing.T) {
+	d := types.Duration{Duration: time.Hour + time.Minute + time.Second, Fsp: 0}
+	assert.Equal(t, 1, d.Hour())
+}
+
+// 测试 Minute 方法
+func TestDurationMinute(t *testing.T) {
+	tests := []struct {
+		name     string
+		duration time.Duration
+		want     int
+	}{
+		{"整点分钟", 11 * time.Minute, 11},
+		{"非整点分钟", 11*time.Minute + 30*time.Second, 11},
+		{"零分钟", 0, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := types.Duration{Duration: tt.duration}
+			if got := d.Minute(); got != tt.want {
+				t.Errorf("Duration.Minute() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// 测试 Second 方法
+func TestDurationSecond(t *testing.T) {
+	tests := []struct {
+		name     string
+		duration time.Duration
+		want     int
+	}{
+		{"整点秒", 11 * time.Second, 11},
+		{"非整点秒", 11*time.Second + 500*time.Millisecond, 11},
+		{"零秒", 0, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := types.Duration{Duration: tt.duration}
+			if got := d.Second(); got != tt.want {
+				t.Errorf("Duration.Second() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// 测试 MicroSecond 方法
+func TestDurationMicroSecond(t *testing.T) {
+	tests := []struct {
+		name     string
+		duration time.Duration
+		want     int
+	}{
+		{"整点微秒", 11 * time.Microsecond, 11},
+		{"非整点微秒", 11*time.Microsecond + 500*time.Nanosecond, 11},
+		{"零微秒", 0, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := types.Duration{Duration: tt.duration}
+			if got := d.MicroSecond(); got != tt.want {
+				t.Errorf("Duration.MicroSecond() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseDuration(t *testing.T) {
+	// 创建一个 StatementContext 用于测试
+	sc := &stmtctx.StatementContext{}
+
+	// 测试用例1：正常情况，解析一个标准的持续时间字符串
+	t.Run("Normal Case", func(t *testing.T) {
+		duration, err := types.ParseDuration(sc, "12:34:56.789", 3)
+		assert.NoError(t, err)
+		assert.Equal(t, types.Duration{Duration: 45296789000000, Fsp: 3}, duration)
+	})
+
+	// 测试用例2：包含天数的持续时间字符串
+	t.Run("With Day", func(t *testing.T) {
+		duration, err := types.ParseDuration(sc, "1 12:34:56.789", 3)
+		assert.NoError(t, err)
+		assert.Equal(t, types.Duration{Duration: 131696789000000, Fsp: 3}, duration)
+	})
+
+	// 测试用例3：负的持续时间字符串
+	t.Run("Negative Duration", func(t *testing.T) {
+		duration, err := types.ParseDuration(sc, "-12:34:56.789", 3)
+		assert.NoError(t, err)
+		assert.Equal(t, types.Duration{Duration: -45296789000000, Fsp: 3}, duration)
+	})
+
+	// 测试用例4：空字符串
+	t.Run("Empty String", func(t *testing.T) {
+		duration, err := types.ParseDuration(sc, "", 3)
+		assert.NoError(t, err)
+		assert.Equal(t, types.ZeroDuration, duration)
+	})
+
+	// 测试用例5：无效的持续时间字符串
+	t.Run("Invalid Duration", func(t *testing.T) {
+		_, err := types.ParseDuration(sc, "invalid", 3)
+		assert.Error(t, err)
+	})
+
+	// 测试用例6：超出范围的持续时间字符串
+	t.Run("Overflow Duration", func(t *testing.T) {
+		_, err := types.ParseDuration(sc, "999999:59:59.999999", 6)
+		assert.Error(t, err)
+	})
+
+	// 测试用例7：检查 Fsp 参数的有效性
+	t.Run("Invalid Fsp", func(t *testing.T) {
+		_, err := types.ParseDuration(sc, "12:34:56.789", 7)
+		assert.Error(t, err)
+	})
+
+	// 测试用例8：没有小数部分的持续时间字符串
+	t.Run("No Fractional Part", func(t *testing.T) {
+		duration, err := types.ParseDuration(sc, "12:34:56", 0)
+		assert.NoError(t, err)
+		assert.Equal(t, types.Duration{Duration: 45296000000000, Fsp: 0}, duration)
+	})
+
+	// 测试用例9：只有小时和分钟的持续时间字符串
+	t.Run("Only Hours and Minutes", func(t *testing.T) {
+		duration, err := types.ParseDuration(sc, "12:34", 0)
+		assert.NoError(t, err)
+		assert.Equal(t, types.Duration{Duration: 45240000000000, Fsp: 0}, duration)
+	})
+
+	// 测试用例10：只有分钟的持续时间字符串
+	t.Run("Only Minutes", func(t *testing.T) {
+		_, err := types.ParseDuration(sc, "34", 0)
+		assert.NoError(t, err)
+	})
+}
+
+func TestParseTime(t *testing.T) {
+	sc := &stmtctx.StatementContext{}
+
+	// 测试正常情况
+	timeStr := "2023-10-01 12:00:00"
+	tp := mysql.TypeDatetime
+	fsp := 0
+	result, err := types.ParseTime(sc, timeStr, tp, fsp)
+	assert.NoError(t, err)
+	assert.Equal(t, "2023-10-01 12:00:00", result.String())
+
+	// 测试错误情况
+	timeStr = "invalid time"
+	_, err = types.ParseTime(sc, timeStr, tp, fsp)
+	assert.Error(t, err)
+}
+
+func TestParseTimeFromFloatString(t *testing.T) {
+	sc := &stmtctx.StatementContext{}
+
+	// 测试正常情况
+	timeStr := "20231001120000"
+	tp := mysql.TypeDatetime
+	fsp := 0
+	result, err := types.ParseTimeFromFloatString(sc, timeStr, tp, fsp)
+	assert.NoError(t, err)
+	assert.Equal(t, "2023-10-01 12:00:00", result.String())
+
+	// 测试错误情况
+	timeStr = "invalid time"
+	_, err = types.ParseTimeFromFloatString(sc, timeStr, tp, fsp)
+	assert.Error(t, err)
+}
+
+func TestParseTimestamp(t *testing.T) {
+	sc := &stmtctx.StatementContext{}
+	sc.TimeZone = time.Local
+
+	// 测试正常情况
+	timeStr := "2023-10-01 12:00:00"
+	result, err := types.ParseTimestamp(sc, timeStr)
+	assert.NoError(t, err)
+	assert.Equal(t, "2023-10-01 12:00:00", result.String())
+
+	// 测试错误情况
+	timeStr = "invalid time"
+	_, err = types.ParseTimestamp(sc, timeStr)
+	assert.Error(t, err)
+}
+
+func TestParseDate(t *testing.T) {
+	sc := &stmtctx.StatementContext{}
+
+	// 测试正常情况
+	timeStr := "2023-10-01"
+	result, err := types.ParseDate(sc, timeStr)
+	assert.NoError(t, err)
+	assert.Equal(t, "2023-10-01", result.String())
+
+	// 测试错误情况
+	timeStr = "invalid time"
+	_, err = types.ParseDate(sc, timeStr)
+	assert.Error(t, err)
+}
+
+func TestParseTimeFromNum(t *testing.T) {
+	sc := &stmtctx.StatementContext{}
+
+	// 测试正常情况
+	num := int64(20231001120000)
+	tp := mysql.TypeDatetime
+	fsp := 0
+	result, err := types.ParseTimeFromNum(sc, num, tp, fsp)
+	assert.NoError(t, err)
+	assert.Equal(t, "2023-10-01 12:00:00", result.String())
+
+	// 测试错误情况
+	num = int64(-1)
+	_, err = types.ParseTimeFromNum(sc, num, tp, fsp)
+	assert.Error(t, err)
+}
+
+func TestParseDatetimeFromNum(t *testing.T) {
+	sc := &stmtctx.StatementContext{}
+
+	// 测试正常情况
+	num := int64(20231001120000)
+	result, err := types.ParseDatetimeFromNum(sc, num)
+	assert.NoError(t, err)
+	assert.Equal(t, "2023-10-01 12:00:00", result.String())
+
+	// 测试错误情况
+	num = int64(-1)
+	_, err = types.ParseDatetimeFromNum(sc, num)
+	assert.Error(t, err)
+}
+
+func TestParseTimestampFromNum(t *testing.T) {
+	sc := &stmtctx.StatementContext{}
+	sc.TimeZone = time.Local
+
+	// 测试正常情况
+	num := int64(20231001120000)
+	result, err := types.ParseTimestampFromNum(sc, num)
+	assert.NoError(t, err)
+	assert.Equal(t, "2023-10-01 12:00:00", result.String())
+
+	// 测试错误情况
+	num = int64(-1)
+	_, err = types.ParseTimestampFromNum(sc, num)
+	assert.Error(t, err)
+}
+
+func TestParseDateFromNum(t *testing.T) {
+	sc := &stmtctx.StatementContext{}
+	sc.TimeZone = time.Local
+
+	// 测试正常情况
+	num := int64(20231001)
+	result, err := types.ParseDateFromNum(sc, num)
+	assert.NoError(t, err)
+	assert.Equal(t, "2023-10-01", result.String())
+
+	// 测试错误情况
+	num = int64(-1)
+	_, err = types.ParseDateFromNum(sc, num)
+	assert.Error(t, err)
+}
+
+func TestTimeFromDays(t *testing.T) {
+	// 测试正常情况
+	num := int64(738427) // 2023-10-01
+	result := types.TimeFromDays(num)
+
+	// 测试错误情况
+	num = int64(-1)
+	result = types.TimeFromDays(num)
+	assert.Equal(t, "0000-00-00", result.String())
+}
+
+func TestParseTimeFromInt64(t *testing.T) {
+	sc := &stmtctx.StatementContext{}
+	sc.TimeZone = time.Local
+	tests := []struct {
+		num      int64
+		expected types.Time
+	}{
+		{20231001, types.Time{Time: types.FromDate(2023, 10, 1, 0, 0, 0, 0)}},
+		{20231001150405, types.Time{Time: types.FromDate(2023, 10, 1, 15, 4, 5, 0)}},
+	}
+
+	for _, test := range tests {
+		t.Run(fmt.Sprintf("%d", test.num), func(t *testing.T) {
+			result, err := types.ParseTimeFromInt64(sc, test.num)
+			assert.NoError(t, err)
+			assert.Equal(t, test.expected.Time, result.Time)
+		})
+	}
+}
+
+func TestStrToDate(t *testing.T) {
+	sc := &stmtctx.StatementContext{}
+	sc.TimeZone = time.Local
+	tests := []struct {
+		date     string
+		format   string
+		expected bool
+	}{
+		{"2023-10-01", "%Y-%m-%d", true},
+		{"2023-10-01 15:04:05", "%Y-%m-%d %H:%i:%s", true},
+		{"2023-10-01", "%Y-%m-%d %H:%i:%s", false},
+		{"2023-10-01 15:04:05", "%Y-%m-%d", false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.date, func(t *testing.T) {
+			var time types.Time
+			time.StrToDate(sc, test.date, test.format)
 		})
 	}
 }
