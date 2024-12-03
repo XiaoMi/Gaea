@@ -213,6 +213,9 @@ func (se *SessionExecutor) handleQueryWithoutPlan(reqCtx *util.RequestContext, s
 	if stmtType == parser.StmtShow {
 		return se.handleShow(reqCtx, sql)
 	}
+	if stmtType == parser.StmtKill {
+		return se.handleKill(reqCtx, sql)
+	}
 
 	n, err := se.Parse(sql)
 	if err != nil {

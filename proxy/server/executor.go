@@ -811,7 +811,8 @@ func canHandleWithoutPlan(stmtType int) bool {
 		stmtType == parser.StmtUse ||
 		stmtType == parser.StmtRelease ||
 		stmtType == parser.StmeSRollback ||
-		stmtType == parser.StmtLockTables
+		stmtType == parser.StmtLockTables ||
+		stmtType == parser.StmtKill
 }
 
 const variableRestoreFlag = format.RestoreKeyWordLowercase | format.RestoreNameLowercase
@@ -1071,6 +1072,12 @@ func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string) (
 
 	modifyResultStatus(r, se)
 	return r, nil
+}
+
+func (se *SessionExecutor) handleKill(reqCtx *util.RequestContext, sql string) (*mysql.Result, error) {
+	se.manager.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v. err:%s",
+		SQLExecStatusIgnore, 0, se.namespace, se.user, se.clientAddr, "", se.db, se.session.c.GetConnectionID(), 0, se.isInTransaction(), sql, "ignore kill sql")
+	return mysql.ResultPool.GetWithoutResultSet(), nil
 }
 
 func (se *SessionExecutor) handleBegin() error {
