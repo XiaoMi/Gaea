@@ -27,15 +27,12 @@ import (
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/proxy/server"
+	"go.uber.org/automaxprocs/maxprocs"
 )
 
 var configFile = flag.String("config", "etc/gaea.ini", "gaea config file")
 var info = flag.Bool("info", false, "show info of gaea")
 var numCPU = flag.Int("num-cpu", 0, "how many operating systems threads attempt to execute simultaneously")
-
-const (
-	defaultCPUNum = 4 //best practise
-)
 
 func main() {
 	flag.Parse()
@@ -46,27 +43,33 @@ func main() {
 
 	fmt.Printf("Build Version Information:%s\n", core.Info.LongForm())
 
-	// init config of gaea proxy
+	// Initialize Gaea proxy config
 	cfg, err := models.ParseProxyConfigFromFile(*configFile)
 	if err != nil {
 		fmt.Printf("parse config file error:%v\n", err.Error())
 		return
 	}
 
-	var cpuNums int
-	if *numCPU > 0 && *numCPU <= runtime.NumCPU() {
-		// best practice -num-cpu=4
-		fmt.Printf("max use cpu : %d(from command-line)", *numCPU)
-		cpuNums = *numCPU
-	} else if cfg.NumCPU > 0 && *numCPU <= runtime.NumCPU() {
-		fmt.Printf("max use cpu : %d(from cfg)", cfg.NumCPU)
-		cpuNums = cfg.NumCPU
+	// Step 1: Determine numCPU from flag or config
+	// Priority from highest to lowest: flagNumCPU) > configNumCPU > Host CPU core count
+	numCPUs := determineNumCPUs(*numCPU, cfg.NumCPU)
+
+	// Step 2: Automatically set maxprocs based on container limits
+	var autoMaxProcs int
+	if _, err := maxprocs.Set(); err == nil {
+		// Get the value set by maxprocs.Set
+		autoMaxProcs = runtime.GOMAXPROCS(0)
+		fmt.Printf("Auto-set maxprocs: %d\n", autoMaxProcs)
 	} else {
-		fmt.Printf("max use cpu : %d(default)", defaultCPUNum)
-		cpuNums = defaultCPUNum
+		// Fallback to host CPU count
+		fmt.Printf("Failed to auto-set maxprocs: %v\n", err)
+		autoMaxProcs = runtime.NumCPU()
 	}
-	runtime.GOMAXPROCS(cpuNums)
-	cfg.NumCPU = cpuNums
+
+	// Step 3: Compare and set GOMAXPROCS
+	finalMaxProcs := min(numCPUs, autoMaxProcs)
+	runtime.GOMAXPROCS(finalMaxProcs)
+	fmt.Printf("Final GOMAXPROCS set to: %d\n", finalMaxProcs)
 
 	if err = models.InitXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service, cfg.LogKeepDays, cfg.LogKeepCounts); err != nil {
 		fmt.Printf("init xlog error: %v\n", err.Error())
@@ -110,9 +113,9 @@ func main() {
 			} else if sig == syscall.SIGPIPE {
 				log.Notice("ignore broken pipe signal")
 			} else if sig == syscall.SIGUSR1 {
-				log.Notice("reload proxy config,out old config:%#v", cfg)
+				log.Notice("reload proxy config, old config: %#v", cfg)
 				if err := svr.ReloadProxyConfig(); err != nil {
-					log.Notice("reload proxy confi error:%s", err)
+					log.Notice("reload proxy config error: %s", err)
 				} else {
 					log.Notice("reload proxy config success")
 				}
@@ -121,4 +124,24 @@ func main() {
 	}()
 	svr.Run()
 	wg.Wait()
+}
+
+// determineNumCPUs determines the number of CPUs to use based on flag or config.
+func determineNumCPUs(flagNumCPU, configNumCPU int) int {
+	if flagNumCPU > 0 {
+		return flagNumCPU
+	}
+	if configNumCPU > 0 {
+		return configNumCPU
+	}
+	// Fallback to host CPU count
+	return runtime.NumCPU()
+}
+
+// min returns the smaller of two integers.
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
