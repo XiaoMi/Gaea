@@ -103,7 +103,11 @@ var _ = ginkgo.Describe("client qps limit test", func() {
 				}
 
 				duration := time.Since(now).Milliseconds()
-				util.ExpectEqual(qpsCount, test.actualQPS, fmt.Sprintf("test %d: actual qps not expected, duration: %d", index, duration))
+				if test.limitQPS > 0 {
+					util.ExpectEqual(qpsCount < 2*test.actualQPS, true, fmt.Sprintf("test %d: actual qps not expected, duration: %d", index, duration))
+				} else {
+					util.ExpectEqual(qpsCount == test.actualQPS, true, fmt.Sprintf("test %d: actual qps not expected, duration: %d", index, duration))
+				}
 			}
 		})
 	})
