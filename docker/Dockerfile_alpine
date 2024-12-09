@@ -1,0 +1,8 @@
+# micr.cloud.mioffice.cn/devdba/alpine:gaea-v1
+FROM micr.cloud.mioffice.cn/devdba/alpine:3.17
+ENV LC_ALL en_US.UTF-8
+ENV LANG en_US.UTF-8
+ENV TZ Asia/Shanghai
+RUN apk add --no-cache tzdata \
+    && cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+    && echo 'Asia/Shanghai' > /etc/timezone \

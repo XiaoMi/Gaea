@@ -1,0 +1,6 @@
+# micr.cloud.mioffice.cn/devdba/golang-mysql8:gaea-v2
+FROM micr.cloud.mioffice.cn/devdba/golang-mysql8:base-v2
+WORKDIR /app/
+COPY go.mod go.sum ./
+ENV PATH /usr/local/go/bin:/root/go/bin/:$PATH
+RUN go mod download && rm -rf /app/
