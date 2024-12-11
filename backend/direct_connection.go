@@ -675,14 +675,28 @@ func (dc *DirectConnection) UseDB(dbName string) error {
 		return err
 	}
 
-	if r, err := dc.readPacket(); err != nil {
+	data, err := dc.readPacket()
+	if err != nil {
 		return err
-	} else if !mysql.IsOKPacket(r) {
-		return fmt.Errorf("dc connection use db(%s) failed", dbName)
 	}
 
-	dc.db = dbName
-	return nil
+	if len(data) < 1 {
+		log.Warn("Unexpected empty packet when switching database to: %s", dbName)
+		return fmt.Errorf("dc connection use db(%s) failed: empty response from server", dbName)
+	}
+
+	switch data[0] {
+	case mysql.OKHeader:
+		// Switch database successfully
+		dc.db = dbName
+		return nil
+	case mysql.ErrHeader:
+		// Handle error packets
+		return dc.handleErrorPacket(data)
+	default:
+		// Handle unknown errors ,Adding the 0x prefix indicates that this is a hexadecimal type value
+		return fmt.Errorf("dc connection use db(%s) failed with unknown response type: 0x%x", dbName, data[0])
+	}
 }
 
 // GetDB return database name
