@@ -126,7 +126,10 @@ func (dc *DirectConnection) connect() error {
 			steps = append(steps, "Partially established netConn closed")
 		}
 		logError(steps, err)
-		return fmt.Errorf("failed to establish a connection: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
+		return &mysql.ConnectionError{
+			Addr: dc.addr,
+			Msg:  fmt.Sprintf("failed to establish a connection: %v\nsteps:\n%s", err, strings.Join(steps, "\n")),
+		}
 	}
 	steps = append(steps, fmt.Sprintf("Connection established with %s", dc.addr))
 
@@ -148,7 +151,10 @@ func (dc *DirectConnection) connect() error {
 		steps = append(steps, fmt.Sprintf("Failed to set read/write deadlines: %v", err))
 		dc.conn.Close()
 		logError(steps, err)
-		return fmt.Errorf("failed to set read/write deadlines: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
+		return &mysql.ConnectionError{
+			Addr: dc.addr,
+			Msg:  fmt.Sprintf("failed to set read/write deadlines: %v\nsteps:\n%s", err, strings.Join(steps, "\n")),
+		}
 	}
 	steps = append(steps, fmt.Sprintf("Read and write deadlines set to %v", handshakeTimeout))
 
@@ -158,7 +164,10 @@ func (dc *DirectConnection) connect() error {
 		steps = append(steps, "Failed to read initial handshake")
 		dc.conn.Close()
 		logError(steps, err)
-		return fmt.Errorf("failed to read handshake requirements: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
+		return &mysql.ConnectionError{
+			Addr: dc.addr,
+			Msg:  fmt.Sprintf("failed to read handshake requirements: %v\nsteps:\n%s", err, strings.Join(steps, "\n")),
+		}
 	}
 	steps = append(steps, "Initial handshake read successfully")
 
@@ -167,7 +176,10 @@ func (dc *DirectConnection) connect() error {
 		steps = append(steps, "Failed to write handshake response")
 		dc.conn.Close()
 		logError(steps, err)
-		return fmt.Errorf("failed to write handshake response: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
+		return &mysql.ConnectionError{
+			Addr: dc.addr,
+			Msg:  fmt.Sprintf("failed to write handshake response: %v\nsteps:\n%s", err, strings.Join(steps, "\n")),
+		}
 	}
 	steps = append(steps, "Handshake response written successfully")
 
@@ -179,7 +191,10 @@ func (dc *DirectConnection) connect() error {
 		steps = append(steps, "Failed to read authentication information")
 		dc.conn.Close()
 		logError(steps, err)
-		return fmt.Errorf("failed to read authentication information: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
+		return &mysql.ConnectionError{
+			Addr: dc.addr,
+			Msg:  fmt.Sprintf("failed to read authentication information: %v\nsteps:\n%s", err, strings.Join(steps, "\n")),
+		}
 	}
 	steps = append(steps, "Authentication information read successfully")
 
@@ -188,7 +203,10 @@ func (dc *DirectConnection) connect() error {
 		steps = append(steps, "Failed to send authentication response")
 		dc.conn.Close()
 		logError(steps, err)
-		return fmt.Errorf("failed to send authentication response: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
+		return &mysql.ConnectionError{
+			Addr: dc.addr,
+			Msg:  fmt.Sprintf("failed to send authentication response: %v\nsteps:\n%s", err, strings.Join(steps, "\n")),
+		}
 	}
 	steps = append(steps, "Authentication response sent successfully")
 
@@ -197,7 +215,10 @@ func (dc *DirectConnection) connect() error {
 		steps = append(steps, fmt.Sprintf("Failed to reset read/write deadlines: %v", err))
 		dc.conn.Close()
 		logError(steps, err)
-		return fmt.Errorf("failed to reset read and write deadlines after handshake: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
+		return &mysql.ConnectionError{
+			Addr: dc.addr,
+			Msg:  fmt.Sprintf("failed to reset read and write deadlines after handshake: %v\nsteps:\n%s", err, strings.Join(steps, "\n")),
+		}
 	}
 	steps = append(steps, "Read and write deadlines reset")
 
@@ -207,7 +228,10 @@ func (dc *DirectConnection) connect() error {
 			steps = append(steps, "Failed to set autocommit = 1")
 			dc.conn.Close()
 			logError(steps, err)
-			return fmt.Errorf("failed to use autocommit: %w\nsteps:\n%s", err, strings.Join(steps, "\n"))
+			return &mysql.ConnectionError{
+				Addr: dc.addr,
+				Msg:  fmt.Sprintf("failed to use autocommit: %v\nsteps:\n%s", err, strings.Join(steps, "\n")),
+			}
 		}
 	}
 	// Connection successful

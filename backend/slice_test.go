@@ -72,7 +72,7 @@ func TestParseSlave(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := new(Slice)
 			dbInfo, _ := s.ParseSlave(tt.slaveAdders)
-			for i, _ := range tt.expectAddrs {
+			for i := range tt.expectAddrs {
 				assert.Equal(t, tt.expectAddrs[i], dbInfo.ConnPool[i].Addr())
 				assert.Equal(t, tt.expectDatacenters[i], dbInfo.Datacenter[i])
 			}
@@ -220,6 +220,7 @@ func generateDBInfo(mockCtl *gomock.Controller, slaveHosts []string, slaveStatus
 	slaveWeights := make([]int, 0, len(slaveHosts))
 	datacenter := make([]string, 0, len(slaveHosts))
 	StatusMap := &sync.Map{}
+	SlaveConsecutiveErrors := &sync.Map{}
 	for i, host := range slaveHosts {
 		dc, _ := util.GetInstanceDatacenter(host)
 		pc := NewMockPooledConnect(mockCtl)
@@ -234,10 +235,17 @@ func generateDBInfo(mockCtl *gomock.Controller, slaveHosts []string, slaveStatus
 		datacenter = append(datacenter, dc)
 		slaveWeights = append(slaveWeights, 1)
 		StatusMap.Store(i, slaveStatus[i])
+		SlaveConsecutiveErrors.Store(i, 0)
 	}
 	slaveBalancer := newBalancer(slaveWeights, len(connPool))
 
-	return &DBInfo{connPool, slaveBalancer, StatusMap, datacenter}
+	return &DBInfo{
+		ConnPool:          connPool,
+		Balancer:          slaveBalancer,
+		StatusMap:         StatusMap,
+		Datacenter:        datacenter,
+		ConsecutiveErrors: SlaveConsecutiveErrors,
+	}
 }
 
 func TestCheckSlaveSyncStatus(t *testing.T) {
@@ -340,4 +348,161 @@ func TestSlice_Close(t *testing.T) {
 
 	// 调用 Close 方法
 	slice.Close()
+}
+
+func TestSlaveConsecutiveErrorCircuitBreaker(t *testing.T) {
+	mockCtl := gomock.NewController(t)
+	defer mockCtl.Finish()
+
+	// 定义测试用例
+	testCases := []struct {
+		name                   string
+		proxyDc                string
+		localSlaveReadPriority int
+		slaveAddrs             []string
+		slaveStatus            []StatusCode
+		errorThreshold         int
+		operations             []string // "success" 或 "fail"
+		expectedStatuses       []StatusCode
+	}{
+		// 连续错误未达到阈值，不熔断
+		{
+			name:                   "Continuous errors do not reach the threshold and the fuse does not blow",
+			proxyDc:                "dc1",
+			localSlaveReadPriority: LocalSlaveReadPreferred,
+			slaveAddrs:             []string{"slave1.dc1:3306", "slave2.dc1:3306"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp},
+			errorThreshold:         3,
+			operations:             []string{"fail", "fail", "success"},
+			expectedStatuses:       []StatusCode{StatusUp, StatusUp},
+		},
+		// 连续错误达到阈值，熔断从库
+		{
+			name:                   "Continuous errors reach the threshold, fuse slave",
+			proxyDc:                "dc1",
+			localSlaveReadPriority: LocalSlaveReadPreferred,
+			slaveAddrs:             []string{"slave1.dc1:3306", "slave2.dc1:3306"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp},
+			errorThreshold:         3,
+			operations:             []string{"fail", "fail", "fail"},
+			expectedStatuses:       []StatusCode{StatusDown, StatusUp},
+		},
+		// 错误后成功，错误计数重置，不熔断
+		{
+			name:                   "Success after error, error count reset, no fuse",
+			proxyDc:                "dc1",
+			localSlaveReadPriority: LocalSlaveReadPreferred,
+			slaveAddrs:             []string{"slave1.dc1:3306", "slave2.dc1:3306"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp},
+			errorThreshold:         3,
+			operations:             []string{"fail", "success", "fail", "fail", "fail"},
+			expectedStatuses:       []StatusCode{StatusDown, StatusUp},
+		},
+		// 多个从库分别统计错误计数
+		{
+			name:                   "Multiple slaves count error counts separately",
+			proxyDc:                "dc1",
+			localSlaveReadPriority: LocalSlaveReadPreferred,
+			slaveAddrs:             []string{"slave1.dc1:3306", "slave2.dc1:3306"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp},
+			errorThreshold:         3,
+			operations:             []string{"fail", "switch", "fail", "fail", "fail"},
+			expectedStatuses:       []StatusCode{StatusUp, StatusDown},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// 初始化 Slice 和 DBInfo
+			s := &Slice{
+				ProxyDatacenter: tc.proxyDc,
+				Slave:           generateDBInfoWithMockPools(mockCtl, tc.slaveAddrs, tc.slaveStatus),
+			}
+
+			s.Slave.ConsecutiveErrors = &sync.Map{}
+			// 设置错误阈值
+			s.MaxSlaveFuseErrorCount = tc.errorThreshold
+
+			// 模拟操作
+			currentSlaveIndex := 0
+			for _, op := range tc.operations {
+				var err error
+				var pc PooledConnect
+
+				if op == "fail" {
+					// 模拟获取连接失败
+					pc, err = s.getSlaveConnWithMockError(s.Slave, tc.localSlaveReadPriority, currentSlaveIndex)
+					assert.NotNil(t, err)
+				} else if op == "success" {
+					// 模拟成功获取连接
+					pc, err = s.getSlaveConnWithMockSuccess(s.Slave, tc.localSlaveReadPriority, currentSlaveIndex)
+					assert.Nil(t, err)
+					assert.NotNil(t, pc)
+				} else if op == "switch" {
+					// 切换到下一个从库
+					currentSlaveIndex = (currentSlaveIndex + 1) % len(tc.slaveAddrs)
+					continue
+				}
+			}
+
+			// 检查最终的从库状态
+			for idx, expectedStatus := range tc.expectedStatuses {
+				status, _ := s.Slave.GetStatus(idx)
+				assert.Equal(t, expectedStatus, status, fmt.Sprintf("Slave %d status should be %v", idx, expectedStatus))
+			}
+		})
+	}
+}
+
+// 模拟获取从库连接失败，增加错误计数
+func (s *Slice) getSlaveConnWithMockError(slavesInfo *DBInfo, localSlaveReadPriority int, index int) (PooledConnect, error) {
+	// 增加错误计数
+	slavesInfo.IncrementErrorCount(index)
+	// 检查是否需要熔断
+	if slavesInfo.GetErrorCount(index) >= s.MaxSlaveFuseErrorCount {
+		slavesInfo.SetStatus(index, StatusDown)
+	}
+	return nil, fmt.Errorf("mock connection error")
+}
+
+// 模拟成功获取从库连接，重置错误计数
+func (s *Slice) getSlaveConnWithMockSuccess(slavesInfo *DBInfo, localSlaveReadPriority int, index int) (PooledConnect, error) {
+	// 重置错误计数
+	slavesInfo.ResetErrorCount(index)
+	// 返回模拟的连接
+	pc := NewMockPooledConnect(gomock.NewController(nil))
+	pc.EXPECT().GetAddr().Return(slavesInfo.ConnPool[index].Addr()).AnyTimes()
+	return pc, nil
+}
+
+func generateDBInfoWithMockPools(mockCtl *gomock.Controller, slaveAddrs []string, slaveStatus []StatusCode) *DBInfo {
+	connPool := make([]ConnectionPool, len(slaveAddrs))
+	slaveWeights := make([]int, len(slaveAddrs))
+	datacenter := make([]string, len(slaveAddrs))
+	statusMap := &sync.Map{}
+	slaveConsecutiveErrors := &sync.Map{}
+
+	for i, addr := range slaveAddrs {
+		dc, _ := util.GetInstanceDatacenter(addr)
+
+		mcp := NewMockConnectionPool(mockCtl)
+		mcp.EXPECT().Datacenter().Return(dc).AnyTimes()
+		mcp.EXPECT().Addr().Return(addr).AnyTimes()
+
+		connPool[i] = mcp
+		datacenter[i] = dc
+		slaveWeights[i] = 1
+		statusMap.Store(i, slaveStatus[i])
+		slaveConsecutiveErrors.Store(i, 0)
+	}
+
+	balancer := newBalancer(slaveWeights, len(connPool))
+
+	return &DBInfo{
+		ConnPool:          connPool,
+		Balancer:          balancer,
+		StatusMap:         statusMap,
+		Datacenter:        datacenter,
+		ConsecutiveErrors: slaveConsecutiveErrors,
+	}
 }

@@ -16,9 +16,10 @@ package plan
 
 import (
 	"fmt"
-	"github.com/shopspring/decimal"
 	"strconv"
 	"strings"
+
+	"github.com/shopspring/decimal"
 
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser/ast"
@@ -458,7 +459,7 @@ func MergeSelectResult(p *SelectPlan, stmt *ast.SelectStmt, rs []*mysql.Result) 
 		}
 	}
 
-	if err := sortSelectResult(p, stmt, ret); err != nil {
+	if err := sortSelectResult(p, ret); err != nil {
 		return nil, err
 	}
 
@@ -660,7 +661,7 @@ func trimExtraFields(p *SelectPlan, r *mysql.Result) error {
 	return nil
 }
 
-func sortSelectResult(p *SelectPlan, stmt *ast.SelectStmt, ret *mysql.Result) error {
+func sortSelectResult(p *SelectPlan, ret *mysql.Result) error {
 	if !p.HasOrderBy() {
 		return nil
 	}

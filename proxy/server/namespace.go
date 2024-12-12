@@ -49,8 +49,8 @@ const (
 	defaultMaxSqlResultSize  = 10000 // 默认为10000, 限制查询返回的结果集大小不超过该阈值
 	defaultTimeAfterNoAlive  = 32    // 每间隔4秒进行一次检查， 默认 32秒后会探测到实例失败
 	// 认为Slave已下线，如果需要快速判定状态，可减少该值
-	defaultMaxClientConnections = 100000000 //Big enough
-
+	defaultMaxClientConnections          = 100000000 //Big enough
+	defaultMaxConsecutiveSlaveErrorCount = 512
 )
 
 // UserProperty means runtime user properties
@@ -97,6 +97,8 @@ type Namespace struct {
 	limiter                 *rate.Limiter
 	namespaceChangeIndex    uint32
 	allowedSessionVariables map[string]string
+
+	maxConsecutiveSlaveErrorCount int
 }
 
 // DumpToJSON  means easy encode json
@@ -108,17 +110,18 @@ func (n *Namespace) DumpToJSON() []byte {
 func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*Namespace, error) {
 	var err error
 	namespace := &Namespace{
-		name:                    namespaceConfig.Name,
-		sqls:                    make(map[string]string, 16),
-		userProperties:          make(map[string]*UserProperty, 2),
-		openGeneralLog:          namespaceConfig.OpenGeneralLog,
-		slowSQLCache:            cache.NewLRUCache(defaultSQLCacheCapacity),
-		errorSQLCache:           cache.NewLRUCache(defaultSQLCacheCapacity),
-		backendSlowSQLCache:     cache.NewLRUCache(defaultSQLCacheCapacity),
-		backendErrorSQLCache:    cache.NewLRUCache(defaultSQLCacheCapacity),
-		planCache:               cache.NewLRUCache(defaultPlanCacheCapacity),
-		defaultSlice:            namespaceConfig.DefaultSlice,
-		allowedSessionVariables: namespaceConfig.AllowedSessionVariables,
+		name:                          namespaceConfig.Name,
+		sqls:                          make(map[string]string, 16),
+		userProperties:                make(map[string]*UserProperty, 2),
+		openGeneralLog:                namespaceConfig.OpenGeneralLog,
+		slowSQLCache:                  cache.NewLRUCache(defaultSQLCacheCapacity),
+		errorSQLCache:                 cache.NewLRUCache(defaultSQLCacheCapacity),
+		backendSlowSQLCache:           cache.NewLRUCache(defaultSQLCacheCapacity),
+		backendErrorSQLCache:          cache.NewLRUCache(defaultSQLCacheCapacity),
+		planCache:                     cache.NewLRUCache(defaultPlanCacheCapacity),
+		defaultSlice:                  namespaceConfig.DefaultSlice,
+		allowedSessionVariables:       namespaceConfig.AllowedSessionVariables,
+		maxConsecutiveSlaveErrorCount: namespaceConfig.MaxConsecutiveSlaveErrorCount,
 	}
 
 	defer func() {
@@ -214,6 +217,11 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 		namespace.downAfterNoAlive = defaultTimeAfterNoAlive
 	}
 
+	// The maximum number of consecutive slave errors is not configured. The default value is used.
+	if namespace.maxConsecutiveSlaveErrorCount == 0 {
+		namespace.maxConsecutiveSlaveErrorCount = defaultMaxConsecutiveSlaveErrorCount
+	}
+
 	namespace.secondsBehindMaster = namespaceConfig.SecondsBehindMaster
 
 	// init localSlaveReadPriority
@@ -227,7 +235,7 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 	}
 
 	// init backend slices
-	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID, proxyDatacenter)
+	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID, proxyDatacenter, namespace.maxConsecutiveSlaveErrorCount)
 	if err != nil {
 		return nil, fmt.Errorf("init slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
 	}
@@ -593,7 +601,7 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	return s, nil
 }
 
-func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.CollationID, dc string) (map[string]*backend.Slice, error) {
+func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.CollationID, dc string, maxConsecutiveSlaveErrorCount int) (map[string]*backend.Slice, error) {
 	slices := make(map[string]*backend.Slice, len(cfgSlices))
 	for _, v := range cfgSlices {
 		v.Name = strings.TrimSpace(v.Name) // modify origin slice name, trim space
@@ -604,6 +612,14 @@ func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.Co
 		s, err := parseSlice(v, charset, collationID, dc)
 		if err != nil {
 			return nil, err
+		}
+
+		if maxConsecutiveSlaveErrorCount <= 0 {
+			s.MaxSlaveFuseErrorCount = 0
+		} else if maxConsecutiveSlaveErrorCount > 0 && maxConsecutiveSlaveErrorCount < s.Cfg.Capacity {
+			s.MaxSlaveFuseErrorCount = s.Cfg.Capacity
+		} else {
+			s.MaxSlaveFuseErrorCount = maxConsecutiveSlaveErrorCount
 		}
 
 		slices[v.Name] = s

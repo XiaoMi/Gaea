@@ -74,6 +74,8 @@ type DBInfo struct {
 	Balancer   *balancer
 	StatusMap  *sync.Map
 	Datacenter []string
+	// 用于记录连续错误次数，键为索引，值为错误计数
+	ConsecutiveErrors *sync.Map
 }
 
 func (dbi *DBInfo) GetStatus(index int) (StatusCode, error) {
@@ -90,18 +92,33 @@ func (dbi *DBInfo) SetStatus(index int, status StatusCode) {
 	dbi.StatusMap.Store(index, status)
 }
 
+func (dbi *DBInfo) IncrementErrorCount(index int) {
+	count, _ := dbi.ConsecutiveErrors.LoadOrStore(index, 0)
+	dbi.ConsecutiveErrors.Store(index, count.(int)+1)
+}
+
+func (dbi *DBInfo) GetErrorCount(index int) int {
+	count, _ := dbi.ConsecutiveErrors.LoadOrStore(index, 0)
+	return count.(int)
+}
+
+func (dbi *DBInfo) ResetErrorCount(index int) {
+	dbi.ConsecutiveErrors.Store(index, 0)
+}
+
 // Slice means one slice of the mysql cluster
 type Slice struct {
 	Cfg models.Slice
 	sync.RWMutex
 
-	Master          *DBInfo
-	Slave           *DBInfo
-	StatisticSlave  *DBInfo
-	ProxyDatacenter string
-	charset         string
-	collationID     mysql.CollationID
-	HealthCheckSql  string
+	Master                 *DBInfo
+	Slave                  *DBInfo
+	StatisticSlave         *DBInfo
+	ProxyDatacenter        string
+	charset                string
+	collationID            mysql.CollationID
+	HealthCheckSql         string
+	MaxSlaveFuseErrorCount int
 }
 
 // GetSliceName return name of slice
@@ -259,11 +276,12 @@ func (s *Slice) checkBackendSlaveStatus(ctx context.Context, db *DBInfo, name st
 
 				if alive, err := checkSlaveSyncStatus(pc, secondBehindMaster); !alive {
 					db.SetStatus(idx, StatusDown)
-					log.Warn("[ns:%s, %s:%s] check slave StatusDown. sync err:%s", name, s.Cfg.Name, cp.Addr(), err)
+					log.Warn("[ns:%s, %s:%s] check slave sync error:%s", name, s.Cfg.Name, cp.Addr(), err)
 					continue
 				}
 
 				db.SetStatus(idx, StatusUp)
+				db.ResetErrorCount(idx) // 探活成功，错误计数置0
 				if oldStatus == StatusDown {
 					log.Warn("[ns:%s, %s:%s] check slave StatusUp", name, s.Cfg.Name, cp.Addr())
 				}
@@ -365,12 +383,38 @@ func (s *Slice) GetSlaveConn(slavesInfo *DBInfo, localSlaveReadPriority int) (Po
 		}
 	}
 	if foundIndex >= 0 {
-		return slavesInfo.ConnPool[foundIndex].Get(context.TODO())
+		return s.getConnWithFuse(slavesInfo, foundIndex)
 	}
 	if partialFoundIndex >= 0 && localSlaveReadPriority != LocalSlaveReadForce {
-		return slavesInfo.ConnPool[partialFoundIndex].Get(context.TODO())
+		return s.getConnWithFuse(slavesInfo, partialFoundIndex)
 	}
 	return nil, fmt.Errorf("get backend conn error,no local datacenter slaves")
+}
+
+// getConnWithFuse 封装从连接池获取连接并处理熔断的逻辑
+func (s *Slice) getConnWithFuse(slavesInfo *DBInfo, idx int) (PooledConnect, error) {
+	pc, err := slavesInfo.ConnPool[idx].Get(context.TODO())
+	if err != nil {
+		// 如果没有开启熔断 或者类型不是连接超时类型的错误直接返回错误
+		if s.MaxSlaveFuseErrorCount == 0 || !mysql.IsConnectionTimeoutError(err) {
+			log.Warn("Failed to get connection from pool (index: %d): %v", idx, err)
+			return pc, err
+		}
+		// 增加错误计数
+		slavesInfo.IncrementErrorCount(idx)
+		// 检查是否需要熔断
+		if slavesInfo.GetErrorCount(idx) >= s.MaxSlaveFuseErrorCount {
+			slavesInfo.SetStatus(idx, StatusDown)
+			log.Warn("Fuse triggered for pool (index: %d). Set status to StatusDown.", idx)
+		}
+		return nil, err
+	}
+
+	// 如果获取连接成功，且有熔断机制，则重置错误计数
+	if s.MaxSlaveFuseErrorCount > 0 {
+		slavesInfo.ResetErrorCount(idx)
+	}
+	return pc, nil
 }
 
 // Close close the pool in slice
@@ -425,7 +469,16 @@ func (s *Slice) ParseMaster(masterStr string) error {
 	status := &sync.Map{}
 	status.Store(0, StatusUp)
 
-	s.Master = &DBInfo{[]ConnectionPool{connectionPool}, nil, status, []string{dc}}
+	slaveConsecutiveErrors := &sync.Map{}
+	slaveConsecutiveErrors.Store(0, 0)
+
+	s.Master = &DBInfo{
+		ConnPool:          []ConnectionPool{connectionPool},
+		Balancer:          nil,
+		StatusMap:         status,
+		Datacenter:        []string{dc},
+		ConsecutiveErrors: slaveConsecutiveErrors,
+	}
 	return nil
 }
 
@@ -493,11 +546,19 @@ func (s *Slice) ParseSlave(slaves []string) (*DBInfo, error) {
 	}
 	slaveBalancer := newBalancer(slaveWeights, len(connPool))
 	StatusMap := &sync.Map{}
+	slaveConsecutiveErrors := &sync.Map{}
 	for idx := range connPool {
 		StatusMap.Store(idx, StatusUp)
+		slaveConsecutiveErrors.Store(idx, 0)
 	}
 
-	return &DBInfo{connPool, slaveBalancer, StatusMap, datacenter}, nil
+	return &DBInfo{
+		ConnPool:          connPool,
+		Balancer:          slaveBalancer,
+		StatusMap:         StatusMap,
+		Datacenter:        datacenter,
+		ConsecutiveErrors: slaveConsecutiveErrors,
+	}, nil
 }
 
 // SetCharsetInfo set charset
