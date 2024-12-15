@@ -137,7 +137,7 @@ func (se *SessionExecutor) doMultiStmts(reqCtx *util.RequestContext, sql string)
 			if err = se.session.writeResponse(response); err != nil {
 				log.Warn("session write response error, error: %v", err)
 				se.session.Close()
-				return r, errRet
+				return r, err
 			}
 		}
 	}
