@@ -16,6 +16,7 @@ package plan
 
 import (
 	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -45,6 +46,9 @@ func (r ResultRow) GetInt(column int) (int64, error) {
 		return strconv.ParseInt(v, 10, 64)
 	case []byte:
 		return strconv.ParseInt(string(v), 10, 64)
+	case decimal.Decimal:
+		// Use decimal.Decimal's IntPart method for conversion
+		return v.IntPart(), nil
 	case nil:
 		return 0, nil
 	default:
@@ -66,6 +70,9 @@ func (r ResultRow) GetUint(column int) (uint64, error) {
 		return strconv.ParseUint(v, 10, 64)
 	case []byte:
 		return strconv.ParseUint(string(v), 10, 64)
+	case decimal.Decimal:
+		// Convert decimal.Decimal to uint64 safely
+		return v.BigInt().Uint64(), nil
 	case nil:
 		return 0, nil
 	default:
@@ -87,6 +94,10 @@ func (r ResultRow) GetFloat(column int) (float64, error) {
 		return strconv.ParseFloat(v, 64)
 	case []byte:
 		return strconv.ParseFloat(string(v), 64)
+	case decimal.Decimal:
+		// Decimal.Decimal may lose precision when converted to float64
+		f, _ := v.Float64()
+		return f, nil
 	case nil:
 		return 0, nil
 	default:
@@ -110,6 +121,8 @@ func (r ResultRow) GetDecimal(column int) (decimal.Decimal, error) {
 		return decimal.NewFromString(string(v))
 	case nil:
 		return decimal.NewFromInt(0), nil
+	case decimal.Decimal:
+		return v, nil
 	default:
 		return decimal.NewFromInt(0), fmt.Errorf("data type is %T", v)
 	}
@@ -203,19 +216,28 @@ func (a *AggregateFuncSumMerger) MergeTo(from, to ResultRow) error {
 		return fmt.Errorf("field index out of bound: %d", a.fieldIndex)
 	}
 
-	fromValueI := from.GetValue(idx)
+	fromValue := from.GetValue(idx)
+	toValue := to.GetValue(idx)
 
-	// nil对应NULL, NULL不参与比较
-	if fromValueI == nil {
+	// nil value handling
+	if fromValue == nil {
+		return nil
+	}
+	if toValue == nil {
+		to.SetValue(idx, fromValue)
 		return nil
 	}
 
-	switch to.GetValue(idx).(type) {
+	// TODO: Type mismatch handling .If from is int64, but to is float64), these types might not match directly in the switch, resulting in an error.
+
+	switch toValue.(type) {
 	case int64:
 		return a.sumToInt64(from, to)
 	case uint64:
 		return a.sumToUint64(from, to)
-	case float64, string, []byte, nil:
+	case float64:
+		return a.sumToFloat64(from, to)
+	case decimal.Decimal, string, []byte, nil:
 		return a.sumToDecimal(from, to)
 	default:
 		fromValue := from.GetValue(idx)
@@ -253,33 +275,58 @@ func (a *AggregateFuncSumMerger) sumToUint64(from, to ResultRow) error {
 }
 
 func (a *AggregateFuncSumMerger) sumToFloat64(from, to ResultRow) error {
-	idx := a.fieldIndex // does not need to check
-	valueToMerge, err := from.GetFloat(idx)
+	// Get the field index
+	idx := a.fieldIndex
+
+	// Get the float64 value from `from`
+	fromValue, err := from.GetFloat(idx)
 	if err != nil {
-		return fmt.Errorf("get from int value error: %v", err)
+		return fmt.Errorf("get from float value error: %v", err)
 	}
-	originValue, err := to.GetFloat(idx)
+
+	// Get the float64 value from `to`
+	toValue, err := to.GetFloat(idx)
 	if err != nil {
-		return fmt.Errorf("get to int value error: %v", err)
+		return fmt.Errorf("get to float value error: %v", err)
 	}
-	to.SetValue(idx, originValue+valueToMerge)
+
+	// Convert float64 to decimal.Decimal for precise addition
+	fromDecimal := decimal.NewFromFloat(fromValue)
+	toDecimal := decimal.NewFromFloat(toValue)
+
+	// Perform addition using decimal
+	resultDecimal := toDecimal.Add(fromDecimal)
+
+	// Convert the result back to float64
+	resultFloat, _ := resultDecimal.Float64()
+
+	// Store the result in `to`
+	to.SetValue(idx, resultFloat)
+
 	return nil
 }
 
 // sumToDecimal turn float to decimal to aggregate func sum
 func (a *AggregateFuncSumMerger) sumToDecimal(from, to ResultRow) error {
-	idx := a.fieldIndex // does not need to check
+	// Get the field index
+	idx := a.fieldIndex
+
+	// Get the decimal.Decimal value from `from`
 	valueToMerge, err := from.GetDecimal(idx)
 	if err != nil {
 		return fmt.Errorf("get from decimal value error: %v", err)
 	}
+
+	// Get the decimal.Decimal value from `to`
 	originValue, err := to.GetDecimal(idx)
 	if err != nil {
 		return fmt.Errorf("get to decimal value error: %v", err)
 	}
+
+	// Merge Values and Store back to `to`
 	mergeValueDecimal := originValue.Add(valueToMerge)
-	mergeValueFloat, _ := mergeValueDecimal.Float64()
-	to.SetValue(idx, mergeValueFloat)
+	to.SetValue(idx, mergeValueDecimal)
+
 	return nil
 }
 
@@ -301,6 +348,16 @@ func (a *AggregateFuncMaxMerger) MergeTo(from, to ResultRow) error {
 	// nil对应NULL, NULL不参与比较
 	if fromValueI == nil {
 		return nil
+	}
+
+	if toValueI == nil {
+		to.SetValue(idx, fromValueI)
+		return nil
+	}
+
+	// 类型不匹配处理
+	if reflect.TypeOf(fromValueI) != reflect.TypeOf(toValueI) {
+		return fmt.Errorf("type mismatch: from value %T, to value %T", fromValueI, toValueI)
 	}
 
 	switch toValue := toValueI.(type) {
@@ -325,6 +382,15 @@ func (a *AggregateFuncMaxMerger) MergeTo(from, to ResultRow) error {
 	case string:
 		if fromValueI.(string) > toValue {
 			to.SetValue(idx, fromValueI)
+		}
+		return nil
+
+	case decimal.Decimal:
+		fromDecimal := fromValueI.(decimal.Decimal)
+		toDecimal := toValueI.(decimal.Decimal)
+		// Compare using the Cmp method
+		if fromDecimal.Cmp(toDecimal) > 0 {
+			to.SetValue(idx, fromDecimal)
 		}
 		return nil
 	// does not handle []byte
@@ -353,6 +419,16 @@ func (a *AggregateFuncMinMerger) MergeTo(from, to ResultRow) error {
 		return nil
 	}
 
+	if toValueI == nil {
+		to.SetValue(idx, fromValueI)
+		return nil
+	}
+
+	// 类型不匹配处理
+	if reflect.TypeOf(fromValueI) != reflect.TypeOf(toValueI) {
+		return fmt.Errorf("type mismatch: from value %T, to value %T", fromValueI, toValueI)
+	}
+
 	switch toValue := toValueI.(type) {
 	case nil:
 		to.SetValue(idx, fromValueI)
@@ -378,6 +454,14 @@ func (a *AggregateFuncMinMerger) MergeTo(from, to ResultRow) error {
 		}
 		return nil
 		// does not handle []byte
+	case decimal.Decimal:
+		fromDecimal := fromValueI.(decimal.Decimal)
+		toDecimal := toValue
+		// Compare using the Cmp method
+		if fromDecimal.Cmp(toDecimal) < 0 {
+			to.SetValue(idx, fromDecimal)
+		}
+		return nil
 	default:
 		return fmt.Errorf("cannot compare value %v (%T) to %v (%T)", fromValueI, fromValueI, toValueI, toValueI)
 	}
@@ -792,6 +876,18 @@ func formatValue(value interface{}) ([]byte, error) {
 		return v, nil
 	case string:
 		return hack.Slice(v), nil
+	case decimal.Decimal:
+		// Dynamically obtain accuracy
+		exp := v.Exponent()
+		// Exponent is a negative value, negate it to get the number of digits after the decimal point
+		precision := -exp
+		if precision < 0 {
+			// Prevent negative precision
+			precision = 0
+		}
+		// Format the output according to the precision
+		b := []byte(v.StringFixed(precision))
+		return b, nil
 	default:
 		return nil, fmt.Errorf("invalid type %T", value)
 	}

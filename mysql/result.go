@@ -32,9 +32,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"strconv"
+
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/util/hack"
-	"strconv"
+	"github.com/shopspring/decimal"
 )
 
 // RowData row in []byte format
@@ -76,8 +78,10 @@ func (p RowData) ParseText(f []*Field) ([]interface{}, error) {
 				} else {
 					data[i], err = strconv.ParseInt(string(v), 10, 64)
 				}
-			case TypeFloat, TypeDouble, TypeNewDecimal:
+			case TypeFloat, TypeDouble:
 				data[i], err = strconv.ParseFloat(string(v), 64)
+			case TypeNewDecimal:
+				data[i], err = decimal.NewFromString(string(v))
 			case TypeVarchar, TypeVarString,
 				TypeString, TypeDatetime,
 				TypeDate, TypeDuration, TypeTimestamp:
@@ -655,6 +659,18 @@ func formatValue(value interface{}) ([]byte, error) {
 		return v, nil
 	case string:
 		return hack.Slice(v), nil
+	case decimal.Decimal:
+		// Dynamically obtain accuracy
+		exp := v.Exponent()
+		// Exponent is a negative value, negate it to get the number of digits after the decimal point
+		precision := -exp
+		if precision < 0 {
+			// Prevent negative precision
+			precision = 0
+		}
+		// Format the output according to the precision
+		b := []byte(v.StringFixed(precision))
+		return b, nil
 	default:
 		return nil, fmt.Errorf("invalid type %T", value)
 	}
