@@ -402,7 +402,9 @@ func (se *SessionExecutor) handleSetVariable(sql string, v *ast.VariableAssignme
 	case "group_concat_max_len":
 		concatMaxLen := getVariableExprResult(v.Value)
 		return se.setIntSessionVariable(mysql.GroupConcatMaxLen, concatMaxLen)
-
+	case "lock_wait_timeout":
+		value := getVariableExprResult(v.Value)
+		return se.setIntSessionVariable(name, value)
 	case "autocommit":
 		value := getVariableExprResult(v.Value)
 		if value == mysql.KeywordDefault || value == "on" || value == "1" {

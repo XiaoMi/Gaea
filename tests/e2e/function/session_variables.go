@@ -357,6 +357,40 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 				}
 			}
 		})
+
+		ginkgo.It("should support lock wait timeout", func() {
+			tests := []struct {
+				VariableName      string
+				Type              string
+				AlternativeValues []interface{}
+			}{
+				{"lock_wait_timeout", "int", []interface{}{2, 3}},
+			}
+
+			for _, test := range tests {
+				gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
+				util.ExpectNoError(err)
+				// Check current value to avoid testing with the default value
+				getCurrentValueSQL := fmt.Sprintf("SELECT @@SESSION.%s", test.VariableName)
+				row := gaeaConn.QueryRow(getCurrentValueSQL)
+				defaultValue, err := scanVariableValue(row, test.Type)
+				util.ExpectNoError(err)
+				for _, setValue := range test.AlternativeValues {
+					if setValue != defaultValue {
+						// Attempt to set the New value for the session variable
+						setSQL := generateSetSessionSQL(test.VariableName, test.Type, setValue)
+						_, err = gaeaConn.Exec(setSQL)
+						util.ExpectNoError(err, "Setting lock_wait_timeout should not throw an error")
+
+						// Verify that the session variable's value has not changed
+						row = gaeaConn.QueryRow(getCurrentValueSQL)
+						actualValue, err := scanVariableValue(row, "int")
+						util.ExpectNoError(err)
+						util.ExpectEqual(actualValue, setValue)
+					}
+				}
+			}
+		})
 	})
 
 	ginkgo.AfterEach(func() {
