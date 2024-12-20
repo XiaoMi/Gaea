@@ -27,10 +27,10 @@ import (
 )
 
 const (
-	ExecTimeOut      = 2 * time.Second
-	GetConnTimeout   = 2 * time.Second
-	pingPeriod       = 4 * time.Second
-	handshakeTimeout = 200 * time.Millisecond
+	ExecTimeOut             = 2 * time.Second
+	GetConnTimeout          = 2 * time.Second
+	pingPeriod              = 4 * time.Second
+	handshakeTimeoutDefault = 500 * time.Millisecond
 )
 
 var (
@@ -61,10 +61,11 @@ type connectionPoolImpl struct {
 	clientCapability uint32
 	initConnect      string
 	lastChecked      int64
+	handshakeTimeout time.Duration
 }
 
 // NewConnectionPool create connection pool
-func NewConnectionPool(addr, user, password, db string, capacity, maxCapacity int, idleTimeout time.Duration, charset string, collationID mysql.CollationID, clientCapability uint32, initConnect string, dc string) ConnectionPool {
+func NewConnectionPool(addr, user, password, db string, capacity, maxCapacity int, idleTimeout time.Duration, charset string, collationID mysql.CollationID, clientCapability uint32, initConnect string, dc string, handshakeTimeout time.Duration) ConnectionPool {
 	return &connectionPoolImpl{
 		addr:             addr,
 		datacenter:       dc,
@@ -79,6 +80,7 @@ func NewConnectionPool(addr, user, password, db string, capacity, maxCapacity in
 		clientCapability: clientCapability,
 		initConnect:      strings.Trim(strings.TrimSpace(initConnect), ";"),
 		lastChecked:      time.Now().Unix(),
+		handshakeTimeout: handshakeTimeout,
 	}
 }
 
@@ -107,7 +109,7 @@ func (cp *connectionPoolImpl) Open() error {
 
 // connect is used by the resource pool to create new resource.It's factory method
 func (cp *connectionPoolImpl) connect() (util.Resource, error) {
-	c, err := NewDirectConnection(cp.addr, cp.user, cp.password, cp.db, cp.charset, cp.collationID, cp.clientCapability)
+	c, err := NewDirectConnection(cp.addr, cp.user, cp.password, cp.db, cp.charset, cp.collationID, cp.clientCapability, cp.handshakeTimeout)
 	if err != nil {
 		return nil, err
 	}

@@ -68,10 +68,16 @@ type DirectConnection struct {
 	closed                   sync2.AtomicBool
 	capabilityConnectToMySQL uint32
 	moreRowExists            bool
+	handshakeTimeout         time.Duration
 }
 
 // NewDirectConnection return direct and authorised connection to mysql with real net connection
-func NewDirectConnection(addr string, user string, password string, db string, charset string, collationID mysql.CollationID, clientCapability uint32) (*DirectConnection, error) {
+func NewDirectConnection(addr string, user string, password string, db string, charset string, collationID mysql.CollationID, clientCapability uint32, handshakeTimeout time.Duration) (*DirectConnection, error) {
+	// 如果 handshakeTimeout 未配置，则使用默认值
+	if handshakeTimeout == 0 {
+		handshakeTimeout = handshakeTimeoutDefault // 默认超时时间
+	}
+
 	dc := &DirectConnection{
 		addr:                     addr,
 		user:                     user,
@@ -85,6 +91,7 @@ func NewDirectConnection(addr string, user string, password string, db string, c
 		sessionVariables:         mysql.NewSessionVariables(),
 		capabilityConnectToMySQL: clientCapability,
 		moreRowExists:            false,
+		handshakeTimeout:         handshakeTimeout,
 	}
 	err := dc.connect()
 	return dc, err
@@ -106,20 +113,20 @@ func (dc *DirectConnection) connect() error {
 	if strings.Contains(dc.addr, "/") {
 		typ = "unix"
 	}
-	steps = append(steps, fmt.Sprintf("Connection type determined: %s", typ))
+	steps = append(steps, fmt.Sprintf("Connection type determined: %s (Address: %s)", typ, dc.addr))
 
 	// Set up the dialer
 	dialer := net.Dialer{}
-	steps = append(steps, "Dialer created")
+	steps = append(steps, fmt.Sprintf("Dialer created with timeout: %v", dc.handshakeTimeout))
 
 	// Set a separate timeout for dialing
-	dialCtx, dialCancel := context.WithTimeout(context.Background(), handshakeTimeout)
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), dc.handshakeTimeout)
 	defer dialCancel()
 
 	// Establish a connection
 	netConn, err := dialer.DialContext(dialCtx, typ, dc.addr)
 	if err != nil {
-		steps = append(steps, fmt.Sprintf("Failed to connect to %s: %v", dc.addr, err))
+		steps = append(steps, fmt.Sprintf("Failed to connect to %s within timeout %v: %v", dc.addr, dc.handshakeTimeout, err))
 		// Close netConn if it's not nil to prevent resource leaks
 		if netConn != nil {
 			netConn.Close()
@@ -147,8 +154,8 @@ func (dc *DirectConnection) connect() error {
 	steps = append(steps, "MySQL connection wrapper created")
 
 	// Set read and write deadlines for handshake operations
-	if err := dc.conn.SetReadWriteDeadline(handshakeTimeout); err != nil {
-		steps = append(steps, fmt.Sprintf("Failed to set read/write deadlines: %v", err))
+	if err := dc.conn.SetReadWriteDeadline(dc.handshakeTimeout); err != nil {
+		steps = append(steps, fmt.Sprintf("Failed to set read/write deadlines (timeout: %v): %v", dc.handshakeTimeout, err))
 		dc.conn.Close()
 		logError(steps, err)
 		return &mysql.ConnectionError{
@@ -156,12 +163,12 @@ func (dc *DirectConnection) connect() error {
 			Msg:  fmt.Sprintf("failed to set read/write deadlines: %v\nsteps:\n%s", err, strings.Join(steps, "\n")),
 		}
 	}
-	steps = append(steps, fmt.Sprintf("Read and write deadlines set to %v", handshakeTimeout))
+	steps = append(steps, fmt.Sprintf("Read and write deadlines set to %v", dc.handshakeTimeout))
 
 	// Proceed with the MySQL handshake
 	// step1: read handshake requirements
 	if err := dc.readInitialHandshake(); err != nil {
-		steps = append(steps, "Failed to read initial handshake")
+		steps = append(steps, fmt.Sprintf("Failed to read initial handshake (timeout: %v)", dc.handshakeTimeout))
 		dc.conn.Close()
 		logError(steps, err)
 		return &mysql.ConnectionError{

@@ -53,7 +53,7 @@ func (pc *pooledConnectImpl) Recycle() {
 // If we get "MySQL server has gone away (errno 2006)", then call Reconnect
 func (pc *pooledConnectImpl) Reconnect() error {
 	pc.directConnection.Close()
-	newConn, err := NewDirectConnection(pc.pool.addr, pc.pool.user, pc.pool.password, pc.pool.db, pc.pool.charset, pc.pool.collationID, pc.pool.clientCapability)
+	newConn, err := NewDirectConnection(pc.pool.addr, pc.pool.user, pc.pool.password, pc.pool.db, pc.pool.charset, pc.pool.collationID, pc.pool.clientCapability, pc.pool.handshakeTimeout)
 	if err != nil {
 		return err
 	}

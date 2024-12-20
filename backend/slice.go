@@ -119,6 +119,7 @@ type Slice struct {
 	collationID            mysql.CollationID
 	HealthCheckSql         string
 	MaxSlaveFuseErrorCount int
+	HandshakeTimeout       time.Duration
 }
 
 // GetSliceName return name of slice
@@ -151,7 +152,7 @@ func (s *Slice) GetConn(fromSlave bool, userType int, localSlaveReadPriority int
 }
 
 func (s *Slice) GetDirectConn(addr string) (*DirectConnection, error) {
-	return NewDirectConnection(addr, s.Cfg.UserName, s.Cfg.Password, "", s.charset, s.collationID, s.Cfg.Capability)
+	return NewDirectConnection(addr, s.Cfg.UserName, s.Cfg.Password, "", s.charset, s.collationID, s.Cfg.Capability, s.HandshakeTimeout)
 }
 
 // GetMasterConn return a connection in master pool
@@ -461,7 +462,7 @@ func (s *Slice) ParseMaster(masterStr string) error {
 		log.Warn("get master(%s) datacenter err:%s,will use default proxy datacenter.", masterStr, err)
 		dc = s.ProxyDatacenter
 	}
-	connectionPool := NewConnectionPool(masterStr, s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability, s.Cfg.InitConnect, dc)
+	connectionPool := NewConnectionPool(masterStr, s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability, s.Cfg.InitConnect, dc, s.HandshakeTimeout)
 	if err := connectionPool.Open(); err != nil {
 		return err
 	}
@@ -534,7 +535,7 @@ func (s *Slice) ParseSlave(slaves []string) (*DBInfo, error) {
 		}
 		datacenter = append(datacenter, dc)
 
-		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability, s.Cfg.InitConnect, dc)
+		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability, s.Cfg.InitConnect, dc, s.HandshakeTimeout)
 		if err = cp.Open(); err != nil {
 			return nil, err
 		}
