@@ -39,6 +39,7 @@ import (
 	"time"
 
 	"github.com/XiaoMi/Gaea/util/hack"
+	"github.com/shopspring/decimal"
 )
 
 // This file contains the data encoding and decoding functions.
@@ -522,6 +523,17 @@ func AppendBinaryValue(data []byte, fieldType uint8, value interface{}) ([]byte,
 	case uint:
 		t = make([]byte, 8)
 		WriteUint64(t, 0, uint64(v))
+	case decimal.Decimal:
+		// 如果是 shopspring/decimal.Decimal
+		switch fieldType {
+		case TypeNewDecimal:
+			// 将 decimal 转成字符串
+			decStr := v.String()
+			t = []byte(decStr)
+		default:
+			return nil, fmt.Errorf("unsupported field type %d for decimal.Decimal", fieldType)
+		}
+
 	case float64:
 		switch fieldType {
 		case TypeFloat:
@@ -580,21 +592,33 @@ func AppendBinaryValue(data []byte, fieldType uint8, value interface{}) ([]byte,
 			t = hack.Slice(v)
 		}
 	default:
-		return data, fmt.Errorf("invalid type %T", value)
+		return data, fmt.Errorf("AppendBinaryValue: unsupported type %T", value)
 	}
 
 	// append phase
 	switch fieldType {
 	case TypeTiny:
+		if len(t) < 1 {
+			return data, fmt.Errorf("AppendBinaryValue: insufficient data length for TypeTiny, expected at least 1 byte, got %d", len(t))
+		}
 		data = append(data, t[0])
 		return data, nil
 	case TypeShort, TypeYear:
+		if len(t) < 2 {
+			return data, fmt.Errorf("AppendBinaryValue: insufficient data length for TypeShort/TypeYear, expected at least 2 bytes, got %d", len(t))
+		}
 		data = append(data, t[:2]...)
 		return data, nil
 	case TypeFloat, TypeInt24, TypeLong:
+		if len(t) < 4 {
+			return data, fmt.Errorf("AppendBinaryValue: insufficient data length for TypeFloat/TypeInt24/TypeLong, expected at least 4 bytes, got %d", len(t))
+		}
 		data = append(data, t[:4]...)
 		return data, nil
 	case TypeLonglong, TypeDouble:
+		if len(t) < 8 {
+			return data, fmt.Errorf("AppendBinaryValue: insufficient data length for TypeLonglong/TypeDouble, expected at least 8 bytes, got %d", len(t))
+		}
 		data = append(data, t[:8]...)
 		return data, nil
 	case TypeNewDecimal, TypeJSON, TypeString, TypeVarString, TypeVarchar, TypeBit, TypeTinyBlob, TypeMediumBlob, TypeLongBlob, TypeBlob:
@@ -605,6 +629,6 @@ func AppendBinaryValue(data []byte, fieldType uint8, value interface{}) ([]byte,
 		data = append(data, t...)
 		return data, nil
 	default:
-		return data, fmt.Errorf("not supported field type")
+		return data, fmt.Errorf("AppendBinaryValue: unsupported field type %d", fieldType)
 	}
 }

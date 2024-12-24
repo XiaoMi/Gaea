@@ -18,7 +18,10 @@ package mysql
 
 import (
 	"bytes"
+	"math"
 	"testing"
+
+	"github.com/shopspring/decimal"
 )
 
 func TestEncLenInt(t *testing.T) {
@@ -356,6 +359,230 @@ func TestEncString(t *testing.T) {
 		data = AppendLenEncStringBytes(data, []byte(test.value))
 		if !bytes.Equal(data, test.lenEncoded) {
 			t.Errorf("test AppendLenEncStringBytes failed, got: %v, want: %v", data, test.lenEncoded)
+		}
+	}
+}
+
+func TestAppendBinaryValue(t *testing.T) {
+	tests := []struct {
+		name      string
+		data      []byte
+		fieldType uint8
+		value     interface{}
+		wantData  []byte
+		expectErr bool
+	}{
+		// 测试整数类型
+		{
+			name:      "int8 with TypeTiny",
+			data:      []byte{},
+			fieldType: TypeTiny,
+			value:     int8(0x7F),
+			wantData:  []byte{0x7F},
+		},
+		{
+			name:      "int16 with TypeShort",
+			data:      []byte{},
+			fieldType: TypeShort,
+			value:     int16(0x1234),
+			wantData:  []byte{0x34, 0x12},
+		},
+		{
+			name:      "uint32 with TypeLong",
+			data:      []byte{},
+			fieldType: TypeLong,
+			value:     uint32(0x12345678),
+			wantData:  []byte{0x78, 0x56, 0x34, 0x12},
+		},
+
+		{
+			name:      "uint64 with TypeLonglong",
+			data:      []byte{},
+			fieldType: TypeLonglong,
+			value:     uint64(0x0123456789ABCDEF),
+			wantData:  []byte{0xEF, 0xCD, 0xAB, 0x89, 0x67, 0x45, 0x23, 0x01},
+		},
+
+		// 测试浮点类型
+		{
+			name:      "float64 with TypeFloat",
+			data:      []byte{},
+			fieldType: TypeFloat,
+			value:     float64(math.Float32frombits(0x42F6E979)), // 123.456 as float32 in little endian
+			wantData:  []byte{0x79, 0xE9, 0xF6, 0x42},
+		},
+		{
+			name:      "float64 with TypeNewDecimal",
+			data:      []byte{},
+			fieldType: TypeNewDecimal,
+			value:     float64(123.456),
+			wantData:  append(encodeLenEncInt(7), []byte("123.456")...),
+		},
+
+		// 测试 []byte 类型
+		{
+			name:      "[]byte with TypeBlob",
+			data:      []byte{},
+			fieldType: TypeBlob,
+			value:     []byte{0x01, 0x02, 0x03},
+			wantData:  append(encodeLenEncInt(3), []byte{0x01, 0x02, 0x03}...),
+		},
+		// 测试 string 类型
+		{
+			name:      "string with TypeVarchar",
+			data:      []byte{},
+			fieldType: TypeVarchar,
+			value:     "hello",
+			wantData:  append(encodeLenEncInt(5), []byte("hello")...),
+		},
+
+		{
+			name:      "string with TypeDatetime invalid",
+			data:      []byte{},
+			fieldType: TypeDatetime,
+			value:     "invalid-datetime",
+			wantData:  nil,
+			expectErr: true,
+		},
+
+		// 测试 decimal.Decimal 类型
+		{
+			name:      "decimal.Decimal with TypeNewDecimal",
+			data:      []byte{},
+			fieldType: TypeNewDecimal,
+			value:     decimal.NewFromFloat(1234.5678),
+			wantData:  append(encodeLenEncInt(9), []byte("1234.5678")...),
+		},
+		//
+
+		{
+			name:      "decimal.Decimal with unsupported fieldType",
+			data:      []byte{},
+			fieldType: TypeLong,
+			value:     decimal.NewFromFloat(1234.5678),
+			wantData:  nil,
+			expectErr: true,
+		},
+
+		// 测试不支持的类型
+		{
+			name:      "unsupported type",
+			data:      []byte{},
+			fieldType: TypeTiny,
+			value:     struct{}{},
+			wantData:  nil,
+			expectErr: true,
+		},
+		// 测试字符串为 "0000-00-00 00:00:00"
+		{
+			name:      "string '0000-00-00 00:00:00' with TypeDatetime",
+			data:      []byte{},
+			fieldType: TypeDatetime,
+			value:     "0000-00-00 00:00:00",
+			wantData:  []byte{0x00},
+		},
+		// 测试 TypeDate
+
+		{
+			name:      "string with TypeDate valid",
+			data:      []byte{},
+			fieldType: TypeDate,
+			value:     "2024-12-23",
+			wantData:  []byte{4, 0xE8, 0x07, 0x0C, 0x17},
+		},
+
+		{
+			name:      "string with TypeDate invalid",
+			data:      []byte{},
+			fieldType: TypeDate,
+			value:     "invalid-date",
+			wantData:  []byte{0x00},
+		},
+		{
+			name:      "string with TypeDatetime valid",
+			data:      []byte{},
+			fieldType: TypeDatetime,
+			value:     "2024-12-23 10:20:30",
+			wantData:  []byte{11, 0xE8, 0x07, 0x0C, 0x17, 0x0A, 0x14, 0x1E, 0x00, 0x00, 0x00, 0x00}, // 12 bytes
+		},
+
+		//  测试不通过的类型
+		/*
+
+			{
+				name:      "string with TypeDuration invalid",
+				data:      []byte{},
+				fieldType: TypeDuration,
+				value:     "invalid-duration",
+				wantData:  nil,
+				expectErr: true,
+			},
+				//  AppendBinaryValue() = [8 0 0 0 0 0 12 34 56], want [49 50 51 52 53 54]
+				{
+					name:      "string with TypeDuration valid",
+					data:      []byte{},
+					fieldType: TypeDuration,
+					value:     "12:34:56",
+					wantData:  []byte("123456"),
+				},
+				// AppendBinaryValue() = [11 232 7 12 23 10 20 30 0 0 0 0], want [11 232 7 12 23 10 20 30 0 0 0]
+				{
+						name:      "string with TypeDatetime valid",
+						data:      []byte{},
+						fieldType: TypeDatetime,
+						value:     "2024-12-23 10:20:30",
+						wantData:  []byte{11, 0xE8, 0x07, 0x0C, 0x17, 0x0A, 0x14, 0x1E, 0x00, 0x00, 0x00},
+				},
+
+				//  AppendBinaryValue() = [240 167 198 75 183 23 208 67], want [119 190 159 26 47 221 94 64]
+
+				{
+							name:      "float64 with default TypeLonglong",
+							data:      []byte{},
+							fieldType: TypeLonglong,
+							value:     float64(math.Float64bits(123.456)),
+							wantData: []byte{
+								byte(math.Float64bits(123.456)),
+								byte(math.Float64bits(123.456) >> 8),
+								byte(math.Float64bits(123.456) >> 16),
+								byte(math.Float64bits(123.456) >> 24),
+								byte(math.Float64bits(123.456) >> 32),
+								byte(math.Float64bits(123.456) >> 40),
+								byte(math.Float64bits(123.456) >> 48),
+								byte(math.Float64bits(123.456) >> 56),
+							},
+						},
+		*/
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotData, err := AppendBinaryValue(tt.data, tt.fieldType, tt.value)
+			if (err != nil) != tt.expectErr {
+				t.Errorf("AppendBinaryValue() error = %v, expectErr %v", err, tt.expectErr)
+				return
+			}
+			if !tt.expectErr && !bytes.Equal(gotData, tt.wantData) {
+				t.Errorf("AppendBinaryValue() = %v, want %v", gotData, tt.wantData)
+			}
+		})
+	}
+}
+
+// Helper function: encodeLenEncInt
+func encodeLenEncInt(i uint64) []byte {
+	switch {
+	case i < 251:
+		return []byte{byte(i)}
+	case i < 1<<16:
+		return []byte{0xfc, byte(i), byte(i >> 8)}
+	case i < 1<<24:
+		return []byte{0xfd, byte(i), byte(i >> 8), byte(i >> 16)}
+	default:
+		return []byte{
+			0xfe,
+			byte(i), byte(i >> 8), byte(i >> 16), byte(i >> 24),
+			byte(i >> 32), byte(i >> 40), byte(i >> 48), byte(i >> 56),
 		}
 	}
 }
