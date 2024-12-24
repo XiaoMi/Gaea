@@ -48,7 +48,10 @@ var _ = ginkgo.Describe("shard join support test in mycat murmur", func() {
 		util.ExpectNoError(err)
 		util.ExpectNoError(util.CleanUpDatabases(singleMaster))
 		// 获取gaea连接
-		gaeaConn, err := e2eMgr.GetReadWriteGaeaUserDBConn("sbtest")
+		gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
+		util.ExpectNoError(err)
+
+		gaeaConn.Exec("USE sbtest")
 		util.ExpectNoError(err)
 
 		prepareCases := []struct {
