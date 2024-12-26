@@ -279,9 +279,11 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 		result.Resultset = &mysql.Resultset{
 			Fields: globalFields,
 		}
-		err = continueConn.FetchMoreRows(result, maxRows)
+		if err = continueConn.FetchMoreRows(result, maxRows); err != nil {
+			return err
+		}
 		if isBinary {
-			if err := result.BuildBinaryResultSet(); err != nil {
+			if err = result.BuildBinaryResultSet(); err != nil {
 				return err
 			}
 		}
@@ -291,13 +293,13 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 	}
 	// handle multi rs
 	for continueConn.MoreResultsExist() {
-		rs, err := continueConn.ReadMoreResult(maxRows)
+		rs, err = continueConn.ReadMoreResult(maxRows)
 		if err != nil {
 			return fmt.Errorf("readMoreresult error: %v", err)
 		}
 
 		if isBinary {
-			if err := rs.BuildBinaryResultSet(); err != nil {
+			if err = rs.BuildBinaryResultSet(); err != nil {
 				return err
 			}
 		}
