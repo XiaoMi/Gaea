@@ -1232,24 +1232,35 @@ func (s *StatisticManager) AddUptimeCount(count int64) {
 }
 
 func (s *StatisticManager) CalcCPUBusy(interval int) {
-	cpuBusy := int64(0)
+	statsKey := []string{s.clusterName}
 	p, err := process.NewProcess(int32(os.Getpid()))
 	if err != nil {
-		log.Notice("server", "gopsutil", "NewProcess", 0, err)
+		s.handleCPUBusyError(statsKey, "NewProcess", err)
 		return
 	}
-	cpuPercent, err := p.Percent(time.Duration(interval) * time.Second)
-	if err == nil {
-		if s.CPUNums != 0 {
-			// 为了适应CountersWithMultiLabels的数据类型，这里对cpuTime结果做了取整，grafana显示时需要还原
-			cpuBusy = int64(cpuPercent / float64(s.CPUNums) * 100)
 
-		} else {
-			cpuBusy = int64(cpuPercent / float64(runtime.NumCPU()) * 100)
-		}
+	cpuPercent, err := p.Percent(time.Duration(interval) * time.Second)
+	if err != nil {
+		s.handleCPUBusyError(statsKey, "NewProcess", err)
+		return
 	}
-	statsKey := []string{s.clusterName}
+	// Use the actual number of CPUs (set by runtime.GOMAXPROCS(finalMaxProcs) in main)
+	realCPUs := runtime.GOMAXPROCS(0)
+	if realCPUs <= 0 {
+		s.handleCPUBusyError(statsKey, "InvalidGOMAXPROCS", fmt.Errorf("GOMAXPROCS=%d", realCPUs))
+		return
+	}
+
+	cpuBusy := int64(cpuPercent / float64(realCPUs) * 100)
 	s.CPUBusy.Set(statsKey, cpuBusy)
+}
+
+func (s *StatisticManager) handleCPUBusyError(statsKey []string, context string, err error) {
+	log.Warn("server", fmt.Sprintf("gopsutil.%s failed", context),
+		"cluster", s.clusterName,
+		"pid", os.Getpid(),
+		"error", err)
+	s.CPUBusy.Set(statsKey, -1)
 }
 
 func (s *StatisticManager) CalcAvgSQLTimes() {
