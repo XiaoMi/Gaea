@@ -26,8 +26,9 @@ on:
     types: [opened]  # 触发条件：当拉取请求被创建时
 
 permissions:
-  issues: write  # 允许写入问题
-  pull-requests: write  # 允许写入拉取请求
+  contents: write
+  issues: write
+  pull-requests: write
 
 jobs:
   comment:
