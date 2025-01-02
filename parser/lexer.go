@@ -190,8 +190,8 @@ func (s *Scanner) Lex(v *yySymType) int {
 	case quotedIdentifier:
 		tok = identifier
 	}
-	if tok == unicode.ReplacementChar && s.r.eof() {
-		return 0
+	if tok == unicode.ReplacementChar {
+		return invalid
 	}
 	return tok
 }

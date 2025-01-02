@@ -352,18 +352,18 @@ func TestSQLModeANSIQuotes(t *testing.T) {
 
 func TestIllegal(t *testing.T) {
 	table := []testCaseItem{
-		{"'", 0},
-		{"'fu", 0},
-		{"'\\n", 0},
-		{"'\\", 0},
+		{"'", invalid},
+		{"'fu", invalid},
+		{"'\\n", invalid},
+		{"'\\", invalid},
 		{fmt.Sprintf("%c", 0), invalid},
-		{"`", 0},
-		{`"`, 0},
-		{"@`", 0},
-		{"@'", 0},
-		{`@"`, 0},
-		{"@@`", 0},
-		{"@@global.`", 0},
+		{"`", invalid},
+		{`"`, invalid},
+		{"@`", invalid},
+		{"@'", invalid},
+		{`@"`, invalid},
+		{"@@`", invalid},
+		{"@@global.`", invalid},
 	}
 	runTest(t, table)
 }
