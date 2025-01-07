@@ -48,10 +48,7 @@ var _ = ginkgo.Describe("Unshard DML Support Test", func() {
 		},
 	}
 	ginkgo.BeforeEach(func() {
-		ns, err := config.ParseNamespaceTmpl(config.UnShardNamespaceTmpl, slice)
-		util.ExpectNoError(err)
-		err = e2eMgr.ModifyNamespace(ns)
-		util.ExpectNoError(err)
+		// 1.MySQL 数据库准备
 		master, err := slice.GetMasterAdminConn(0)
 		util.ExpectNoError(err)
 		ginkgo.By("get setup file")
@@ -63,8 +60,13 @@ var _ = ginkgo.Describe("Unshard DML Support Test", func() {
 				util.ExpectNoError(err)
 			}
 		}
-		// 等待从库追赶主库
+		// 2.等待从库追赶主库
 		time.Sleep(2 * time.Second)
+		// 3.注册namespace
+		ns, err := config.ParseNamespaceTmpl(config.UnShardNamespaceTmpl, slice)
+		util.ExpectNoError(err)
+		err = e2eMgr.ModifyNamespace(ns)
+		util.ExpectNoError(err)
 	})
 	ginkgo.Context("unshard support test", func() {
 		ginkgo.It("When testing unshard sql support", func() {
