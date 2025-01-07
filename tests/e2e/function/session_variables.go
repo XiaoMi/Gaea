@@ -35,19 +35,14 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 	db := config.DefaultE2eDatabase
 	table := config.DefaultE2eTable
 	slice := e2eMgr.NsSlices[config.SliceSingleTestMaster]
-	var needCleanup bool
 	var allowedSessionVariables map[string]string
-
-	// This is run once before each test (`It` block) to ensure fresh setup
-	ginkgo.BeforeEach(func() {
-		masterAdminConn, err := slice.GetMasterAdminConn(0)
-		util.ExpectNoError(err)
-		err = util.SetupDatabaseAndInsertData(masterAdminConn, db, table)
-		util.ExpectNoError(err)
-	})
 
 	ginkgo.Context("When session variables are correctly configured", func() {
 		ginkgo.BeforeEach(func() {
+			masterAdminConn, err := slice.GetMasterAdminConn(0)
+			util.ExpectNoError(err)
+			err = util.SetupDatabaseAndInsertData(masterAdminConn, db, table)
+			util.ExpectNoError(err)
 			allowedSessionVariables = map[string]string{
 				"transaction_isolation": "string",
 				"max_execution_time":    "int",
@@ -62,10 +57,13 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 			err = e2eMgr.ModifyNamespace(initNs)
 			util.ExpectNoError(err)
 		})
+		ginkgo.AfterEach(func() {
+			e2eMgr.Clean()
+		})
 
 		ginkgo.It("should validate correctly configured session variables that are present in variableVerifyFuncMap", func() {
 			// Sub-scenario A: Variables are in the verification map
-			scenarioATests := []struct {
+			subTestsA := []struct {
 				VariableName      string
 				Type              string
 				AlternativeValues []interface{}
@@ -76,7 +74,7 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 				{"max_execution_time", "int", []interface{}{5000, 10000}},
 			}
 
-			for _, test := range scenarioATests {
+			for _, test := range subTestsA {
 				gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
 				util.ExpectNoError(err)
 
@@ -114,12 +112,9 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 					}
 				}
 			}
-		})
 
-		ginkgo.It("should handle correctly configured session variables not present in variableVerifyFuncMap", func() {
-			// Test handling when variables are correct but not in the verification map
-			needCleanup = true // Set this flag only if the test modifies the namespace
-			tests := []struct {
+			// Sub-scenario B: session variable not in variableVerifyFuncMap and Namespace
+			subTestsB := []struct {
 				VariableName      string
 				Type              string
 				AlternativeValues []interface{}
@@ -128,10 +123,9 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 				{"max_heap_table_size", "int", []interface{}{16384, 16777216}},
 			}
 
-			for _, test := range tests {
+			for _, test := range subTestsB {
 				gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
 				util.ExpectNoError(err)
-
 				// Check current value to avoid testing with the default value
 				getCurrentValueSQL := fmt.Sprintf("SELECT @@SESSION.%s", test.VariableName)
 				row := gaeaConn.QueryRow(getCurrentValueSQL)
@@ -167,6 +161,7 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 				}
 			}
 		})
+
 	})
 
 	ginkgo.Context("When session variables are incorrectly configured", func() {
@@ -190,9 +185,13 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 			util.ExpectNoError(err)
 		})
 
+		ginkgo.AfterEach(func() {
+			e2eMgr.Clean()
+		})
+
 		ginkgo.It("should handle incorrectly configured session variables present in variableVerifyFuncMap", func() {
 			// Sub-scenario A: Variables are in the verification map but have incorrect types
-			scenarioATests := []struct {
+			subTestsA := []struct {
 				VariableName      string
 				Type              string
 				AlternativeValues []interface{}
@@ -201,7 +200,7 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 				{"transaction_isolation", "string", []interface{}{"READ-UNCOMMITTED", "REPEATABLE-READ"}},
 			}
 
-			for _, test := range scenarioATests {
+			for _, test := range subTestsA {
 				gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
 				util.ExpectNoError(err)
 				// Check current value to avoid testing with the default value
@@ -226,12 +225,9 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 					}
 				}
 			}
-		})
 
-		ginkgo.It("should handle incorrectly configured session variables not present in variableVerifyFuncMap", func() {
 			// Sub-scenario B: Variables not in the verification map but have incorrect types
-			needCleanup = true // Set this flag only if the test modifies the namespace
-			tests := []struct {
+			subTestsB := []struct {
 				VariableName      string
 				Type              string
 				AlternativeValues []interface{}
@@ -240,7 +236,7 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 				{"max_heap_table_size", "int", []interface{}{16384, 16777216}},
 			}
 
-			for _, test := range tests {
+			for _, test := range subTestsB {
 				gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
 				util.ExpectNoError(err)
 				// Check current value to avoid testing with the default value
@@ -271,6 +267,7 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 				}
 			}
 		})
+
 	})
 
 	ginkgo.Context("When session variables are not configured", func() {
@@ -282,9 +279,13 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 			util.ExpectNoError(err)
 		})
 
+		ginkgo.AfterEach(func() {
+			e2eMgr.Clean()
+		})
+
 		ginkgo.It("should not allow session variables not configured but present in variableVerifyFuncMap", func() {
 			// Sub-scenario A: Variables are in the verification map but not configured in allowedSessionVariables
-			scenarioATests := []struct {
+			subTestsA := []struct {
 				VariableName      string
 				Type              string
 				AlternativeValues []interface{}
@@ -293,7 +294,7 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 				{"transaction_isolation", "string", []interface{}{"READ-UNCOMMITTED", "REPEATABLE-READ"}},
 			}
 
-			for _, test := range scenarioATests {
+			for _, test := range subTestsA {
 				gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
 				util.ExpectNoError(err)
 				// Check current value to avoid testing with the default value
@@ -317,12 +318,9 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 					}
 				}
 			}
-		})
 
-		ginkgo.It("should not allow session variables not configured and not present in variableVerifyFuncMap", func() {
 			// Sub-scenario B: Variables not in the verification map and not configured in allowedSessionVariables
-			needCleanup = true // Set this flag only if the test modifies the namespace
-			tests := []struct {
+			subTestsB := []struct {
 				VariableName      string
 				Type              string
 				AlternativeValues []interface{}
@@ -331,7 +329,7 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 				{"max_heap_table_size", "int", []interface{}{16384, 16777216}},
 			}
 
-			for _, test := range tests {
+			for _, test := range subTestsB {
 				gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
 				util.ExpectNoError(err)
 				// Check current value to avoid testing with the default value
@@ -356,10 +354,8 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 					}
 				}
 			}
-		})
-
-		ginkgo.It("should support lock wait timeout", func() {
-			tests := []struct {
+			// Sub-scenario C: Variables not in the verification map and not configured in allowedSessionVariables
+			subTestsC := []struct {
 				VariableName      string
 				Type              string
 				AlternativeValues []interface{}
@@ -367,7 +363,7 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 				{"lock_wait_timeout", "int", []interface{}{2, 3}},
 			}
 
-			for _, test := range tests {
+			for _, test := range subTestsC {
 				gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
 				util.ExpectNoError(err)
 				// Check current value to avoid testing with the default value
@@ -391,13 +387,6 @@ var _ = ginkgo.Describe("Test Gaea SET SESSION Variables", func() {
 				}
 			}
 		})
-	})
-
-	ginkgo.AfterEach(func() {
-		if needCleanup {
-			e2eMgr.Clean()
-			needCleanup = false // Reset flag after cleaning
-		}
 	})
 })
 

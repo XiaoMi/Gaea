@@ -29,29 +29,18 @@ var _ = ginkgo.Describe("shard join support test in mycat mod", func() {
 	sliceTest := e2eMgr.NsSlices[config.SliceSingleTestMaster]
 	sliceMulti := e2eMgr.NsSlices[config.SliceDualMaster]
 	ginkgo.BeforeEach(func() {
-		// 注册
-		ns, err := config.ParseNamespaceTmpl(config.MycatModNamespaceTmpl, sliceMulti)
-		util.ExpectNoError(err)
-		err = e2eMgr.ModifyNamespace(ns)
+		// 1. MySQL 创建数据库并清理
+		multiMasterA, err := config.FetchAndCleanSliceMasterConn(sliceMulti, 0)
 		util.ExpectNoError(err)
 
-		// AdminConn 可以DROP/CREATE
-		multiMasterA, err := sliceMulti.GetMasterAdminConn(0)
-		util.ExpectNoError(err)
-		util.ExpectNoError(util.CleanUpDatabases(multiMasterA))
-		// AdminConn 可以DROP/CREATE
-		multiMasterB, err := sliceMulti.GetMasterAdminConn(1)
-		util.ExpectNoError(err)
-		util.ExpectNoError(util.CleanUpDatabases(multiMasterB))
-		// AdminConn 可以DROP/CREATE
-		singleMaster, err := sliceTest.GetMasterAdminConn(0)
-		util.ExpectNoError(err)
-		util.ExpectNoError(util.CleanUpDatabases(singleMaster))
-		// 获取gaea连接
-		gaeaConn, err := e2eMgr.GetReadWriteGaeaUserDBConn("sbtest")
+		multiMasterB, err := config.FetchAndCleanSliceMasterConn(sliceMulti, 1)
 		util.ExpectNoError(err)
 
-		prepareCases := []struct {
+		singleMaster, err := config.FetchAndCleanSliceMasterConn(sliceTest, 0)
+		util.ExpectNoError(err)
+
+		// 2. 执行 MySQL 准备数据 SQL
+		mysqlPrepareCases := []struct {
 			DB   *sql.DB
 			file string
 		}{
@@ -67,12 +56,9 @@ var _ = ginkgo.Describe("shard join support test in mycat mod", func() {
 				DB:   singleMaster,
 				file: filepath.Join(e2eMgr.BasePath, "shard/case/join/0-test-prepare.sql"),
 			},
-			{
-				DB:   gaeaConn,
-				file: filepath.Join(e2eMgr.BasePath, "shard/case/join/0-gaea-prepare.sql"),
-			},
 		}
-		for _, v := range prepareCases {
+
+		for _, v := range mysqlPrepareCases {
 			sqls, err := util.GetSqlFromFile(v.file)
 			util.ExpectNoError(err)
 			for _, sql := range sqls {
@@ -80,6 +66,28 @@ var _ = ginkgo.Describe("shard join support test in mycat mod", func() {
 				util.ExpectNoError(err)
 			}
 		}
+
+		// 3. 注册命名空间
+		ns, err := config.ParseNamespaceTmpl(config.MycatModNamespaceTmpl, sliceMulti)
+		util.ExpectNoError(err)
+		err = e2eMgr.ModifyNamespace(ns)
+		util.ExpectNoError(err)
+
+		// 4. 获取 Gaea 连接
+		gaeaConn, err := e2eMgr.GetReadWriteGaeaUserConn()
+		util.ExpectNoError(err)
+
+		gaeaConn.Exec("USE sbtest")
+		util.ExpectNoError(err)
+
+		// 5. 执行 Gaea 准备数据 SQL
+		sqls, err := util.GetSqlFromFile(filepath.Join(e2eMgr.BasePath, "shard/case/join/0-gaea-prepare.sql"))
+		util.ExpectNoError(err)
+		for _, sql := range sqls {
+			_, err = util.MysqlExec(gaeaConn, sql)
+			util.ExpectNoError(err)
+		}
+
 	})
 
 	ginkgo.Context("shard support test", func() {

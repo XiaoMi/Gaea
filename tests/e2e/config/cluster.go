@@ -169,35 +169,62 @@ func init() {
 }
 
 func (e *E2eManager) Clean() error {
-	// 删除所有的namespace
 	namespaces, err := e.ListNamespace()
 	if err != nil {
-		return err
+		return fmt.Errorf("error listing namespaces: %v", err)
 	}
 	for _, name := range namespaces {
 		if err = e.DeleteNamespace(name); err != nil {
+			fmt.Printf("Failed to delete namespace '%s': %v\n", name, err)
 			return err
+		} else {
+			fmt.Printf("Successfully deleted namespace '%s'\n", name)
 		}
 	}
+
 	if e.GCluster != nil {
 		if e.GCluster.readWriteConn != nil {
-			_ = e.GCluster.readWriteConn.Close()
+			fmt.Println("Closing readWriteConn connection...")
+			if err := e.GCluster.readWriteConn.Close(); err != nil {
+				fmt.Println("Failed to close readWriteConn connection:", err)
+			} else {
+				fmt.Println("Successfully closed readWriteConn connection")
+			}
 		}
+
 		if e.GCluster.writeConn != nil {
-			_ = e.GCluster.writeConn.Close()
+			fmt.Println("Closing writeConn connection...")
+			if err := e.GCluster.writeConn.Close(); err != nil {
+				fmt.Println("Failed to close writeConn connection:", err)
+			} else {
+				fmt.Println("Successfully closed writeConn connection")
+			}
 		}
+
 		if e.GCluster.readConn != nil {
-			_ = e.GCluster.readConn.Close()
+			fmt.Println("Closing readConn connection...")
+			if err := e.GCluster.readConn.Close(); err != nil {
+				fmt.Println("Failed to close readConn connection:", err)
+			} else {
+				fmt.Println("Successfully closed readConn connection")
+			}
 		}
 	}
+
+	// 关闭 openConnections 连接
 	for _, conn := range e.openConnections {
 		if conn != nil {
-			// Close each database connection
-			conn.Close()
+			fmt.Println("Closing open connection...")
+			if err := conn.Close(); err != nil {
+				fmt.Println("Failed to close open connection:", err)
+			}
 		}
 	}
-	// Clear the list to avoid repeated closings
+
+	// 清空连接池，避免重复关闭
 	e.openConnections = []*sql.DB{}
+	fmt.Println("All open connections have been closed and cleared.")
+
 	return nil
 }
 

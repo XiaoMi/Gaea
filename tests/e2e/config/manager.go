@@ -486,3 +486,24 @@ func (e *E2eManager) ClearSqlLog() error {
 	})
 	return err
 }
+
+// FetchAndCleanSliceMasterConn retrieves the master admin connection for the specified slice index,
+// and performs a cleanup operation on the databases associated with that connection.
+//
+// Parameters:
+//   - slice: A pointer to an NsSlice struct, representing the slice of databases.
+//   - index: The index of the slice to retrieve the master connection for.
+func FetchAndCleanSliceMasterConn(slice *NsSlice, index int) (*sql.DB, error) {
+	// 获取数据库连接
+	db, err := slice.GetMasterAdminConn(index)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get master admin connection for slice at index %d: %w", index, err)
+	}
+
+	// 清理数据库
+	if err := util.CleanUpDatabases(db); err != nil {
+		return nil, fmt.Errorf("failed to clean up databases for slice at index %d: %w", index, err)
+	}
+
+	return db, nil
+}
