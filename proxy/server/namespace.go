@@ -576,6 +576,7 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	var err error
 	s := new(backend.Slice)
 	s.Cfg = *cfg
+	s.FallbackToMasterOnSlaveFail = cfg.FallbackToMasterOnSlaveFail
 	s.HandshakeTimeout = time.Duration(cfg.HandshakeTimeout) * time.Millisecond
 	s.ProxyDatacenter = dc
 	s.SetCharsetInfo(charset, collationID)

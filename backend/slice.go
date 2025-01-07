@@ -111,15 +111,16 @@ type Slice struct {
 	Cfg models.Slice
 	sync.RWMutex
 
-	Master                 *DBInfo
-	Slave                  *DBInfo
-	StatisticSlave         *DBInfo
-	ProxyDatacenter        string
-	charset                string
-	collationID            mysql.CollationID
-	HealthCheckSql         string
-	MaxSlaveFuseErrorCount int
-	HandshakeTimeout       time.Duration
+	Master                      *DBInfo
+	Slave                       *DBInfo
+	StatisticSlave              *DBInfo
+	ProxyDatacenter             string
+	charset                     string
+	collationID                 mysql.CollationID
+	HealthCheckSql              string
+	MaxSlaveFuseErrorCount      int
+	HandshakeTimeout            time.Duration
+	FallbackToMasterOnSlaveFail string // 控制从库获取失败时是否回退到主库
 }
 
 // GetSliceName return name of slice
@@ -138,8 +139,13 @@ func (s *Slice) GetConn(fromSlave bool, userType int, localSlaveReadPriority int
 		} else {
 			pc, err = s.GetSlaveConn(s.Slave, localSlaveReadPriority)
 			if err != nil {
-				log.Warn("get connection from slave failed, try to get from master, error: %s", err.Error())
-				pc, err = s.GetMasterConn()
+				// 如果从库连接失败，根据配置决定是否回退
+				if s.ShouldFallbackToMasterOnSlaveFail() {
+					log.Warn("get connection from slave failed, try to get from master, error: %s", err.Error())
+					pc, err = s.GetMasterConn()
+				} else {
+					return nil, err
+				}
 			}
 		}
 	} else {
@@ -149,6 +155,21 @@ func (s *Slice) GetConn(fromSlave bool, userType int, localSlaveReadPriority int
 		log.Warn("get connection from backend failed, error: %s", err.Error())
 	}
 	return
+}
+
+func (s *Slice) ShouldFallbackToMasterOnSlaveFail() bool {
+	val := s.Cfg.FallbackToMasterOnSlaveFail
+
+	// 用户配置了该字段，根据配置值来判断
+	switch strings.ToLower(val) {
+	case "on":
+		return true
+	case "off":
+		return false
+	default:
+		// 如果用户填写了其他值，这里默认回退
+		return true
+	}
 }
 
 func (s *Slice) GetDirectConn(addr string) (*DirectConnection, error) {
