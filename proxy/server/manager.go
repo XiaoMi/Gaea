@@ -445,7 +445,7 @@ func (m *Manager) RecordSessionSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 }
 
 // RecordBackendSQLMetrics record backend SQL metrics, like response time, error
-func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, se *SessionExecutor, sliceName, sql, backendAddr string, startTime time.Time, err error) {
+func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, se *SessionExecutor, sliceName string, dbName string, sql string, backendAddr string, backendConnectionId int64, startTime time.Time, err error) {
 	ns := m.GetNamespace(se.namespace)
 	if ns == nil {
 		log.Warn("record backend SQL metrics error, namespace: %s, backend addr: %s, sql: %s, err: %s", se.namespace, backendAddr, sql, "namespace not found")
@@ -468,8 +468,8 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 	duration := time.Since(startTime).Milliseconds()
 	if m.statistics.isBackendSlowSQL(duration) {
 		m.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v",
-			SQLBackendExecStatusSlow, duration, se.namespace, se.user, se.clientAddr, se.backendAddr, se.db,
-			se.session.c.GetConnectionID(), se.backendConnectionId, se.isInTransaction(), sql)
+			SQLBackendExecStatusSlow, duration, se.namespace, se.user, se.clientAddr, backendAddr, dbName,
+			se.session.c.GetConnectionID(), backendConnectionId, se.isInTransaction(), sql)
 		fingerprint := getSQLFingerprint(reqCtx, sql)
 		md5 := getSQLFingerprintMd5(reqCtx, sql)
 		ns.SetBackendSlowSQLFingerprint(md5, fingerprint)
@@ -479,8 +479,8 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 	// record backend error sql
 	if err != nil {
 		m.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v, error: %v",
-			SQLBackendExecStatusErr, duration, se.user, se.namespace, se.clientAddr, se.backendAddr, se.db,
-			se.session.c.GetConnectionID(), se.backendConnectionId, se.isInTransaction(), sql, err)
+			SQLBackendExecStatusErr, duration, se.user, se.namespace, se.clientAddr, backendAddr, dbName,
+			se.session.c.GetConnectionID(), backendConnectionId, se.isInTransaction(), sql, err)
 		fingerprint := getSQLFingerprint(reqCtx, sql)
 		md5 := getSQLFingerprintMd5(reqCtx, sql)
 		ns.SetBackendErrorSQLFingerprint(md5, fingerprint)

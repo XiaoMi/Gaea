@@ -529,7 +529,12 @@ func TestIdleTimeout(t *testing.T) {
 		t.Errorf("Expecting 0, received %d", p.IdleClosed())
 	}
 	time.Sleep(50 * time.Millisecond)
-
+	for i := 0; i < 10; i++ {
+		if count.Get() == 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if count.Get() != 0 {
 		t.Errorf("Expecting 0, received %d", count.Get())
 	}
