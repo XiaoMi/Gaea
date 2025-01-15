@@ -618,7 +618,19 @@ func InitializeSessionVariables(pc backend.PooledConnect, charset string, collat
 // Each slice has an independent timeout. This method ensures that all operations are completed
 // Execute within the maximum execution time, and terminate if the time limit is exceeded.
 // It aggregates the results of each slice and handles errors and timeouts accordingly.
-func (se *SessionExecutor) executeShardSQLInSlice(requestContext *util.RequestContext, pooledConnections map[string]backend.PooledConnect, sliceSQLs map[string]map[string][]string) ([]*mysql.Result, error) {
+func (se *SessionExecutor) executeShardSQLInSlice(requestContext *util.RequestContext, pooledConnections map[string]backend.PooledConnect, sliceSQLs map[string]map[string][]string) (retRes []*mysql.Result, retErr error) {
+	defer func() {
+		// 用来捕获可能出现的panic
+		if r := recover(); r != nil {
+			log.Warn(
+				"Recovered from panic in executeShardSQLInSlice goroutine, error: %v, stack: %s",
+				r,
+				debug.Stack(),
+			)
+			retErr = fmt.Errorf("caught executeShardSQLInSlice goroutine panic: %v", r)
+		}
+	}()
+
 	numberOfSlices := len(pooledConnections)
 
 	// 验证连接数和SQL分片数是否一致
@@ -628,7 +640,7 @@ func (se *SessionExecutor) executeShardSQLInSlice(requestContext *util.RequestCo
 			numberOfSlices,
 			len(sliceSQLs),
 		)
-		return nil, errors.ErrConnNotEqual
+		return nil, fmt.Errorf("number of connections (%d) does not match the number of SQL slices (%d)", numberOfSlices, len(sliceSQLs))
 	}
 
 	// 检查是否有分片需要执行
@@ -639,11 +651,8 @@ func (se *SessionExecutor) executeShardSQLInSlice(requestContext *util.RequestCo
 			"sqls", sliceSQLs,
 			"error", errors.ErrNoPlan.Error(),
 		)
-		return nil, errors.ErrNoPlan
+		return nil, fmt.Errorf("no SQL slices to execute, error: %v", errors.ErrNoPlan)
 	}
-
-	// 获取命名空间的最大执行时间
-	maxExecutionTime := se.manager.GetNamespace(se.namespace).GetMaxExecuteTime()
 
 	// 创建一个带缓冲的通道，用于收集各个分片的执行结果
 	executionResultsChan := make(chan sliceResult, numberOfSlices)
@@ -662,11 +671,11 @@ func (se *SessionExecutor) executeShardSQLInSlice(requestContext *util.RequestCo
 		// 启动 goroutine 执行当前分片的 SQL
 		go func(
 			currentSliceName string,
-			sqlStatementsMap map[string][]string,
-			pooledConn backend.PooledConnect,
+			currentSqlStatementsMap map[string][]string,
+			currentPooledConn backend.PooledConnect,
 		) {
 			defer wg.Done()
-			rss, err := se.executeMultipleSQLInSlice(requestContext, currentSliceName, sqlStatementsMap, pooledConn, maxExecutionTime)
+			rss, err := se.executeMultipleSQLInSlice(requestContext, currentSliceName, currentSqlStatementsMap, currentPooledConn)
 			executionResultsChan <- sliceResult{
 				sliceName: currentSliceName,
 				results:   rss,
@@ -719,7 +728,23 @@ type sliceResult struct {
 // The method takes a map of SQL statements grouped by database names and iterates over each database
 // to execute the associated SQL statements. Each SQL execution is performed with proper timeout handling,
 // and results are aggregated and returned.
-func (se *SessionExecutor) executeMultipleSQLInSlice(requestContext *util.RequestContext, currentSliceName string, sqlStatementsMap map[string][]string, pooledConn backend.PooledConnect, maxExecutionTime int) (sliceResults []*mysql.Result, err error) {
+func (se *SessionExecutor) executeMultipleSQLInSlice(requestContext *util.RequestContext, currentSliceName string, sqlStatementsMap map[string][]string, pooledConn backend.PooledConnect) (sliceResults []*mysql.Result, retErr error) {
+	defer func() {
+		// 用来捕获可能出现的panic
+		if r := recover(); r != nil {
+			log.Warn(
+				"Recovered from panic in executeMultipleSQLInSlice goroutine, slice: %s, sqls: %v, error: %v, stack: %s",
+				currentSliceName,
+				sqlStatementsMap,
+				r,
+				debug.Stack(),
+			)
+			retErr = fmt.Errorf("caught executeMultipleSQLInSlice goroutine panic: %v in slice %s", r, currentSliceName)
+		}
+	}()
+	// 获取命名空间的最大执行时间
+	maxExecutionTime := se.manager.GetNamespace(se.namespace).GetMaxExecuteTime()
+
 	var ctx context.Context
 	var cancel context.CancelFunc
 	if maxExecutionTime > 0 {
@@ -729,17 +754,6 @@ func (se *SessionExecutor) executeMultipleSQLInSlice(requestContext *util.Reques
 		// 如果 maxExecutionTime <= 0，不使用超时限制
 		ctx = context.Background()
 	}
-	defer func() {
-		if r := recover(); r != nil {
-			log.Warn(
-				"Recovered from panic in executeMultipleSQLInSlice goroutine, slice: %s, error: %v, stack: %s",
-				currentSliceName,
-				r,
-				debug.Stack(),
-			)
-			err = fmt.Errorf("caught executeMultipleSQLInSlice goroutine panic: %v in slice %s", r, currentSliceName)
-		}
-	}()
 
 	// 获取并排序数据库名称
 	databaseNames := make([]string, 0, len(sqlStatementsMap))
@@ -750,25 +764,15 @@ func (se *SessionExecutor) executeMultipleSQLInSlice(requestContext *util.Reques
 
 	// 遍历每个数据库执行对应的 SQL 语句
 	for _, dbName := range databaseNames {
-		// 初始化后端连接
-		if err = initBackendConn(pooledConn, dbName, se.GetCharset(), se.GetCollationID(), se.GetVariables()); err != nil {
-			log.Warn(
-				"failed to initialize connection error: %v, slice: %s, db: %s",
-				err,
-				currentSliceName,
-				dbName,
-			)
-			return sliceResults, err
-		}
-
 		sqlStatements := sqlStatementsMap[dbName]
 		for _, sqlStatement := range sqlStatements {
 			// 创建一个通道来接收 Execute 的结果
 			execResultChan := make(chan executeResult)
 			startTime := time.Now()
+
 			// 1) 为当前这条 SQL 新开一个协程（go routine）去执行
 			go func(sql string, begin time.Time) {
-				queryResult, execErr := pooledConn.Execute(sql, se.manager.GetNamespace(se.namespace).GetMaxResultSize())
+				queryResult, execErr := se.executeSingleSQLInSlice(pooledConn, currentSliceName, dbName, sql)
 				execResultChan <- executeResult{
 					result: queryResult,
 					err:    execErr,
@@ -795,7 +799,7 @@ func (se *SessionExecutor) executeMultipleSQLInSlice(requestContext *util.Reques
 				if killErr := se.killSliceQueries(pooledConn, currentSliceName, sqlStatement); killErr != nil {
 					log.Warn("failed to kill query error: %v", killErr)
 				}
-				return sliceResults, fmt.Errorf("slice: %s execution timed out on SQL: %s", currentSliceName, sqlStatement)
+				return sliceResults, fmt.Errorf("slice: %s execution timed out, sql : %s", currentSliceName, sqlStatement)
 			case execResult := <-execResultChan:
 				// SQL 执行成功/失败，记录SQL
 				se.manager.RecordBackendSQLMetrics(
@@ -814,7 +818,6 @@ func (se *SessionExecutor) executeMultipleSQLInSlice(requestContext *util.Reques
 					return sliceResults, execResult.err
 				}
 				sliceResults = append(sliceResults, execResult.result)
-
 			}
 		}
 	}
@@ -891,6 +894,123 @@ func (ec *errorCollector) Error() error {
 	return fmt.Errorf("%s", strings.TrimSuffix(sb.String(), "; "))
 }
 
+// executeUnshardSQLInSlice executes a SQL query on a non-sharded database and table scenario.
+// It supports timeout and query kill functionality. Internally, it calls `executeSingleSQLInSlice` through a goroutine.
+// Key Functionality:
+// - It creates a context with a timeout based on the configured maximum execution time for the namespace.
+// - It initializes the backend database connection if not already established.
+// - It launches a separate goroutine to run the SQL query through `executeSingleSQLInSlice` on the physical database.
+// - The method waits for either the completion of the query execution or for the timeout to occur.
+// - In case of a timeout, it records the timeout and tries to kill the query on the backend server./
+func (se *SessionExecutor) executeUnshardSQLInSlice(reqCtx *util.RequestContext, pooledConn backend.PooledConnect, phyDb, query string) (retRes *mysql.Result, retErr error) {
+	defer func() {
+		// 用来捕获initBackendConn可能出现的panic
+		if r := recover(); r != nil {
+			log.Warn(
+				"Recovered from panic in executeUnShardSQLInSlice goroutine, error: %v, stack: %s",
+				r,
+				debug.Stack(),
+			)
+			retErr = fmt.Errorf("caught executeUnShardSQLInSlice goroutine panic: %v, db: %s, sql: %s", r, phyDb, query)
+		}
+	}()
+
+	// 1. 创建上下文，可带超时
+	maxExecTime := se.GetNamespace().GetMaxExecuteTime()
+	ctx, cancel := context.WithCancel(context.Background())
+	if maxExecTime > 0 {
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(maxExecTime)*time.Millisecond)
+	}
+	defer cancel()
+
+	// 用于接收 goroutine 执行结果的通道
+	outCh := make(chan executeResult, 1)
+	sliceName := "slice-0"
+	startTime := time.Now()
+
+	// 安全检查
+	if pooledConn == nil {
+		return nil, fmt.Errorf("no backend connection for slice: %s, db: %s", sliceName, phyDb)
+	}
+
+	// 2. 启动子协程，初始化数据库并执行单条SQL
+	go func() {
+		r, e := se.executeSingleSQLInSlice(pooledConn, sliceName, phyDb, query)
+		outCh <- executeResult{result: r, err: e, start: startTime}
+		close(outCh)
+	}()
+
+	// 3. 主协程等待执行结果 or 超时
+	select {
+	case exeRes := <-outCh:
+		// (3a) 正常返回或执行出错
+		se.manager.RecordBackendSQLMetrics(
+			reqCtx,
+			se,
+			sliceName,
+			phyDb,
+			query,
+			pooledConn.GetAddr(),
+			pooledConn.GetConnectionID(),
+			startTime,
+			exeRes.err,
+		)
+		return exeRes.result, exeRes.err
+	case <-ctx.Done():
+		// (3b) 超时处理，先记录一次 "timeout" 指标
+		se.manager.RecordBackendSQLMetrics(
+			reqCtx,
+			se,
+			sliceName,
+			phyDb,
+			query,
+			pooledConn.GetAddr(),
+			pooledConn.GetConnectionID(),
+			startTime,
+			fmt.Errorf("timeout after %d ms", maxExecTime),
+		)
+
+		// kill 后端SQL
+		if killErr := se.killSliceQueries(pooledConn, sliceName, query); killErr != nil {
+			log.Warn("failed to kill query, error: %v", killErr)
+		}
+		// 关闭连接，防止复用有问题
+		pooledConn.Close()
+		return nil, fmt.Errorf("slice: %s execution timed out, sql: %s", sliceName, query)
+	}
+}
+
+// executeSingleSQLInSlice is responsible for executing a SQL query on a specific physical database.
+// Key Functionality:
+// - It ensures the backend connection is initialized and ready for executing the SQL query.
+// - It performs the SQL query execution on the physical database and retrieves the result.
+// - Any errors encountered during the execution (e.g., invalid SQL, connection issues) are captured and returned.
+//
+// This method encapsulates the actual query execution logic on the physical database, including error handling and result retrieval.
+
+func (se *SessionExecutor) executeSingleSQLInSlice(pooledConn backend.PooledConnect, sliceName, dbName, sql string) (retRes *mysql.Result, retErr error) {
+	// 用于捕获本协程内的 panic
+	defer func() {
+		if r := recover(); r != nil {
+			log.Warn(
+				"Recovered from panic in executeSingleSQLInSlice goroutine, slice: %s, db: %s, sql: %s, error: %v, stack: %s",
+				sliceName,
+				dbName,
+				sql,
+				r,
+				debug.Stack(),
+			)
+			retErr = fmt.Errorf("caught executeSingleSQLInSlice goroutine panic: %v, sql: %s", r, sql)
+		}
+	}()
+	// 连接初始化
+	if initErr := initBackendConn(pooledConn, dbName, se.GetCharset(), se.GetCollationID(), se.GetVariables()); initErr != nil {
+		return nil, fmt.Errorf("failed to initialize backendConn, slice: %s, db: %s, error: %v", sliceName, dbName, initErr)
+	}
+	res, execErr := pooledConn.Execute(sql, se.GetNamespace().GetMaxResultSize())
+	return res, execErr
+}
+
 // executeUnshardSQLInSlice executes a single SQL statement within a specified physical database in a slice.
 // The method handles timeout constraints, error handling, and panic recovery while maintaining robust
 // Parameters:
@@ -898,7 +1018,9 @@ func (ec *errorCollector) Error() error {
 // - pc (backend.PooledConnect): The pooled backend connection used to execute the SQL statement.
 // - phyDb (string): The name of the physical database where the SQL statement should be executed.
 // - sql (string): The SQL statement to execute.
-func (se *SessionExecutor) executeUnshardSQLInSlice(reqCtx *util.RequestContext, pc backend.PooledConnect, phyDb, sql string) (*mysql.Result, error) {
+// executeUnshardSQLInSlice executes a single SQL statement within a specified physical database (phyDb).
+// It handles timeout constraints, error handling, kill on timeout, and panic recovery.
+func (se *SessionExecutor) executeUnShardSQLInSlice(reqCtx *util.RequestContext, pc backend.PooledConnect, phyDb, sql string) (*mysql.Result, error) {
 	var ctx = context.Background()
 	var cancel context.CancelFunc
 	maxExecuteTime := se.GetNamespace().GetMaxExecuteTime()
