@@ -1011,68 +1011,6 @@ func (se *SessionExecutor) executeSingleSQLInSlice(pooledConn backend.PooledConn
 	return res, execErr
 }
 
-// executeUnshardSQLInSlice executes a single SQL statement within a specified physical database in a slice.
-// The method handles timeout constraints, error handling, and panic recovery while maintaining robust
-// Parameters:
-// - reqCtx (*util.RequestContext): The request context containing metadata about the current execution environment.
-// - pc (backend.PooledConnect): The pooled backend connection used to execute the SQL statement.
-// - phyDb (string): The name of the physical database where the SQL statement should be executed.
-// - sql (string): The SQL statement to execute.
-// executeUnshardSQLInSlice executes a single SQL statement within a specified physical database (phyDb).
-// It handles timeout constraints, error handling, kill on timeout, and panic recovery.
-func (se *SessionExecutor) executeUnShardSQLInSlice(reqCtx *util.RequestContext, pc backend.PooledConnect, phyDb, sql string) (*mysql.Result, error) {
-	var ctx = context.Background()
-	var cancel context.CancelFunc
-	maxExecuteTime := se.GetNamespace().GetMaxExecuteTime()
-	if maxExecuteTime > 0 {
-		ctx, cancel = context.WithTimeout(context.Background(), time.Duration(maxExecuteTime)*time.Millisecond)
-		defer cancel()
-	}
-
-	// Control go routine execution
-	done := make(chan error, 1)
-
-	var rs *mysql.Result
-	var err error
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				// Capture panic and record error log
-				log.Warn("recovered from panic in executeUnshardSQLInSlicee goroutine: %v\nStack trace:\n%s\n", r, debug.Stack())
-				// Set error information for the main function to return
-				done <- fmt.Errorf("panic in executeUnshardSQLInSlice goroutine: %v", r)
-			}
-			// Make sure to close the done channel no matter what
-			close(done)
-		}()
-
-		if pc == nil {
-			err = fmt.Errorf("no backend connection")
-			done <- err
-			return
-		}
-		err = initBackendConn(pc, phyDb, se.GetCharset(), se.GetCollationID(), se.GetVariables())
-		if err != nil {
-			done <- err
-			return
-		}
-		startTime := time.Now()
-		rs, err = pc.Execute(sql, se.GetNamespace().GetMaxResultSize())
-
-		se.manager.RecordBackendSQLMetrics(reqCtx, se, "slice0", phyDb, sql, pc.GetAddr(), pc.GetConnectionID(), startTime, err)
-		done <- err
-	}()
-
-	select {
-	case <-ctx.Done():
-		pc.Close()
-		log.Warn("exec sql: %s, error: %s", sql, errors.ErrTimeLimitExceeded.Error())
-		return nil, fmt.Errorf("%v %dms", errors.ErrTimeLimitExceeded, maxExecuteTime)
-	case err := <-done:
-		return rs, err
-	}
-}
-
 func canHandleWithoutPlan(stmtType int) bool {
 	return stmtType == parser.StmtShow ||
 		stmtType == parser.StmtSet ||
