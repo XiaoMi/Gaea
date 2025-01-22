@@ -1443,7 +1443,7 @@ func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sq
 	defer se.recycleBackendConn(pc)
 
 	if err != nil {
-		log.Warn("[ns:%s]getBackendConn failed: %v", se.GetNamespace().name, err)
+		log.Warn("[ns:%s] getBackendConn failed: %v", se.GetNamespace().name, err)
 		return nil, fmt.Errorf("getBackendConn failed: %v", err)
 	}
 
