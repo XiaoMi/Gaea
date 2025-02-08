@@ -67,67 +67,67 @@ var _ = ginkgo.Describe("Force Read from Master", func() {
 			sqlCases := []struct {
 				GaeaConn          *sql.DB
 				GaeaSQL           string
-				ExpectBackendAddr string
+				ExpectBackendAddr []string
 			}{
 				{
 					GaeaConn:          gaeaWriteConn,
 					GaeaSQL:           fmt.Sprintf("/*master*/ SELECT * FROM `%s`.`%s` WHERE `id`= 1", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 				},
 				{
 					GaeaConn:          gaeaWriteConn,
 					GaeaSQL:           fmt.Sprintf("/*master*/ SELECT * FROM `%s`.`%s` WHERE `id`= 2", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 				},
 				{
 					GaeaConn:          gaeaWriteConn,
 					GaeaSQL:           fmt.Sprintf("SELECT /*master*/  * FROM `%s`.`%s` WHERE `id`= 1", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 				},
 				{
 					GaeaConn:          gaeaWriteConn,
 					GaeaSQL:           fmt.Sprintf("SELECT /*master*/ * FROM `%s`.`%s` WHERE `id`= 2", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 				},
 				{
 					GaeaConn:          gaeaReadConn,
 					GaeaSQL:           fmt.Sprintf("/*master*/ SELECT * FROM `%s`.`%s` WHERE `id`= 3", db, table),
-					ExpectBackendAddr: slice.Slices[0].Slaves[0],
+					ExpectBackendAddr: []string{slice.Slices[0].Slaves[0], slice.Slices[0].Slaves[1]},
 				},
 				{
 					GaeaConn:          gaeaReadConn,
 					GaeaSQL:           fmt.Sprintf("/*master*/ SELECT * FROM `%s`.`%s` WHERE `id`= 4", db, table),
-					ExpectBackendAddr: slice.Slices[0].Slaves[1],
+					ExpectBackendAddr: []string{slice.Slices[0].Slaves[0], slice.Slices[0].Slaves[1]},
 				},
 				{
 					GaeaConn:          gaeaReadConn,
 					GaeaSQL:           fmt.Sprintf("SELECT /*master*/  * FROM `%s`.`%s` WHERE `id`= 3", db, table),
-					ExpectBackendAddr: slice.Slices[0].Slaves[0],
+					ExpectBackendAddr: []string{slice.Slices[0].Slaves[0], slice.Slices[0].Slaves[1]},
 				},
 				{
 					GaeaConn:          gaeaReadConn,
 					GaeaSQL:           fmt.Sprintf("SELECT /*master*/  * FROM `%s`.`%s` WHERE `id`= 4", db, table),
-					ExpectBackendAddr: slice.Slices[0].Slaves[1],
+					ExpectBackendAddr: []string{slice.Slices[0].Slaves[0], slice.Slices[0].Slaves[1]},
 				},
 				{
 					GaeaConn:          gaeaReadWriteConn,
 					GaeaSQL:           fmt.Sprintf("/*master*/ SELECT * FROM `%s`.`%s` WHERE `id`= 5", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 				},
 				{
 					GaeaConn:          gaeaReadWriteConn,
 					GaeaSQL:           fmt.Sprintf("/*master*/ SELECT * FROM `%s`.`%s` WHERE `id`= 6", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 				},
 				{
 					GaeaConn:          gaeaReadWriteConn,
 					GaeaSQL:           fmt.Sprintf("SELECT *  FROM `%s`.`%s` WHERE `id`= 5 /*master*/", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 				},
 				{
 					GaeaConn:          gaeaReadWriteConn,
 					GaeaSQL:           fmt.Sprintf("SELECT /*master*/ * FROM `%s`.`%s` WHERE `id`= 6", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 				},
 			}
 			e2eMgr.ClearSqlLog()
@@ -139,7 +139,11 @@ var _ = ginkgo.Describe("Force Read from Master", func() {
 				util.ExpectNoError(err)
 				// 避免扫到以前的数据
 				gomega.Expect(res).Should(gomega.HaveLen(1))
-				gomega.Expect(sqlCase.ExpectBackendAddr).Should(gomega.Equal(res[0].BackendAddr))
+				if len(sqlCase.ExpectBackendAddr) == 1 {
+					gomega.Expect(sqlCase.ExpectBackendAddr[0]).Should(gomega.Equal(res[0].BackendAddr))
+				} else {
+					gomega.Expect(sqlCase.ExpectBackendAddr).Should(gomega.ContainElement(res[0].BackendAddr))
+				}
 			}
 		})
 	})

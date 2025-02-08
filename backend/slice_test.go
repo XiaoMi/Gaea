@@ -74,13 +74,116 @@ func TestParseSlave(t *testing.T) {
 			dbInfo, _ := s.ParseSlave(tt.slaveAdders)
 			for i := range tt.expectAddrs {
 				assert.Equal(t, tt.expectAddrs[i], dbInfo.ConnPool[i].Addr())
-				assert.Equal(t, tt.expectDatacenters[i], dbInfo.Datacenter[i])
+				assert.Equal(t, tt.expectDatacenters[i], dbInfo.Nodes[i].Datacenter)
 			}
 		})
 	}
 }
+func TestParseSlaveWithWeights(t *testing.T) {
+	testCases := []struct {
+		name           string
+		slaveAdders    []string
+		expectAddrs    []string
+		expectWeights  []int
+		expectIndices  []int
+		expectingError bool // 是否预期解析失败
+	}{
 
-func TestGetSlaveConn(t *testing.T) {
+		// ✅ 测试正常权重解析
+		{
+			name:           "valid weights",
+			slaveAdders:    []string{"c3-mysql-test00.bj:3306@10", "c3-mysql-test01.bj:3308@5", "c4-mysql-test02.bj:3310@3"},
+			expectAddrs:    []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			expectWeights:  []int{10, 5, 3},
+			expectIndices:  []int{0, 1, 2},
+			expectingError: false,
+		},
+
+		// ✅ 测试默认权重解析（未指定权重默认为 1）
+		{
+			name:           "default weights",
+			slaveAdders:    []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			expectAddrs:    []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			expectWeights:  []int{1, 1, 1}, // 默认权重
+			expectIndices:  []int{0, 1, 2},
+			expectingError: false,
+		},
+
+		// ✅ 测试负数权重（负数可以被检测，在创建balancer之前被过滤掉了）
+		{
+			name:           "negative weight",
+			slaveAdders:    []string{"c3-mysql-test00.bj:3306@-5", "c3-mysql-test01.bj:3308@3"},
+			expectAddrs:    []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308"},
+			expectIndices:  []int{0, 1},
+			expectWeights:  []int{-5, 3}, // 默认权重
+			expectingError: false,
+		},
+
+		// ✅ 测试 0 权重（应当过滤掉）
+		{
+			name:          "zero weight filtered",
+			slaveAdders:   []string{"c3-mysql-test00.bj:3306@0", "c3-mysql-test01.bj:3308@4", "c4-mysql-test02.bj:3310@0"},
+			expectAddrs:   []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			expectIndices: []int{0, 1, 2},
+			expectWeights: []int{0, 4, 0},
+
+			expectingError: false,
+		},
+
+		// ✅ 测试混合非法和合法的情况
+		{
+			name:           "mixed valid and invalid weights",
+			slaveAdders:    []string{"c3-mysql-test00.bj:3306@2", "c3-mysql-test01.bj:3308@-1", "c4-mysql-test02.bj:3310@0"},
+			expectAddrs:    []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"}, // 过滤掉权重为 0 和负数的
+			expectIndices:  []int{0, 1, 2},
+			expectWeights:  []int{2, -1, 0},
+			expectingError: false,
+		},
+
+		// ✅ 测试混合非法字符权重测试
+		{
+			name:           "invalid weights",
+			slaveAdders:    []string{"c3-mysql-test00.bj:3306@&", "c3-mysql-test01.bj:3308@+", "c4-mysql-test02.bj:3310@-"},
+			expectAddrs:    []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"}, // 过滤掉权重为 0 和负数的
+			expectIndices:  nil,
+			expectWeights:  nil,
+			expectingError: true,
+		},
+	}
+
+	mockCtl := gomock.NewController(t)
+	defer mockCtl.Finish()
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			s := new(Slice)
+			dbInfo, err := s.ParseSlave(tt.slaveAdders)
+
+			if tt.expectingError {
+				assert.Error(t, err, "Expected an error but got none")
+				return
+			} else {
+				assert.NoError(t, err, "Unexpected error during parsing")
+			}
+
+			// 检查解析出的地址、权重和索引
+			var actualAddrs []string
+			var actualWeights []int
+			var actualIndices []int
+			for i, node := range dbInfo.Nodes {
+				actualAddrs = append(actualAddrs, node.Address)
+				actualWeights = append(actualWeights, node.Weight)
+				actualIndices = append(actualIndices, i) // 直接使用 i 作为索引
+			}
+
+			assert.Equal(t, tt.expectAddrs, actualAddrs, "Address mismatch")
+			assert.Equal(t, tt.expectWeights, actualWeights, "Weight mismatch")
+			assert.Equal(t, tt.expectIndices, actualIndices, "Index mismatch")
+		})
+	}
+}
+
+func TestGetSlaveConnWhenLocalSlaveReadClosed(t *testing.T) {
 	testCases := []struct {
 		name                   string
 		localSlaveReadPriority int
@@ -88,139 +191,818 @@ func TestGetSlaveConn(t *testing.T) {
 		slaveAdders            []string
 		slaveStatus            []StatusCode
 		getCounts              int
-		expectAddrs            []string
+		weights                []int
+		expectAddrs            map[string]int
+		expectErr              int
 	}{
 		{
-			name:                   "test LocalSlaveReadClosed all up",
+			name:                   "local slave all up, remote slave all up, equal weigh",
 			proxyDc:                "c3",
 			localSlaveReadPriority: LocalSlaveReadClosed,
-			getCounts:              8,
+			getCounts:              6,
 			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
 			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp},
-			expectAddrs: []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310",
-				"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310",
-				"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308"},
+			weights:                []int{1, 1, 1},
+			expectAddrs: map[string]int{
+				"c3-mysql-test00.bj:3306": 2,
+				"c3-mysql-test01.bj:3308": 2,
+				"c4-mysql-test02.bj:3310": 2,
+			},
+			expectErr: 0,
 		},
 		{
-			name:                   "test LocalSlaveReadClosed no local slave",
-			proxyDc:                "c5",
+			name:                   "local slave all up, remote slave all up, not equal weight",
+			proxyDc:                "c3",
 			localSlaveReadPriority: LocalSlaveReadClosed,
-			getCounts:              8,
+			getCounts:              12,
 			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
 			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp},
-			expectAddrs: []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310",
-				"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310",
-				"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308"},
+			weights:                []int{2, 1, 1},
+			expectAddrs: map[string]int{
+				"c3-mysql-test00.bj:3306": 6,
+				"c3-mysql-test01.bj:3308": 3,
+				"c4-mysql-test02.bj:3310": 3,
+			},
+			expectErr: 0,
 		},
 		{
-			name:                   "test LocalSlaveReadPreferred all up",
+			name:                   "local slave all up, remote slave all up, not equal weight",
 			proxyDc:                "c3",
-			localSlaveReadPriority: LocalSlaveReadPreferred,
-			getCounts:              4,
-			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
-			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp},
-			expectAddrs:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308"},
+			localSlaveReadPriority: LocalSlaveReadClosed,
+			getCounts:              12,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test01.bj:3310", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp, StatusUp},
+			weights:                []int{1, 1, 2, 2},
+			expectAddrs: map[string]int{
+				"c3-mysql-test00.bj:3306": 2,
+				"c3-mysql-test01.bj:3308": 2,
+				"c4-mysql-test01.bj:3310": 4,
+				"c4-mysql-test02.bj:3310": 4,
+			},
+			expectErr: 0,
 		},
 		{
-			name:                   "test LocalSlaveReadPreferred local one down",
+			name:                   "local slave all down, remote slave all up",
 			proxyDc:                "c3",
-			localSlaveReadPriority: LocalSlaveReadPreferred,
-			getCounts:              4,
-			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
-			slaveStatus:            []StatusCode{StatusDown, StatusUp, StatusUp},
-			expectAddrs:            []string{"c3-mysql-test01.bj:3308", "c3-mysql-test01.bj:3308", "c3-mysql-test01.bj:3308", "c3-mysql-test01.bj:3308"},
+			localSlaveReadPriority: LocalSlaveReadClosed,
+			getCounts:              12,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test01.bj:3310", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusDown, StatusDown, StatusUp, StatusUp},
+			weights:                []int{1, 1, 2, 2},
+			expectAddrs: map[string]int{
+				"c4-mysql-test01.bj:3310": 6,
+				"c4-mysql-test02.bj:3310": 6,
+			},
+			expectErr: 0,
 		},
 		{
-			name:                   "test LocalSlaveReadPreferred local all down",
+			name:                   "local slave part down, remote slave all up",
 			proxyDc:                "c3",
-			localSlaveReadPriority: LocalSlaveReadPreferred,
-			getCounts:              4,
-			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
-			slaveStatus:            []StatusCode{StatusDown, StatusDown, StatusUp},
-			expectAddrs:            []string{"c4-mysql-test02.bj:3310", "c4-mysql-test02.bj:3310", "c4-mysql-test02.bj:3310", "c4-mysql-test02.bj:3310"},
-		},
-		{
-			name:                   "test LocalSlaveReadPreferred local all down 2 use last another slave",
-			proxyDc:                "c4-bj",
-			localSlaveReadPriority: LocalSlaveReadPreferred,
-			getCounts:              4,
-			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
-			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown},
-			expectAddrs:            []string{"c3-mysql-test01.bj:3308", "c3-mysql-test01.bj:3308", "c3-mysql-test01.bj:3308", "c3-mysql-test01.bj:3308"},
-		},
-		{
-			name:                   "test LocalSlaveReadPreferred no local slave use last another slave",
-			proxyDc:                "c5",
-			localSlaveReadPriority: LocalSlaveReadPreferred,
-			getCounts:              4,
-			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
-			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp},
-			expectAddrs:            []string{"c4-mysql-test02.bj:3310", "c4-mysql-test02.bj:3310", "c4-mysql-test02.bj:3310", "c4-mysql-test02.bj:3310"},
-		},
-		{
-			name:                   "test LocalSlaveReadForce all up",
-			proxyDc:                "c3",
-			localSlaveReadPriority: LocalSlaveReadForce,
-			getCounts:              4,
-			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
-			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp},
-			expectAddrs:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308"},
-		},
-		{
-			name:                   "test LocalSlaveReadForce local all down",
-			proxyDc:                "c4",
-			localSlaveReadPriority: LocalSlaveReadForce,
-			getCounts:              4,
-			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
-			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown},
-			expectAddrs:            []string{},
-		},
-		{
-			name:                   "test LocalSlaveReadForce all down",
-			proxyDc:                "c4",
-			localSlaveReadPriority: LocalSlaveReadForce,
-			getCounts:              4,
-			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
-			slaveStatus:            []StatusCode{StatusDown, StatusDown, StatusDown},
-			expectAddrs:            []string{},
-		},
-		{
-			name:                   "test LocalSlaveReadForce no local slave",
-			proxyDc:                "c5",
+			localSlaveReadPriority: LocalSlaveReadClosed,
 			getCounts:              10,
-			localSlaveReadPriority: LocalSlaveReadForce,
-			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
-			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp},
-			expectAddrs:            []string{},
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test01.bj:3310", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusDown, StatusUp, StatusUp, StatusUp},
+			weights:                []int{1, 1, 2, 2},
+			expectAddrs: map[string]int{
+				"c3-mysql-test01.bj:3308": 2,
+				"c4-mysql-test01.bj:3310": 4,
+				"c4-mysql-test02.bj:3310": 4,
+			},
+			expectErr: 0,
+		},
+		{
+			name:                   "remote slave all down, local slave all up",
+			proxyDc:                "c3",
+			localSlaveReadPriority: LocalSlaveReadClosed,
+			getCounts:              12,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test01.bj:3310", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown, StatusDown},
+			weights:                []int{1, 1, 2, 2},
+			expectAddrs: map[string]int{
+				"c3-mysql-test00.bj:3306": 6,
+				"c3-mysql-test01.bj:3308": 6,
+			},
+			expectErr: 0,
+		},
+		{
+			name:                   "remote slave part down, local slave all up",
+			proxyDc:                "c3",
+			localSlaveReadPriority: LocalSlaveReadClosed,
+			getCounts:              12,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test01.bj:3310", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown, StatusUp},
+			weights:                []int{1, 1, 2, 2},
+			expectAddrs: map[string]int{
+				"c3-mysql-test00.bj:3306": 3,
+				"c3-mysql-test01.bj:3308": 3,
+				"c4-mysql-test02.bj:3310": 6,
+			},
+			expectErr: 0,
+		},
+		{
+			name:                   "unknown dc c5, all slave up",
+			proxyDc:                "c5",
+			localSlaveReadPriority: LocalSlaveReadClosed,
+			getCounts:              12,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test01.bj:3310", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp, StatusUp},
+			weights:                []int{1, 1, 2, 2},
+			expectAddrs: map[string]int{
+				"c3-mysql-test00.bj:3306": 2,
+				"c3-mysql-test01.bj:3308": 2,
+				"c4-mysql-test01.bj:3310": 4,
+				"c4-mysql-test02.bj:3310": 4,
+			},
+			expectErr: 0,
+		},
+
+		{
+			name:                   "unknown dc c5, part slave up",
+			proxyDc:                "c5",
+			localSlaveReadPriority: LocalSlaveReadClosed,
+			getCounts:              12,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test01.bj:3310", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp, StatusDown},
+			weights:                []int{1, 1, 2, 2},
+			expectAddrs: map[string]int{
+				"c3-mysql-test00.bj:3306": 3,
+				"c3-mysql-test01.bj:3308": 3,
+				"c4-mysql-test01.bj:3310": 6,
+			},
+			expectErr: 0,
+		},
+		{
+			name:                   "unknown dc c5, all slave down",
+			proxyDc:                "c5",
+			localSlaveReadPriority: LocalSlaveReadClosed,
+			getCounts:              12,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test01.bj:3310", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusDown, StatusDown, StatusDown, StatusDown},
+			weights:                []int{1, 1, 2, 2},
+			expectAddrs:            nil,
+			expectErr:              12,
 		},
 	}
-	mockCtl := gomock.NewController(t)
-	defer mockCtl.Finish()
+
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
-			dbInfo := generateDBInfo(mockCtl, tt.slaveAdders, tt.slaveStatus)
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+			dbInfo, err := generateDBInfoWithWeights(mockCtl, tt.slaveAdders, tt.slaveStatus, tt.weights)
+			assert.Nil(t, err)
 			s := &Slice{Slave: dbInfo}
 			s.ProxyDatacenter = tt.proxyDc
+			err = dbInfo.InitBalancers(s.ProxyDatacenter)
+			assert.Nil(t, err)
+			actualError := 0
+			actualSuccess := map[string]int{}
 			for j := 0; j < tt.getCounts; j++ {
 				cp, err := s.GetSlaveConn(dbInfo, tt.localSlaveReadPriority)
-
-				if len(tt.expectAddrs) == 0 {
-					assert.NotNil(t, err)
-					continue
+				if err != nil {
+					actualError++
+				} else {
+					actualSuccess[cp.GetAddr()]++
 				}
-				assert.Nil(t, err)
-				assert.Equal(t, tt.expectAddrs[j], cp.GetAddr(), fmt.Sprintf(tt.name))
+			}
+			for actAdd, actSucc := range actualSuccess {
+				assert.Equal(t, actSucc, tt.expectAddrs[actAdd], fmt.Errorf("case: %s, actual address %s acualCount %d  expect count %d", tt.name, actAdd, actSucc, tt.expectAddrs[actAdd]))
+			}
+			if actualError != tt.expectErr {
+				assert.Equal(t, actualError, tt.expectErr, fmt.Errorf("case: %s, actual error %d  expect error %d", tt.name, actualError, tt.expectErr))
+			}
+		})
+	}
+
+}
+func TestGetSlaveConnWhenLocalSlaveReadPrefer(t *testing.T) {
+	testCases := []struct {
+		name                   string
+		localSlaveReadPriority int
+		proxyDc                string
+		slaveAdders            []string
+		slaveStatus            []StatusCode
+		weights                []int
+		getCounts              int
+		expectAddrs            map[string]int
+		expectErr              int
+	}{
+		// 本地和非本地上都只有一个slave，且都是up
+		{
+			name:                   "local slave all up, remote slave all up",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			getCounts:              4,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c4-mysql-test01.bj:3308"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp},
+			weights:                []int{1, 3},
+			expectAddrs: map[string]int{
+				"c4-mysql-test01.bj:3308": 4,
+			},
+			expectErr: 0,
+		},
+
+		// 本地机房全部UP
+		{
+			name:                   "local slave all up, remote slave all up, equal weight",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			getCounts:              6,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp},
+			weights:                []int{1, 1, 1},
+			expectAddrs: map[string]int{
+				"c4-mysql-test02.bj:3310": 6,
+			},
+			expectErr: 0,
+		},
+		{
+			name:                   "local slave all up, remote slave all up, equal weight, equal number",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			getCounts:              4,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test01.bj:3310", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp, StatusUp},
+			weights:                []int{1, 1, 1, 1},
+			expectAddrs: map[string]int{
+				"c4-mysql-test01.bj:3310": 2,
+				"c4-mysql-test02.bj:3310": 2,
+			},
+			expectErr: 0,
+		},
+		{
+			name:                   "local slave all up, remote slave all up, not equal weight",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			getCounts:              10,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test01.bj:3310", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp, StatusUp},
+			weights:                []int{1, 1, 4, 4},
+			expectAddrs: map[string]int{
+				"c4-mysql-test01.bj:3310": 5,
+				"c4-mysql-test02.bj:3310": 5,
+			},
+			expectErr: 0,
+		},
+		// 本地机房全部宕机
+		{
+			name:                   "local slave all down, remote slave all up",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			getCounts:              12,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown},
+			weights:                []int{1, 1, 1},
+			expectAddrs: map[string]int{
+				"c3-mysql-test00.bj:3306": 6,
+				"c3-mysql-test01.bj:3308": 6,
+			},
+			expectErr: 0,
+		},
+		// 本地机房部分宕机
+		{
+			name:                   "local slave part down, remote slave all up",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			getCounts:              10,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310", "c4-mysql-test01.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown, StatusUp},
+			weights:                []int{1, 1, 4, 4},
+			expectAddrs: map[string]int{
+				"c4-mysql-test01.bj:3310": 10,
+			},
+			expectErr: 0,
+		},
+		{
+			name:                   "local slave part down, remote slave all up",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			getCounts:              6,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310", "c4-mysql-test01.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown, StatusUp},
+			weights:                []int{1, 1, 3, 1},
+			expectAddrs: map[string]int{
+				"c4-mysql-test01.bj:3310": 6,
+			},
+			expectErr: 0,
+		},
+
+		// 本地优先，但本地没有可用的slave
+		{
+			name:                   "no local slave, remote slave all up",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			getCounts:              2,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp},
+			weights:                []int{1, 1},
+			expectAddrs: map[string]int{
+				"c3-mysql-test00.bj:3306": 1,
+				"c3-mysql-test01.bj:3308": 1,
+			},
+			expectErr: 0,
+		},
+
+		// 本地全部宕机down 非本地 up
+		{
+			name:                   "local slave down, remote slave up",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			getCounts:              4,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c4-mysql-test01.bj:3308"},
+			slaveStatus:            []StatusCode{StatusUp, StatusDown},
+			weights:                []int{1, 3},
+			expectAddrs: map[string]int{
+				"c3-mysql-test00.bj:3306": 4,
+			},
+			expectErr: 0,
+		},
+
+		// 本地和非本地上都只有一个slave，且都是down
+		{
+			name:                   "local slave down, remote slave down",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			getCounts:              4,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c4-mysql-test01.bj:3308"},
+			slaveStatus:            []StatusCode{StatusDown, StatusDown},
+			weights:                []int{1, 3},
+			expectAddrs:            nil,
+			expectErr:              4,
+		},
+	}
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+			dbInfo, err := generateDBInfoWithWeights(mockCtl, tt.slaveAdders, tt.slaveStatus, tt.weights)
+			assert.Nil(t, err)
+			s := &Slice{Slave: dbInfo}
+			s.ProxyDatacenter = tt.proxyDc
+			err = dbInfo.InitBalancers(s.ProxyDatacenter)
+			assert.Nil(t, err)
+			actualError := 0
+			actualSuccess := map[string]int{}
+
+			for j := 0; j < tt.getCounts; j++ {
+				cp, err := s.GetSlaveConn(dbInfo, tt.localSlaveReadPriority)
+				if err != nil {
+					actualError++
+				} else {
+					actualSuccess[cp.GetAddr()]++
+				}
+			}
+			for actAdd, actSucc := range actualSuccess {
+				assert.Equal(t, actSucc, tt.expectAddrs[actAdd], fmt.Errorf("case: %s, actual address %s acualCount %d  expect count %d", tt.name, actAdd, actSucc, tt.expectAddrs[actAdd]))
+			}
+			if actualError != tt.expectErr {
+				assert.Equal(t, actualError, tt.expectErr, fmt.Errorf("case: %s, actual error %d  expect error %d", tt.name, actualError, tt.expectErr))
+			}
+
+		})
+	}
+
+}
+
+func TestGetSlaveConnWhenLocalSlaveReadForce(t *testing.T) {
+	testCases := []struct {
+		name                   string
+		localSlaveReadPriority int
+		proxyDc                string
+		slaveAdders            []string
+		slaveStatus            []StatusCode
+		weights                []int
+		getCounts              int
+		expectGetErrorCounts   int
+		expectAddrs            map[string]int
+	}{
+		// 本地机房全部UP
+		{
+			name:                   "local slave up, remote slave up",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadForce,
+			getCounts:              6,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp},
+			weights:                []int{1, 1, 1},
+			expectAddrs: map[string]int{
+				"c4-mysql-test02.bj:3310": 6,
+			},
+			expectGetErrorCounts: 0,
+		},
+		{
+			name:                   "local slave all up, remote slave all up",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadForce,
+			getCounts:              4,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test01.bj:3310", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp, StatusUp},
+			weights:                []int{1, 1, 1, 1},
+			expectAddrs: map[string]int{
+				"c4-mysql-test01.bj:3310": 2,
+				"c4-mysql-test02.bj:3310": 2,
+			},
+			expectGetErrorCounts: 0,
+		},
+		{
+			name:                   "local slave all up, remote slave all up, not equal weight",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadForce,
+			getCounts:              10,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test01.bj:3310", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusUp, StatusUp},
+			weights:                []int{1, 1, 4, 4},
+			expectAddrs: map[string]int{
+				"c4-mysql-test01.bj:3310": 5,
+				"c4-mysql-test02.bj:3310": 5,
+			},
+			expectGetErrorCounts: 0,
+		},
+
+		// 本地机房全部宕机
+		{
+			name:                   "local slave all down, remote slave all up",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadForce,
+			getCounts:              12,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown},
+			weights:                []int{1, 1, 1},
+			expectGetErrorCounts:   12,
+			expectAddrs:            nil,
+		},
+		// 本地机房部分宕机
+		{
+			name:                   "local slave part down, remote slave all up",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadForce,
+			getCounts:              10,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310", "c4-mysql-test01.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown, StatusUp},
+			weights:                []int{1, 1, 4, 4},
+			expectGetErrorCounts:   0,
+			expectAddrs: map[string]int{
+				"c4-mysql-test01.bj:3310": 10,
+			},
+		},
+		{
+			name:                   "local slave part down, remote slave all up",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadForce,
+			getCounts:              12,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310", "c4-mysql-test01.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown, StatusUp},
+			weights:                []int{1, 1, 3, 1},
+			expectGetErrorCounts:   0,
+			expectAddrs: map[string]int{
+				"c4-mysql-test01.bj:3310": 12,
+			},
+		},
+
+		// 本地和异地都有一台机器down掉
+		{
+			name:                   "local slave one down, remote slave one down",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadForce,
+			getCounts:              12,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310", "c4-mysql-test01.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusDown, StatusDown, StatusUp},
+			weights:                []int{1, 1, 3, 1},
+			expectGetErrorCounts:   0,
+			expectAddrs: map[string]int{
+				"c4-mysql-test01.bj:3310": 12,
+			},
+		},
+		// 本地没有slave
+		{
+			name:                   "no local slave, remote slave part down",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadForce,
+			getCounts:              12,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308"},
+			slaveStatus:            []StatusCode{StatusUp, StatusDown},
+			weights:                []int{1, 1},
+			expectGetErrorCounts:   12,
+			expectAddrs:            nil,
+		},
+
+		// 本地没有slave
+		{
+			name:                   "no local slave, remote slave all down",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadForce,
+			getCounts:              12,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308"},
+			slaveStatus:            []StatusCode{StatusDown, StatusDown},
+			weights:                []int{1, 1},
+			expectGetErrorCounts:   12,
+			expectAddrs:            nil,
+		},
+	}
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+			dbInfo, err := generateDBInfoWithWeights(mockCtl, tt.slaveAdders, tt.slaveStatus, tt.weights)
+			assert.Nil(t, err)
+			s := &Slice{Slave: dbInfo}
+			s.ProxyDatacenter = tt.proxyDc
+			err = dbInfo.InitBalancers(s.ProxyDatacenter)
+			assert.Nil(t, err)
+			actualError := 0
+			actualSuccess := map[string]int{}
+			for j := 0; j < tt.getCounts; j++ {
+				cp, err := s.GetSlaveConn(dbInfo, tt.localSlaveReadPriority)
+				if err != nil {
+					actualError++
+				} else {
+					actualSuccess[cp.GetAddr()]++
+				}
+			}
+			for actAdd, actSucc := range actualSuccess {
+				assert.Equal(t, actSucc, tt.expectAddrs[actAdd], fmt.Errorf("case: %s, actual address %s acualCount %d  expect count %d", tt.name, actAdd, actSucc, tt.expectAddrs[actAdd]))
+			}
+			if actualError != tt.expectGetErrorCounts {
+				assert.Equal(t, actualError, tt.expectGetErrorCounts, fmt.Errorf("case: %s, actual error %d  expect error %d", tt.name, actualError, tt.expectGetErrorCounts))
 			}
 		})
 	}
 }
 
-func generateDBInfo(mockCtl *gomock.Controller, slaveHosts []string, slaveStatus []StatusCode) *DBInfo {
-	connPool := make([]ConnectionPool, 0, len(slaveHosts))
-	slaveWeights := make([]int, 0, len(slaveHosts))
-	datacenter := make([]string, 0, len(slaveHosts))
-	StatusMap := &sync.Map{}
-	SlaveConsecutiveErrors := &sync.Map{}
+func TestConcurrentGetSlaveConnWhenLocalSlaveReadForce(t *testing.T) {
+
+	testCases := []struct {
+		name                   string
+		localSlaveReadPriority int
+		proxyDc                string
+		slaveAdders            []string
+		slaveStatus            []StatusCode
+		weights                []int
+		getCounts              int
+		expectGetErrorCounts   int
+		expectAddrs            map[string]int
+		concurrency            int // 并发请求的 Goroutine 数
+	}{
+		// 🚀 新增测试用例：本地只有 1 台从库，并发请求，请求都成功
+		{
+			name:                   "concurrent access with single local slave",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadForce,
+			getCounts:              100000,                                                         // 总请求数
+			concurrency:            100,                                                            // 10 个 Goroutine 并发请求
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c4-mysql-test02.bj:3310"}, // 只有 1 个本地从库
+			slaveStatus:            []StatusCode{StatusUp, StatusUp},                               // 本地从库在线
+			weights:                []int{1, 1},                                                    // 权重均等
+			expectAddrs: map[string]int{
+				"c4-mysql-test02.bj:3310": 100000, // 预计所有请求都打到这台服务器
+			},
+			expectGetErrorCounts: 0, // 理论上不应该报错
+		},
+		// 🚀 新增测试用例：本地 1 台从库，远程 2 台从库，强制本地，但本地挂了，所有请求失败
+		{
+			name:                   "concurrent access with single local slave down",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadForce,
+			getCounts:              100000,
+			concurrency:            100,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown}, // 本地从库宕机
+			weights:                []int{1, 1, 1},
+			expectAddrs:            nil,    // 无法获取可用连接
+			expectGetErrorCounts:   100000, // 预计所有请求都会失败
+		},
+
+		// 🚀 新增测试用例：本地有 2 台从库，一台正常，一台宕机，强制本地，并发请求，所有请求成功
+		{
+			name:                   "concurrent access with single local slave",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadForce,
+			getCounts:              100000,                                                                                    // 总请求数
+			concurrency:            100,                                                                                       // 10 个 Goroutine 并发请求
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c4-mysql-test02.bj:3310", "c4-mysql-test02.bj:3310"}, // 2 个本地从库,
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown},                                              // 1 个 up 一个 down
+			weights:                []int{1, 1, 1},                                                                            // 权重均等
+			expectAddrs: map[string]int{
+				"c4-mysql-test02.bj:3310": 100000, // 预计所有请求都打到这台服务器
+			},
+			expectGetErrorCounts: 0, // 理论上不应该报错
+		},
+
+		// 🚀 新增测试用例：本地有 3 台从库，一台正常，两台宕机，强制本地，并发请求，所有请求成功
+		{
+			name:                   "concurrent access with single local slave",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadForce,
+			getCounts:              100000,                                                                                                               // 总请求数
+			concurrency:            100,                                                                                                                  // 10 个 Goroutine 并发请求
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c4-mysql-test02.bj:3310", "c4-mysql-test02.bj:3310", "c4-mysql-test03.bj:3310"}, // 3 个本地从库,
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown, StatusUp},                                                               // 2 个 up 一个 down
+			weights:                []int{1, 1, 1, 1},                                                                                                    // 权重均等
+			expectAddrs: map[string]int{
+				"c4-mysql-test02.bj:3310": 50000, // 预计一半请求都打到这台服务器
+				"c4-mysql-test03.bj:3310": 50000, // 预计一半请求都打到这台服务器
+			},
+			expectGetErrorCounts: 0, // 理论上不应该报错
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+
+			// 生成数据库连接池
+			dbInfo, err := generateDBInfoWithWeights(mockCtl, tt.slaveAdders, tt.slaveStatus, tt.weights)
+			assert.Nil(t, err)
+			s := &Slice{Slave: dbInfo}
+			s.ProxyDatacenter = tt.proxyDc
+
+			err = dbInfo.InitBalancers(s.ProxyDatacenter)
+			assert.Nil(t, err)
+
+			actualSuccess := make(map[string]int)
+			actualError := 0
+			var mu sync.Mutex
+
+			// 并发请求
+			var wg sync.WaitGroup
+			concurrency := tt.concurrency
+			requestsPerGoroutine := tt.getCounts / concurrency
+
+			for i := 0; i < concurrency; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for j := 0; j < requestsPerGoroutine; j++ {
+						cp, err := s.GetSlaveConn(dbInfo, tt.localSlaveReadPriority)
+
+						mu.Lock() // 保证统计数据线程安全
+						if err != nil {
+							actualError++
+						} else {
+							actualSuccess[cp.GetAddr()]++
+						}
+						mu.Unlock()
+					}
+				}()
+			}
+			wg.Wait() // 等待所有 Goroutine 完成
+			// 校验成功的连接请求数
+			for actAdd, actSucc := range actualSuccess {
+				assert.Equal(t, tt.expectAddrs[actAdd], actSucc, fmt.Errorf("case: %s, actual address %s actualCount %d expect count %d",
+					tt.name, actAdd, actSucc, tt.expectAddrs[actAdd]))
+			}
+
+			// 校验失败的请求数
+			assert.Equal(t, actualError, tt.expectGetErrorCounts, fmt.Errorf("case: %s, actual error %d expect error %d",
+				tt.name, actualError, tt.expectGetErrorCounts))
+		})
+	}
+}
+
+func TestConcurrentGetSlaveConnWhenLocalSlaveReadPrefer(t *testing.T) {
+
+	testCases := []struct {
+		name                   string
+		localSlaveReadPriority int
+		proxyDc                string
+		slaveAdders            []string
+		slaveStatus            []StatusCode
+		weights                []int
+		getCounts              int
+		expectGetErrorCounts   int
+		expectAddrs            map[string]int
+		concurrency            int // 并发请求的 Goroutine 数
+	}{
+		// 🚀 新增测试用例：本地只有 1 台从库，并发请求，请求都成功
+		{
+			name:                   "concurrent access with single local slave",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			getCounts:              100000,                                                         // 总请求数
+			concurrency:            100,                                                            // 10 个 Goroutine 并发请求
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c4-mysql-test02.bj:3310"}, // 只有 1 个本地从库
+			slaveStatus:            []StatusCode{StatusUp, StatusUp},                               // 本地从库在线
+			weights:                []int{1, 1},                                                    // 权重均等
+			expectAddrs: map[string]int{
+				"c4-mysql-test02.bj:3310": 100000, // 预计所有请求都打到这台服务器
+			},
+			expectGetErrorCounts: 0, // 理论上不应该报错
+		},
+		// 🚀 新增测试用例：本地 1 台从库，远程 2 台从库，强制本地，但本地挂了，所有请求失败
+		{
+			name:                   "concurrent access with single local slave down",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			getCounts:              100000,
+			concurrency:            100,
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown}, // 本地从库宕机
+			weights:                []int{1, 1, 1},
+			expectAddrs: map[string]int{
+				"c3-mysql-test00.bj:3306": 50000, // 预计一半
+				"c3-mysql-test01.bj:3308": 50000, // 预计另一半
+			},
+			expectGetErrorCounts: 0, // 预计所有请求都会失败
+		},
+
+		// 🚀 新增测试用例：本地有 2 台从库，一台正常，一台宕机，强制本地，并发请求，所有请求成功
+		{
+			name:                   "concurrent access with single local slave",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			getCounts:              100000,                                                                                    // 总请求数
+			concurrency:            100,                                                                                       // 10 个 Goroutine 并发请求
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c4-mysql-test02.bj:3310", "c4-mysql-test02.bj:3310"}, // 2 个本地从库,
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown},                                              // 1 个 up 一个 down
+			weights:                []int{1, 1, 1},                                                                            // 权重均等
+			expectAddrs: map[string]int{
+				"c4-mysql-test02.bj:3310": 100000, // 预计所有请求都打到这台服务器
+			},
+			expectGetErrorCounts: 0, // 理论上不应该报错
+		},
+
+		// 🚀 新增测试用例：本地有 3 台从库，一台正常，两台宕机，强制本地，并发请求，所有请求成功
+		{
+			name:                   "concurrent access with single local slave",
+			proxyDc:                "c4",
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			getCounts:              100000,                                                                                                               // 总请求数
+			concurrency:            100,                                                                                                                  // 10 个 Goroutine 并发请求
+			slaveAdders:            []string{"c3-mysql-test00.bj:3306", "c4-mysql-test02.bj:3310", "c4-mysql-test02.bj:3310", "c4-mysql-test03.bj:3310"}, // 3 个本地从库,
+			slaveStatus:            []StatusCode{StatusUp, StatusUp, StatusDown, StatusUp},                                                               // 2 个 up 一个 down
+			weights:                []int{1, 1, 1, 1},                                                                                                    // 权重均等
+			expectAddrs: map[string]int{
+				"c4-mysql-test02.bj:3310": 50000, // 预计一半请求都打到这台服务器
+				"c4-mysql-test03.bj:3310": 50000, // 预计一半请求都打到这台服务器
+			},
+			expectGetErrorCounts: 0, // 理论上不应该报错
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+
+			// 生成数据库连接池
+			dbInfo, err := generateDBInfoWithWeights(mockCtl, tt.slaveAdders, tt.slaveStatus, tt.weights)
+			assert.Nil(t, err)
+			s := &Slice{Slave: dbInfo}
+			s.ProxyDatacenter = tt.proxyDc
+
+			err = dbInfo.InitBalancers(s.ProxyDatacenter)
+			assert.Nil(t, err)
+
+			actualSuccess := make(map[string]int)
+			actualError := 0
+			var mu sync.Mutex
+
+			// 并发请求
+			var wg sync.WaitGroup
+			concurrency := tt.concurrency
+			requestsPerGoroutine := tt.getCounts / concurrency
+
+			for i := 0; i < concurrency; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for j := 0; j < requestsPerGoroutine; j++ {
+						cp, err := s.GetSlaveConn(dbInfo, tt.localSlaveReadPriority)
+
+						mu.Lock() // 保证统计数据线程安全
+						if err != nil {
+							actualError++
+						} else {
+							actualSuccess[cp.GetAddr()]++
+						}
+						mu.Unlock()
+					}
+				}()
+			}
+			wg.Wait() // 等待所有 Goroutine 完成
+			// 校验成功的连接请求数
+			for actAdd, actSucc := range actualSuccess {
+				assert.Equal(t, tt.expectAddrs[actAdd], actSucc, fmt.Errorf("case: %s, actual address %s actualCount %d expect count %d",
+					tt.name, actAdd, actSucc, tt.expectAddrs[actAdd]))
+			}
+
+			// 校验失败的请求数
+			assert.Equal(t, actualError, tt.expectGetErrorCounts, fmt.Errorf("case: %s, actual error %d expect error %d",
+				tt.name, actualError, tt.expectGetErrorCounts))
+		})
+	}
+}
+
+func generateDBInfoWithWeights(mockCtl *gomock.Controller, slaveHosts []string, slaveStatus []StatusCode, slaveWeights []int) (*DBInfo, error) {
+	if len(slaveHosts) != len(slaveStatus) || len(slaveHosts) != len(slaveWeights) {
+		return nil, fmt.Errorf("mismatched lengths: hosts=%d, status=%d, weights=%d", len(slaveHosts), len(slaveStatus), len(slaveWeights))
+	}
+
+	connPool := make([]ConnectionPool, len(slaveHosts))
+	nodes := make([]NodeInfo, len(slaveHosts))
+	statusMap := &sync.Map{}
+	slaveConsecutiveErrors := &sync.Map{}
+
 	for i, host := range slaveHosts {
 		dc, _ := util.GetInstanceDatacenter(host)
 		pc := NewMockPooledConnect(mockCtl)
@@ -231,21 +1013,25 @@ func generateDBInfo(mockCtl *gomock.Controller, slaveHosts []string, slaveStatus
 		mcp.EXPECT().Get(context.TODO()).Return(pc, nil).AnyTimes()
 		mcp.EXPECT().Addr().Return(host).AnyTimes()
 
-		connPool = append(connPool, mcp)
-		datacenter = append(datacenter, dc)
-		slaveWeights = append(slaveWeights, 1)
-		StatusMap.Store(i, slaveStatus[i])
-		SlaveConsecutiveErrors.Store(i, 0)
-	}
-	slaveBalancer := newBalancer(slaveWeights, len(connPool))
+		connPool[i] = mcp
+		statusMap.Store(i, slaveStatus[i])
+		slaveConsecutiveErrors.Store(i, 0)
 
-	return &DBInfo{
-		ConnPool:          connPool,
-		Balancer:          slaveBalancer,
-		StatusMap:         StatusMap,
-		Datacenter:        datacenter,
-		ConsecutiveErrors: SlaveConsecutiveErrors,
+		// **新增 NodeInfo**
+		nodes[i] = NodeInfo{
+			Address:    host,
+			Datacenter: dc,
+			Weight:     slaveWeights[i],
+		}
 	}
+
+	dbinfo := &DBInfo{
+		ConnPool:          connPool,
+		Nodes:             nodes, // **直接存储所有节点信息**
+		StatusMap:         statusMap,
+		ConsecutiveErrors: slaveConsecutiveErrors,
+	}
+	return dbinfo, nil
 }
 
 func TestCheckSlaveSyncStatus(t *testing.T) {
@@ -369,7 +1155,7 @@ func TestSlaveConsecutiveErrorCircuitBreaker(t *testing.T) {
 		{
 			name:                   "Continuous errors do not reach the threshold and the fuse does not blow",
 			proxyDc:                "dc1",
-			localSlaveReadPriority: LocalSlaveReadPreferred,
+			localSlaveReadPriority: LocalSlaveReadPrefer,
 			slaveAddrs:             []string{"slave1.dc1:3306", "slave2.dc1:3306"},
 			slaveStatus:            []StatusCode{StatusUp, StatusUp},
 			errorThreshold:         3,
@@ -380,7 +1166,7 @@ func TestSlaveConsecutiveErrorCircuitBreaker(t *testing.T) {
 		{
 			name:                   "Continuous errors reach the threshold, fuse slave",
 			proxyDc:                "dc1",
-			localSlaveReadPriority: LocalSlaveReadPreferred,
+			localSlaveReadPriority: LocalSlaveReadPrefer,
 			slaveAddrs:             []string{"slave1.dc1:3306", "slave2.dc1:3306"},
 			slaveStatus:            []StatusCode{StatusUp, StatusUp},
 			errorThreshold:         3,
@@ -391,7 +1177,7 @@ func TestSlaveConsecutiveErrorCircuitBreaker(t *testing.T) {
 		{
 			name:                   "Success after error, error count reset, no fuse",
 			proxyDc:                "dc1",
-			localSlaveReadPriority: LocalSlaveReadPreferred,
+			localSlaveReadPriority: LocalSlaveReadPrefer,
 			slaveAddrs:             []string{"slave1.dc1:3306", "slave2.dc1:3306"},
 			slaveStatus:            []StatusCode{StatusUp, StatusUp},
 			errorThreshold:         3,
@@ -402,7 +1188,7 @@ func TestSlaveConsecutiveErrorCircuitBreaker(t *testing.T) {
 		{
 			name:                   "Multiple slaves count error counts separately",
 			proxyDc:                "dc1",
-			localSlaveReadPriority: LocalSlaveReadPreferred,
+			localSlaveReadPriority: LocalSlaveReadPrefer,
 			slaveAddrs:             []string{"slave1.dc1:3306", "slave2.dc1:3306"},
 			slaveStatus:            []StatusCode{StatusUp, StatusUp},
 			errorThreshold:         3,
@@ -495,14 +1281,159 @@ func generateDBInfoWithMockPools(mockCtl *gomock.Controller, slaveAddrs []string
 		statusMap.Store(i, slaveStatus[i])
 		slaveConsecutiveErrors.Store(i, 0)
 	}
-
-	balancer := newBalancer(slaveWeights, len(connPool))
-
 	return &DBInfo{
 		ConnPool:          connPool,
-		Balancer:          balancer,
 		StatusMap:         statusMap,
-		Datacenter:        datacenter,
 		ConsecutiveErrors: slaveConsecutiveErrors,
 	}
+}
+
+func TestGetIndicesAndWeights(t *testing.T) {
+	tests := []struct {
+		name            string
+		dbInfo          *DBInfo
+		proxyDatacenter string
+		expectedLocal   IndexWeightList
+		expectedRemote  IndexWeightList
+		expectedGlobal  IndexWeightList
+	}{
+		{
+			name: "Valid indices",
+			dbInfo: &DBInfo{
+				Nodes: []NodeInfo{
+					{Weight: 4, Datacenter: "c1"},
+					{Weight: 3, Datacenter: "c1"},
+					{Weight: 2, Datacenter: "c2"},
+					{Weight: 1, Datacenter: "c2"},
+				},
+			},
+			proxyDatacenter: "c1",
+			expectedLocal: IndexWeightList{
+				Indices: []int{0, 1},
+				Weights: []int{4, 3},
+			},
+			expectedRemote: IndexWeightList{
+				Indices: []int{2, 3},
+				Weights: []int{2, 1},
+			},
+			expectedGlobal: IndexWeightList{
+				Indices: []int{0, 1, 2, 3},
+				Weights: []int{4, 3, 2, 1},
+			},
+		},
+		{
+			name: "All nodes have weight 0",
+			dbInfo: &DBInfo{
+				Nodes: []NodeInfo{
+					{Weight: 0, Datacenter: "c1"},
+					{Weight: 0, Datacenter: "c1"},
+					{Weight: 0, Datacenter: "c2"},
+					{Weight: 0, Datacenter: "c2"},
+				},
+			},
+			proxyDatacenter: "c1",
+			expectedLocal:   IndexWeightList{Indices: []int{}, Weights: []int{}},
+			expectedRemote:  IndexWeightList{Indices: []int{}, Weights: []int{}},
+			expectedGlobal:  IndexWeightList{Indices: []int{}, Weights: []int{}},
+		},
+		{
+			name: "Some nodes have weight 0",
+			dbInfo: &DBInfo{
+				Nodes: []NodeInfo{
+					{Weight: 4, Datacenter: "c1"},
+					{Weight: 0, Datacenter: "c1"},
+					{Weight: 2, Datacenter: "c2"},
+					{Weight: 0, Datacenter: "c2"},
+				},
+			},
+			proxyDatacenter: "c1",
+			expectedLocal: IndexWeightList{
+				Indices: []int{0},
+				Weights: []int{4},
+			},
+			expectedRemote: IndexWeightList{
+				Indices: []int{2},
+				Weights: []int{2},
+			},
+			expectedGlobal: IndexWeightList{
+				Indices: []int{0, 2},
+				Weights: []int{4, 2},
+			},
+		},
+		{
+			name: "Some nodes have weight -1",
+			dbInfo: &DBInfo{
+				Nodes: []NodeInfo{
+					{Weight: 4, Datacenter: "c1"},
+					{Weight: -1, Datacenter: "c1"},
+					{Weight: 2, Datacenter: "c2"},
+					{Weight: 0, Datacenter: "c2"},
+				},
+			},
+			proxyDatacenter: "c1",
+			expectedLocal: IndexWeightList{
+				Indices: []int{0},
+				Weights: []int{4},
+			},
+			expectedRemote: IndexWeightList{
+				Indices: []int{2},
+				Weights: []int{2},
+			},
+			expectedGlobal: IndexWeightList{
+				Indices: []int{0, 2},
+				Weights: []int{4, 2},
+			},
+		},
+		{
+			name: "Some nodes have weight -1",
+			dbInfo: &DBInfo{
+				Nodes: []NodeInfo{
+					{Weight: 5, Datacenter: "c1"},
+					{Weight: -1, Datacenter: "c1"},
+					{Weight: 0, Datacenter: "c2"},
+					{Weight: 1, Datacenter: "c2"},
+				},
+			},
+			proxyDatacenter: "c1",
+			expectedLocal: IndexWeightList{
+				Indices: []int{0},
+				Weights: []int{5},
+			},
+			expectedRemote: IndexWeightList{
+				Indices: []int{3},
+				Weights: []int{1},
+			},
+			expectedGlobal: IndexWeightList{
+				Indices: []int{0, 3},
+				Weights: []int{5, 1},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			local, remote, global := tt.dbInfo.getIndicesAndWeights(tt.proxyDatacenter)
+
+			// 确保只比较有效节点（去除权重为0的情况）
+			filteredExpectedLocal := filterZeroWeight(tt.expectedLocal)
+			filteredExpectedRemote := filterZeroWeight(tt.expectedRemote)
+			filteredExpectedGlobal := filterZeroWeight(tt.expectedGlobal)
+
+			assert.Equal(t, filteredExpectedLocal, *local, "Local indices/weights mismatch")
+			assert.Equal(t, filteredExpectedRemote, *remote, "Remote indices/weights mismatch")
+			assert.Equal(t, filteredExpectedGlobal, *global, "Global indices/weights mismatch")
+		})
+	}
+}
+
+// 过滤掉权重为 0 的节点
+func filterZeroWeight(iwl IndexWeightList) IndexWeightList {
+	var filtered IndexWeightList
+	for i, weight := range iwl.Weights {
+		if weight > 0 {
+			filtered.Indices = append(filtered.Indices, iwl.Indices[i])
+			filtered.Weights = append(filtered.Weights, weight)
+		}
+	}
+	return filtered
 }

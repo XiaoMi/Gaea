@@ -68,82 +68,82 @@ var _ = ginkgo.Describe("Read-Write Splitting", func() {
 			sqlCases := []struct {
 				GaeaConn          *sql.DB
 				GaeaSQL           string
-				ExpectBackendAddr string
+				ExpectBackendAddr []string
 				IsSuccess         bool
 			}{
 				{
 					GaeaConn:          gaeaReadWriteConn,
 					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1 FOR UPDATE", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaReadWriteConn,
 					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1", db, table),
-					ExpectBackendAddr: slice.Slices[0].Slaves[0],
+					ExpectBackendAddr: []string{slice.Slices[0].Slaves[0], slice.Slices[0].Slaves[1]},
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaReadWriteConn,
 					GaeaSQL:           fmt.Sprintf("DELETE FROM %s.%s WHERE id=2", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaReadWriteConn,
 					GaeaSQL:           fmt.Sprintf("UPDATE %s.%s SET name= '%s' WHERE id=3", db, table, "newName"),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaReadWriteConn,
 					GaeaSQL:           fmt.Sprintf("INSERT INTO %s.%s (name) VALUES ('tempValue')", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 					IsSuccess:         true,
 				},
 				// 写用户
 				{
 					GaeaConn:          gaeaWriteConn,
 					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1 FOR UPDATE", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaWriteConn,
 					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaWriteConn,
 					GaeaSQL:           fmt.Sprintf("DELETE FROM %s.%s WHERE id=2", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaWriteConn,
 					GaeaSQL:           fmt.Sprintf("UPDATE %s.%s SET name= '%s' WHERE id=3", db, table, "newName"),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 					IsSuccess:         true,
 				},
 				{
 					GaeaConn:          gaeaWriteConn,
 					GaeaSQL:           fmt.Sprintf("INSERT INTO %s.%s (name) VALUES ('tempValue')", db, table),
-					ExpectBackendAddr: slice.Slices[0].Master,
+					ExpectBackendAddr: []string{slice.Slices[0].Master},
 					IsSuccess:         true,
 				},
 				//读用户
 				{
 					GaeaConn:          gaeaReadConn,
 					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1 FOR UPDATE", db, table),
-					ExpectBackendAddr: slice.Slices[0].Slaves[1],
+					ExpectBackendAddr: []string{slice.Slices[0].Slaves[1], slice.Slices[0].Slaves[0]},
 					IsSuccess:         true,
 				},
 
 				{
 					GaeaConn:          gaeaReadConn,
 					GaeaSQL:           fmt.Sprintf("SELECT * FROM `%s`.`%s` WHERE `id`= 1", db, table),
-					ExpectBackendAddr: slice.Slices[0].Slaves[0],
+					ExpectBackendAddr: []string{slice.Slices[0].Slaves[1], slice.Slices[0].Slaves[0]},
 					IsSuccess:         true,
 				},
 				{
@@ -185,7 +185,11 @@ var _ = ginkgo.Describe("Read-Write Splitting", func() {
 				// 检查结果
 				util.ExpectNoError(err)
 				gomega.Expect(res).Should(gomega.HaveLen(1))
-				gomega.Expect(sqlCase.ExpectBackendAddr).Should(gomega.Equal(res[0].BackendAddr))
+				if len(sqlCase.ExpectBackendAddr) == 1 {
+					gomega.Expect(sqlCase.ExpectBackendAddr[0]).Should(gomega.Equal(res[0].BackendAddr))
+				} else {
+					gomega.Expect(sqlCase.ExpectBackendAddr).Should(gomega.ContainElement(res[0].BackendAddr))
+				}
 			}
 		})
 	})

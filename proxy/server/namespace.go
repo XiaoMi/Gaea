@@ -226,8 +226,8 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 
 	// init localSlaveReadPriority
 	switch namespaceConfig.LocalSlaveReadPriority {
-	case backend.LocalSlaveReadPreferred:
-		namespace.localSlaveReadPriority = backend.LocalSlaveReadPreferred
+	case backend.LocalSlaveReadPrefer:
+		namespace.localSlaveReadPriority = backend.LocalSlaveReadPrefer
 	case backend.LocalSlaveReadForce:
 		namespace.localSlaveReadPriority = backend.LocalSlaveReadForce
 	default:
@@ -592,6 +592,7 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	if err != nil {
 		return nil, err
 	}
+	slaveInfo.InitBalancers(s.ProxyDatacenter)
 	s.Slave = slaveInfo
 
 	// parse statistic slaves
@@ -599,6 +600,7 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	if err != nil {
 		return nil, err
 	}
+	statisticSalve.InitBalancers(s.ProxyDatacenter)
 	s.StatisticSlave = statisticSalve
 	return s, nil
 }

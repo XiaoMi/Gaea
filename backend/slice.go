@@ -53,11 +53,11 @@ const (
 	DefaultSlice       = "slice-0"
 	PingPeriod   int64 = 4
 
-	StatusUp                StatusCode = 1
-	StatusDown              StatusCode = 0
-	LocalSlaveReadClosed               = 0
-	LocalSlaveReadPreferred            = 1
-	LocalSlaveReadForce                = 2
+	StatusUp             StatusCode = 1
+	StatusDown           StatusCode = 0
+	LocalSlaveReadClosed            = 0 // 不启用本地优先
+	LocalSlaveReadPrefer            = 1 // 优先本地，但无本地时降级使用全局
+	LocalSlaveReadForce             = 2 // 强制只用本地
 )
 
 func (s *StatusCode) String() string {
@@ -70,12 +70,21 @@ func (s *StatusCode) String() string {
 }
 
 type DBInfo struct {
-	ConnPool   []ConnectionPool
-	Balancer   *balancer
-	StatusMap  *sync.Map
-	Datacenter []string
+	ConnPool       []ConnectionPool
+	Nodes          []NodeInfo // 存储所有节点的详细信息，索引对应 ConnPool
+	LocalBalancer  *balancer  // 仅包含数据中心与代理匹配的节点
+	RemoteBalancer *balancer  // 包含除本机外的所有其他数据节点
+	GlobalBalancer *balancer  // 包含所有节点
+
+	StatusMap *sync.Map
 	// 用于记录连续错误次数，键为索引，值为错误计数
 	ConsecutiveErrors *sync.Map
+}
+
+type NodeInfo struct {
+	Address    string // 节点地址，如 "c3-mysql-test00.bj:3306"
+	Datacenter string // 节点所属的数据中心，例如 "c3"、"c4"
+	Weight     int    // 该节点的负载均衡权重
 }
 
 func (dbi *DBInfo) GetStatus(index int) (StatusCode, error) {
@@ -104,6 +113,43 @@ func (dbi *DBInfo) GetErrorCount(index int) int {
 
 func (dbi *DBInfo) ResetErrorCount(index int) {
 	dbi.ConsecutiveErrors.Store(index, 0)
+}
+
+type IndexWeightList struct {
+	Indices []int
+	Weights []int
+}
+
+func newIndexWeightList() *IndexWeightList {
+	return &IndexWeightList{}
+}
+
+// getIndicesAndWeights 返回 (本地数据中心的索引+权重, 远程数据中心的索引+权重, 全部索引+权重) 权重为0的节点将不会被记录
+func (dbi *DBInfo) getIndicesAndWeights(proxyDatacenter string) (*IndexWeightList, *IndexWeightList, *IndexWeightList) {
+	local := newIndexWeightList()
+	remote := newIndexWeightList()
+	global := newIndexWeightList()
+
+	for idx, node := range dbi.Nodes {
+		// 过滤掉权重为 0 以及权重为负数的节点
+		if node.Weight <= 0 {
+			continue
+		}
+		// 全局列表存储权重不为 0 的节点
+		global.Indices = append(global.Indices, idx)
+		global.Weights = append(global.Weights, node.Weight)
+
+		// 按照数据中心划分
+		if node.Datacenter == proxyDatacenter {
+			local.Indices = append(local.Indices, idx)
+			local.Weights = append(local.Weights, node.Weight)
+		} else {
+			remote.Indices = append(remote.Indices, idx)
+			remote.Weights = append(remote.Weights, node.Weight)
+		}
+	}
+
+	return local, remote, global
 }
 
 // Slice means one slice of the mysql cluster
@@ -365,52 +411,97 @@ func allSlaveIsOffline(SlaveStatusMap *sync.Map) bool {
 	return result
 }
 
-// GetSlaveConn get connection from salve
+func (dbInfo *DBInfo) InitBalancers(proxyDatacenter string) error {
+	// 1️ 获取本地、远程和全局的索引+权重
+	local, remote, global := dbInfo.getIndicesAndWeights(proxyDatacenter)
+
+	// 2️ 初始化 `GlobalBalancer`（所有节点）
+	var globalBalancerErr, localBalancerErr, remoteBalancerErr error
+	if len(global.Indices) > 0 {
+		dbInfo.GlobalBalancer, globalBalancerErr = newBalancer(global.Indices, global.Weights)
+	}
+
+	// 3️ 初始化 `LocalBalancer`（仅本地数据中心）
+	if len(local.Indices) > 0 {
+		dbInfo.LocalBalancer, localBalancerErr = newBalancer(local.Indices, local.Weights)
+	}
+
+	// 4️ 初始化 `RemoteBalancer`（仅远程数据中心）
+	if len(remote.Indices) > 0 {
+		dbInfo.RemoteBalancer, remoteBalancerErr = newBalancer(remote.Indices, remote.Weights)
+	}
+
+	// 5️ 检查错误
+	if globalBalancerErr != nil || localBalancerErr != nil || remoteBalancerErr != nil {
+		return fmt.Errorf("failed to initialize balancers: global=%v, local=%v, remote=%v",
+			globalBalancerErr, localBalancerErr, remoteBalancerErr)
+	}
+	return nil
+}
+
 func (s *Slice) GetSlaveConn(slavesInfo *DBInfo, localSlaveReadPriority int) (PooledConnect, error) {
+	// 如果整个 `ConnPool` 为空，或者所有节点都宕机，则直接返回错误
 	if len(slavesInfo.ConnPool) == 0 || allSlaveIsOffline(slavesInfo.StatusMap) {
 		return nil, errors.ErrNoSlaveDB
 	}
-	var index int
-	partialFoundIndex, foundIndex := -1, -1
-	// find the idx of the ConnPool that isn't mark as down
-	for size := len(slavesInfo.ConnPool); size > 0; size-- {
-		s.Lock()
-		var err error
-		index, err = slavesInfo.Balancer.next()
-		s.Unlock()
+
+	switch localSlaveReadPriority {
+	case LocalSlaveReadForce:
+		// 强制使用本地，从库不可用直接返回错误
+		if slavesInfo.LocalBalancer == nil {
+			return nil, fmt.Errorf("no local balancer available")
+		}
+		return s.getConnFromBalancer(slavesInfo, slavesInfo.LocalBalancer)
+
+	case LocalSlaveReadClosed:
+		// 不启用本地优先，直接使用 `GlobalBalancer`
+		if slavesInfo.GlobalBalancer == nil {
+			return nil, fmt.Errorf("no global balancer available")
+		}
+		return s.getConnFromBalancer(slavesInfo, slavesInfo.GlobalBalancer)
+
+	case LocalSlaveReadPrefer:
+		// 优先尝试本地 `LocalBalancer`
+		if slavesInfo.LocalBalancer != nil {
+			if conn, err := s.getConnFromBalancer(slavesInfo, slavesInfo.LocalBalancer); err == nil {
+				return conn, nil
+			}
+		}
+		// 降级尝试 `RemoteBalancer`
+		if slavesInfo.RemoteBalancer != nil {
+			if conn, err := s.getConnFromBalancer(slavesInfo, slavesInfo.RemoteBalancer); err == nil {
+				return conn, nil
+			}
+		}
+		// 如果本地和远程都不可用，直接返回错误
+		return nil, fmt.Errorf("no available slave DB in local or remote data centers")
+	default:
+		// 默认使用 `GlobalBalancer`
+		if slavesInfo.GlobalBalancer == nil {
+			return nil, fmt.Errorf("no global balancer available,invalid localSlaveReadPriority: %d	", localSlaveReadPriority)
+		}
+		return s.getConnFromBalancer(slavesInfo, slavesInfo.GlobalBalancer)
+	}
+}
+
+// getConnFromBalancer 封装从给定 balancer 中依次尝试选取健康连接的逻辑
+func (s *Slice) getConnFromBalancer(slavesInfo *DBInfo, bal *balancer) (PooledConnect, error) {
+	// 加锁保证同一时刻只有一个 Session 在使用该 balancer
+	s.Lock()
+	defer s.Unlock()
+	for i := 0; i < len(bal.roundRobinQ); i++ {
+		index, err := bal.next()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get next index from balancer: %v", err)
 		}
-
-		if status, err := slavesInfo.GetStatus(index); err != nil {
-			log.Debug("get slave status addr:%s,err:%s", slavesInfo.ConnPool[index].Addr(), err)
-			continue
-		} else if status == StatusDown {
-			log.Debug("get slave status err or down,addr:%s", slavesInfo.ConnPool[index].Addr())
+		// 检查该节点是否健康
+		if status, err := slavesInfo.GetStatus(index); err != nil || status == StatusDown {
 			continue
 		}
-
-		// partial found slave cause slave status StatusUP
-		partialFoundIndex = index
-
-		// check localSlaveReadPriority and update foundIndex
-		if localSlaveReadPriority == LocalSlaveReadClosed {
-			foundIndex = partialFoundIndex
-			break
-		}
-		// check datacenter
-		if slavesInfo.ConnPool[index].Datacenter() == s.ProxyDatacenter {
-			foundIndex = index
-			break
-		}
+		// 找到一个健康节点，返回连接（并处理熔断逻辑）
+		return s.getConnWithFuse(slavesInfo, index)
 	}
-	if foundIndex >= 0 {
-		return s.getConnWithFuse(slavesInfo, foundIndex)
-	}
-	if partialFoundIndex >= 0 && localSlaveReadPriority != LocalSlaveReadForce {
-		return s.getConnWithFuse(slavesInfo, partialFoundIndex)
-	}
-	return nil, fmt.Errorf("get backend conn error,no local datacenter slaves")
+	return nil, fmt.Errorf("no healthy connection available from selected balancer")
 }
 
 // getConnWithFuse 封装从连接池获取连接并处理熔断的逻辑
@@ -496,9 +587,7 @@ func (s *Slice) ParseMaster(masterStr string) error {
 
 	s.Master = &DBInfo{
 		ConnPool:          []ConnectionPool{connectionPool},
-		Balancer:          nil,
 		StatusMap:         status,
-		Datacenter:        []string{dc},
 		ConsecutiveErrors: slaveConsecutiveErrors,
 	}
 	return nil
@@ -516,8 +605,7 @@ func (s *Slice) ParseSlave(slaves []string) (*DBInfo, error) {
 
 	count := len(slaves)
 	connPool := make([]ConnectionPool, 0, count)
-	slaveWeights := make([]int, 0, count)
-	datacenter := make([]string, 0, count)
+	nodes := make([]NodeInfo, 0, count)
 
 	//parse addr and weight
 	for i := 0; i < count; i++ {
@@ -541,7 +629,7 @@ func (s *Slice) ParseSlave(slaves []string) (*DBInfo, error) {
 		} else {
 			weight = 1
 		}
-		slaveWeights = append(slaveWeights, weight)
+
 		idleTimeout, err := util.Int2TimeDuration(s.Cfg.IdleTimeout)
 		if err != nil {
 			return nil, err
@@ -554,19 +642,23 @@ func (s *Slice) ParseSlave(slaves []string) (*DBInfo, error) {
 				dc = s.ProxyDatacenter
 			}
 		}
-		datacenter = append(datacenter, dc)
 
 		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability, s.Cfg.InitConnect, dc, s.HandshakeTimeout)
 		if err = cp.Open(); err != nil {
 			return nil, err
 		}
 		connPool = append(connPool, cp)
+		nodes = append(nodes, NodeInfo{
+			Address:    addrAndWeight[0],
+			Datacenter: dc,
+			Weight:     weight,
+		})
 	}
 
-	if len(slaveWeights) == 0 {
+	if len(nodes) == 0 {
 		return &DBInfo{}, nil
 	}
-	slaveBalancer := newBalancer(slaveWeights, len(connPool))
+
 	StatusMap := &sync.Map{}
 	slaveConsecutiveErrors := &sync.Map{}
 	for idx := range connPool {
@@ -576,9 +668,8 @@ func (s *Slice) ParseSlave(slaves []string) (*DBInfo, error) {
 
 	return &DBInfo{
 		ConnPool:          connPool,
-		Balancer:          slaveBalancer,
+		Nodes:             nodes,
 		StatusMap:         StatusMap,
-		Datacenter:        datacenter,
 		ConsecutiveErrors: slaveConsecutiveErrors,
 	}, nil
 }

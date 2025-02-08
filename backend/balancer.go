@@ -15,98 +15,111 @@
 package backend
 
 import (
-	"math/rand"
+	"fmt"
+	"sync"
 	"time"
 
-	"github.com/XiaoMi/Gaea/core/errors"
+	"math/rand"
 )
 
 type balancer struct {
-	total       int
-	lastIndex   int
-	roundRobinQ []int
-	nodeWeights []int
+	mu          sync.Mutex // 保护并发安全
+	nextIndex   int        // 当前轮询指针，指向 roundRobinQ 中的下一个候选
+	roundRobinQ []int      // 按照权重扩展后的候选队列（存储原始连接池的下标）
+	poolIndices []int      // 连接池的下标
+	poolWeights []int      // 连接池的下标对应的权重
 }
 
-// calculate gcd ?
+// 计算 GCD（欧几里得算法）
 func gcd(ary []int) int {
-	var i int
-	min := ary[0]
-	length := len(ary)
-	for i = 0; i < length; i++ {
-		if ary[i] < min {
-			min = ary[i]
-		}
+	if len(ary) == 0 {
+		return 1
 	}
 
-	for {
-		isCommon := true
-		for i = 0; i < length; i++ {
-			if ary[i]%min != 0 {
-				isCommon = false
-				break
-			}
+	gcdHelper := func(a, b int) int {
+		for b != 0 {
+			a, b = b, a%b
 		}
-		if isCommon {
-			break
-		}
-		min--
-		if min < 1 {
-			break
+		return a
+	}
+
+	g := ary[0]
+	for i := 1; i < len(ary); i++ {
+		g = gcdHelper(g, ary[i])
+		if g == 1 {
+			return 1 // 归一化到最小单位
 		}
 	}
-	return min
+	return g
 }
 
-func newBalancer(nodeWeights []int, total int) *balancer {
+// newBalancer 根据传入的节点下标和对应权重构造新的 balancer, 根据 indices 和对应的 weights（按 gcd 归一化），扩展 roundRobinQ 以进行权重轮询。
+// 每次调用 next()，返回 roundRobinQ 中的下一个节点（基于权重比例）。
+// getIndicesAndWeights中过滤掉了权重为0和为负数的节点
+func newBalancer(indices []int, weights []int) (*balancer, error) {
+
+	if len(indices) != len(weights) {
+		return nil, fmt.Errorf("indices and weights length mismatch, indices: %d, weights: %d", len(indices), len(weights))
+	}
+	if len(indices) == 0 {
+		return nil, nil
+	}
+	// 计算 GCD，确保权重按比例缩放
+	gcdVal := gcd(weights)
+
+	// 计算队列所需大小
 	var sum int
-	var s balancer
-	s.total = total
-	s.lastIndex = 0
-	gcd := gcd(nodeWeights)
-
-	for _, weight := range nodeWeights {
-		sum += weight / gcd
+	for _, weight := range weights {
+		sum += weight / gcdVal
 	}
 
-	s.roundRobinQ = make([]int, 0, sum)
-	for index, weight := range nodeWeights {
-		for j := 0; j < weight/gcd; j++ {
-			s.roundRobinQ = append(s.roundRobinQ, index)
+	// 预分配 `queue`（避免动态扩容带来的额外开销）
+	queue := make([]int, 0, len(indices))
+
+	// 构造 roundRobinQ
+	for i, idx := range indices {
+		repeat := weights[i] / gcdVal
+		for j := 0; j < repeat; j++ {
+			queue = append(queue, idx)
 		}
 	}
 
-	//random order
-	if 1 < len(s.nodeWeights) {
-		r := rand.New(rand.NewSource(time.Now().UnixNano()))
-		for i := 0; i < sum; i++ {
-			x := r.Intn(sum)
-			temp := s.roundRobinQ[x]
-			other := sum % (x + 1)
-			s.roundRobinQ[x] = s.roundRobinQ[other]
-			s.roundRobinQ[other] = temp
-		}
+	// 生成 balancer
+	b := &balancer{
+		mu:          sync.Mutex{},
+		nextIndex:   0,
+		roundRobinQ: queue,
+		poolWeights: weights,
+		poolIndices: indices,
 	}
-	return &s
+
+	// 使 `roundRobinQ` 随机化，防止固定分布
+	if len(b.roundRobinQ) > 1 {
+		rand.Seed(time.Now().UnixNano()) // 使用时间戳作为随机种子
+		rand.Shuffle(len(b.roundRobinQ), func(i, j int) {
+			b.roundRobinQ[i], b.roundRobinQ[j] = b.roundRobinQ[j], b.roundRobinQ[i]
+		})
+	}
+
+	return b, nil
 }
 
+// next 返回 roundRobinQ 中下一个候选的节点下标，
 func (b *balancer) next() (int, error) {
-	var index int
-	queueLen := len(b.roundRobinQ)
-	if queueLen == 0 {
-		return 0, errors.ErrNoDatabase
-	}
-	if queueLen == 1 {
-		index = b.roundRobinQ[0]
-		return index, nil
-	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
 
-	b.lastIndex = b.lastIndex % queueLen
-	index = b.roundRobinQ[b.lastIndex]
-	if index >= b.total {
-		return 0, errors.ErrNoDatabase
+	if len(b.roundRobinQ) == 0 {
+		return 0, fmt.Errorf("no candidate available in balancer")
 	}
-	b.lastIndex++
-	b.lastIndex = b.lastIndex % queueLen
-	return index, nil
+	if len(b.roundRobinQ) == 1 {
+		return b.roundRobinQ[0], nil
+	}
+	// 直接取出 roundRobinQ 中的元素
+	elem := b.roundRobinQ[b.nextIndex]
+
+	// 轮询更新 nextIndex
+	b.nextIndex = (b.nextIndex + 1) % len(b.roundRobinQ)
+
+	return elem, nil
 }
