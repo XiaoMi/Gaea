@@ -479,7 +479,7 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 	// record backend error sql
 	if err != nil {
 		m.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v, error: %v",
-			SQLBackendExecStatusErr, duration, se.user, se.namespace, se.clientAddr, backendAddr, dbName,
+			SQLBackendExecStatusErr, duration, se.namespace, se.user, se.clientAddr, backendAddr, dbName,
 			se.session.c.GetConnectionID(), backendConnectionId, se.isInTransaction(), sql, err)
 		fingerprint := getSQLFingerprint(reqCtx, sql)
 		md5 := getSQLFingerprintMd5(reqCtx, sql)
@@ -544,28 +544,33 @@ func (m *Manager) recordBackendConnectPoolMetrics(namespace string) {
 	}
 
 	for sliceName, slice := range ns.slices {
-		m.statistics.recordInstanceDownCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), getStatusDownCounts(slice.Master.StatusMap, 0), MasterRole)
-		m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].InUse(), MasterRole)
-		m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].Available(), MasterRole)
-		m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].WaitCount(), MasterRole)
-		m.statistics.recordConnectPoolActiveCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].Active(), MasterRole)
-		m.statistics.recordConnectPoolCount(namespace, sliceName, slice.Master.ConnPool[0].Addr(), slice.Master.ConnPool[0].Capacity(), MasterRole)
-
-		for i, slave := range slice.Slave.ConnPool {
-			m.statistics.recordInstanceDownCount(namespace, sliceName, slave.Addr(), getStatusDownCounts(slice.Slave.StatusMap, i), SlaveRole)
-			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slave.Addr(), slave.InUse(), SlaveRole)
-			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slave.Addr(), slave.Available(), SlaveRole)
-			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slave.Addr(), slave.WaitCount(), SlaveRole)
-			m.statistics.recordConnectPoolActiveCount(namespace, sliceName, slave.Addr(), slave.Active(), SlaveRole)
-			m.statistics.recordConnectPoolCount(namespace, sliceName, slave.Addr(), slave.Capacity(), SlaveRole)
+		// Master 只有一个节点
+		for _, master := range slice.Master.Nodes {
+			m.statistics.recordInstanceDownCount(namespace, sliceName, master.Address, getStatusDownCounts(master), MasterRole)
+			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, master.Address, master.ConnPool.InUse(), MasterRole)
+			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, master.Address, master.ConnPool.Available(), MasterRole)
+			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, master.Address, master.ConnPool.WaitCount(), MasterRole)
+			m.statistics.recordConnectPoolActiveCount(namespace, sliceName, master.Address, master.ConnPool.Active(), MasterRole)
+			m.statistics.recordConnectPoolCount(namespace, sliceName, master.Address, master.ConnPool.Capacity(), MasterRole)
 		}
-		for i, statisticSlave := range slice.StatisticSlave.ConnPool {
-			m.statistics.recordInstanceDownCount(namespace, sliceName, statisticSlave.Addr(), getStatusDownCounts(slice.StatisticSlave.StatusMap, i), StatisticSlaveRole)
-			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.InUse(), StatisticSlaveRole)
-			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.Available(), StatisticSlaveRole)
-			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.WaitCount(), StatisticSlaveRole)
-			m.statistics.recordConnectPoolActiveCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.Active(), StatisticSlaveRole)
-			m.statistics.recordConnectPoolCount(namespace, sliceName, statisticSlave.Addr(), statisticSlave.Capacity(), StatisticSlaveRole)
+
+		// Slave
+		for _, slave := range slice.Slave.Nodes {
+			m.statistics.recordInstanceDownCount(namespace, sliceName, slave.Address, getStatusDownCounts(slave), SlaveRole)
+			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slave.Address, slave.ConnPool.InUse(), SlaveRole)
+			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slave.Address, slave.ConnPool.Available(), SlaveRole)
+			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slave.Address, slave.ConnPool.WaitCount(), SlaveRole)
+			m.statistics.recordConnectPoolActiveCount(namespace, sliceName, slave.Address, slave.ConnPool.Active(), SlaveRole)
+			m.statistics.recordConnectPoolCount(namespace, sliceName, slave.Address, slave.ConnPool.Capacity(), SlaveRole)
+		}
+		// StatisticSlave
+		for _, statisticSlave := range slice.StatisticSlave.Nodes {
+			m.statistics.recordInstanceDownCount(namespace, sliceName, statisticSlave.Address, getStatusDownCounts(statisticSlave), StatisticSlaveRole)
+			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, statisticSlave.Address, statisticSlave.ConnPool.InUse(), StatisticSlaveRole)
+			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, statisticSlave.Address, statisticSlave.ConnPool.Available(), StatisticSlaveRole)
+			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, statisticSlave.Address, statisticSlave.ConnPool.WaitCount(), StatisticSlaveRole)
+			m.statistics.recordConnectPoolActiveCount(namespace, sliceName, statisticSlave.Address, statisticSlave.ConnPool.Active(), StatisticSlaveRole)
+			m.statistics.recordConnectPoolCount(namespace, sliceName, statisticSlave.Address, statisticSlave.ConnPool.Capacity(), StatisticSlaveRole)
 		}
 	}
 }
@@ -1315,10 +1320,8 @@ func (s *StatisticManager) CalcAvgSQLTimes() {
 }
 
 // getStatusDownCounts get status down counts from DBinfo.statusMap
-func getStatusDownCounts(statusMap *sync.Map, index int) int64 {
-	if v, ok := statusMap.Load(index); !ok {
-		return 1
-	} else if v != backend.StatusUp {
+func getStatusDownCounts(node *backend.NodeInfo) int64 {
+	if node.Status != backend.StatusUp {
 		return 1
 	}
 	return 0

@@ -84,7 +84,7 @@ func BenchmarkGetSlaveConnLock(b *testing.B) {
 
 // GetSlaveConn 根据读取策略选择使用 LocalBalancer 或 GlobalBalancer
 func (s *Slice) GetSlaveConnNoLock(dbInfo *DBInfo, localSlaveReadPriority int) (PooledConnect, error) {
-	if len(dbInfo.ConnPool) == 0 {
+	if len(dbInfo.Nodes) == 0 {
 		return nil, fmt.Errorf("no available slave DB")
 	}
 	switch localSlaveReadPriority {
@@ -115,7 +115,7 @@ func (s *Slice) GetSlaveConnNoLock(dbInfo *DBInfo, localSlaveReadPriority int) (
 }
 
 func (s *Slice) GetSlaveConnWithLock(dbInfo *DBInfo, localSlaveReadPriority int) (PooledConnect, error) {
-	if len(dbInfo.ConnPool) == 0 {
+	if len(dbInfo.Nodes) == 0 {
 		return nil, fmt.Errorf("no available slave DB")
 	}
 	switch localSlaveReadPriority {
@@ -146,33 +146,38 @@ func (s *Slice) GetSlaveConnWithLock(dbInfo *DBInfo, localSlaveReadPriority int)
 }
 
 func (s *Slice) getConnFromBalancerNoLock(slavesInfo *DBInfo, bal *balancer) (PooledConnect, error) {
-	// 本版本直接循环遍历候选队列，不做外部加锁
 	for i := 0; i < len(bal.roundRobinQ); i++ {
 		index, err := bal.next()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get next index from balancer: %v", err)
 		}
-		if status, err := slavesInfo.GetStatus(index); err != nil || status == StatusDown {
+		node := slavesInfo.Nodes[index]
+		// 直接检查 `NodeInfo.Status`
+		if !node.IsStatusUp() {
 			continue
 		}
-		return s.getConnWithFuse(slavesInfo, index)
+		// 返回健康节点的连接
+		return s.getConnWithFuse(node)
 	}
 	return nil, fmt.Errorf("no healthy connection available from selected balancer")
 }
 
 func (s *Slice) getConnFromBalancerLock(slavesInfo *DBInfo, bal *balancer) (PooledConnect, error) {
+	// 加锁保证同一时刻只有一个 Session 在使用该 balancer
 	s.Lock()
 	defer s.Unlock()
-	// 本版本直接循环遍历候选队列，不做外部加锁
 	for i := 0; i < len(bal.roundRobinQ); i++ {
 		index, err := bal.next()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get next index from balancer: %v", err)
 		}
-		if status, err := slavesInfo.GetStatus(index); err != nil || status == StatusDown {
+		node := slavesInfo.Nodes[index]
+		// 直接检查 `NodeInfo.Status`
+		if !node.IsStatusUp() {
 			continue
 		}
-		return s.getConnWithFuse(slavesInfo, index)
+		// 返回健康节点的连接
+		return s.getConnWithFuse(node)
 	}
 	return nil, fmt.Errorf("no healthy connection available from selected balancer")
 }

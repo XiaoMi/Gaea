@@ -19,12 +19,91 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util"
-	"github.com/golang/mock/gomock"
+	"github.com/bytedance/mockey"
+	gomock "github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestParseDBInfo(t *testing.T) {
+	testCases := []struct {
+		name              string
+		addrs             []string
+		expectAddrs       []string
+		expectDatacenters []string
+		expectWeights     []int
+		expectErr         bool
+	}{
+
+		{
+			name:              "valid slave with weight and datacenter",
+			addrs:             []string{"c3-mysql-slave01:3307@10#bj", "c4-mysql-slave02:3308@5#sgp"},
+			expectAddrs:       []string{"c3-mysql-slave01:3307", "c4-mysql-slave02:3308"},
+			expectDatacenters: []string{"bj", "sgp"},
+			expectWeights:     []int{10, 5},
+			expectErr:         false,
+		},
+		{
+			name:              "valid slave without weight, default to 1",
+			addrs:             []string{"c3-mysql-slave01:3307#bj", "c4-mysql-slave02:3308#sgp"},
+			expectAddrs:       []string{"c3-mysql-slave01:3307", "c4-mysql-slave02:3308"},
+			expectDatacenters: []string{"bj", "sgp"},
+			expectWeights:     []int{1, 1},
+			expectErr:         false,
+		},
+
+		{
+			name:              "invalid weight format, should default to 1",
+			addrs:             []string{"c3-mysql-slave01:3307@xyz#bj", "c4-mysql-slave02:3308@!@#sgp"},
+			expectAddrs:       []string{"c3-mysql-slave01:3307", "c4-mysql-slave02:3308"},
+			expectDatacenters: []string{"bj", "sgp"},
+			expectWeights:     []int{1, 1}, // 非法权重默认设为 1
+			expectErr:         false,
+		},
+
+		{
+			name:              "empty input",
+			addrs:             []string{},
+			expectAddrs:       []string{},
+			expectDatacenters: []string{},
+			expectWeights:     []int{},
+			expectErr:         false,
+		},
+
+		{
+			name:              "invalid format, should return error",
+			addrs:             []string{"invalid-slave"},
+			expectAddrs:       []string{"invalid-slave"},
+			expectDatacenters: []string{""},
+			expectWeights:     []int{1},
+			expectErr:         false,
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			s := new(Slice)
+			dbInfo, err := s.parseDBInfo(tt.addrs)
+			fmt.Println(err)
+			if tt.expectErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, dbInfo)
+				assert.Equal(t, len(tt.expectAddrs), len(dbInfo.Nodes))
+
+				for i := range tt.expectAddrs {
+					assert.Equal(t, tt.expectAddrs[i], dbInfo.Nodes[i].Address)
+					assert.Equal(t, tt.expectDatacenters[i], dbInfo.Nodes[i].Datacenter)
+					assert.Equal(t, tt.expectWeights[i], dbInfo.Nodes[i].Weight)
+				}
+			}
+		})
+	}
+}
 
 func TestParseSlave(t *testing.T) {
 	testCases := []struct {
@@ -71,14 +150,16 @@ func TestParseSlave(t *testing.T) {
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			s := new(Slice)
-			dbInfo, _ := s.ParseSlave(tt.slaveAdders)
+			err := s.ParseSlave(tt.slaveAdders)
+			assert.Nil(t, err)
 			for i := range tt.expectAddrs {
-				assert.Equal(t, tt.expectAddrs[i], dbInfo.ConnPool[i].Addr())
-				assert.Equal(t, tt.expectDatacenters[i], dbInfo.Nodes[i].Datacenter)
+				assert.Equal(t, tt.expectAddrs[i], s.Slave.Nodes[i].Address)
+				assert.Equal(t, tt.expectDatacenters[i], s.Slave.Nodes[i].Datacenter)
 			}
 		})
 	}
 }
+
 func TestParseSlaveWithWeights(t *testing.T) {
 	testCases := []struct {
 		name           string
@@ -115,7 +196,7 @@ func TestParseSlaveWithWeights(t *testing.T) {
 			slaveAdders:    []string{"c3-mysql-test00.bj:3306@-5", "c3-mysql-test01.bj:3308@3"},
 			expectAddrs:    []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308"},
 			expectIndices:  []int{0, 1},
-			expectWeights:  []int{-5, 3}, // 默认权重
+			expectWeights:  []int{1, 3}, // 默认权重
 			expectingError: false,
 		},
 
@@ -136,7 +217,7 @@ func TestParseSlaveWithWeights(t *testing.T) {
 			slaveAdders:    []string{"c3-mysql-test00.bj:3306@2", "c3-mysql-test01.bj:3308@-1", "c4-mysql-test02.bj:3310@0"},
 			expectAddrs:    []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"}, // 过滤掉权重为 0 和负数的
 			expectIndices:  []int{0, 1, 2},
-			expectWeights:  []int{2, -1, 0},
+			expectWeights:  []int{2, 1, 0},
 			expectingError: false,
 		},
 
@@ -145,9 +226,9 @@ func TestParseSlaveWithWeights(t *testing.T) {
 			name:           "invalid weights",
 			slaveAdders:    []string{"c3-mysql-test00.bj:3306@&", "c3-mysql-test01.bj:3308@+", "c4-mysql-test02.bj:3310@-"},
 			expectAddrs:    []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"}, // 过滤掉权重为 0 和负数的
-			expectIndices:  nil,
-			expectWeights:  nil,
-			expectingError: true,
+			expectIndices:  []int{0, 1, 2},
+			expectWeights:  []int{1, 1, 1},
+			expectingError: false,
 		},
 	}
 
@@ -157,7 +238,8 @@ func TestParseSlaveWithWeights(t *testing.T) {
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			s := new(Slice)
-			dbInfo, err := s.ParseSlave(tt.slaveAdders)
+			err := s.ParseSlave(tt.slaveAdders)
+			assert.Nil(t, err)
 
 			if tt.expectingError {
 				assert.Error(t, err, "Expected an error but got none")
@@ -170,7 +252,7 @@ func TestParseSlaveWithWeights(t *testing.T) {
 			var actualAddrs []string
 			var actualWeights []int
 			var actualIndices []int
-			for i, node := range dbInfo.Nodes {
+			for i, node := range s.Slave.Nodes {
 				actualAddrs = append(actualAddrs, node.Address)
 				actualWeights = append(actualWeights, node.Weight)
 				actualIndices = append(actualIndices, i) // 直接使用 i 作为索引
@@ -998,10 +1080,7 @@ func generateDBInfoWithWeights(mockCtl *gomock.Controller, slaveHosts []string, 
 		return nil, fmt.Errorf("mismatched lengths: hosts=%d, status=%d, weights=%d", len(slaveHosts), len(slaveStatus), len(slaveWeights))
 	}
 
-	connPool := make([]ConnectionPool, len(slaveHosts))
-	nodes := make([]NodeInfo, len(slaveHosts))
-	statusMap := &sync.Map{}
-	slaveConsecutiveErrors := &sync.Map{}
+	nodes := make([]*NodeInfo, len(slaveHosts)) // 直接存储 `NodeInfo`
 
 	for i, host := range slaveHosts {
 		dc, _ := util.GetInstanceDatacenter(host)
@@ -1013,25 +1092,59 @@ func generateDBInfoWithWeights(mockCtl *gomock.Controller, slaveHosts []string, 
 		mcp.EXPECT().Get(context.TODO()).Return(pc, nil).AnyTimes()
 		mcp.EXPECT().Addr().Return(host).AnyTimes()
 
-		connPool[i] = mcp
-		statusMap.Store(i, slaveStatus[i])
-		slaveConsecutiveErrors.Store(i, 0)
-
-		// **新增 NodeInfo**
-		nodes[i] = NodeInfo{
+		// 创建 `NodeInfo`，将 `ConnectionPool` 存入其中
+		nodes[i] = &NodeInfo{
 			Address:    host,
 			Datacenter: dc,
 			Weight:     slaveWeights[i],
+			ConnPool:   mcp,
+			Status:     slaveStatus[i],
 		}
 	}
 
-	dbinfo := &DBInfo{
-		ConnPool:          connPool,
-		Nodes:             nodes, // **直接存储所有节点信息**
-		StatusMap:         statusMap,
-		ConsecutiveErrors: slaveConsecutiveErrors,
+	// 直接返回 `DBInfo`，删除 `StatusMap` 和 `ConsecutiveErrors`
+	return &DBInfo{Nodes: nodes}, nil
+}
+
+func generateDBInfoDefault(mockCtl *gomock.Controller, slaveHosts []string, slaveStatus []StatusCode) (*DBInfo, error) {
+	if len(slaveHosts) != len(slaveStatus) {
+		return nil, fmt.Errorf("mismatched lengths: hosts=%d, status=%d", len(slaveHosts), len(slaveStatus))
 	}
-	return dbinfo, nil
+
+	nodes := make([]*NodeInfo, len(slaveHosts)) // 直接存储 `NodeInfo`
+
+	for i, host := range slaveHosts {
+		dc, _ := util.GetInstanceDatacenter(host)
+
+		pc := NewMockPooledConnect(mockCtl)
+		pc.EXPECT().GetAddr().Return(host).AnyTimes()
+		pc.EXPECT().PingWithTimeout(gomock.Any()).Return(nil).AnyTimes()
+		pc.EXPECT().Begin().Return(nil).AnyTimes()
+		pc.EXPECT().Commit().Return(nil).AnyTimes()
+		pc.EXPECT().Rollback().Return(nil).AnyTimes()
+		pc.EXPECT().IsClosed().Return(false).AnyTimes()
+		pc.EXPECT().Reconnect().Return(nil).AnyTimes()
+		pc.EXPECT().UseDB(gomock.Any()).Return(nil).AnyTimes()
+
+		mcp := NewMockConnectionPool(mockCtl)
+		mcp.EXPECT().Datacenter().Return(dc).AnyTimes()
+		mcp.EXPECT().Get(context.TODO()).Return(pc, nil).AnyTimes()
+		mcp.EXPECT().Addr().Return(host).AnyTimes()
+		mcp.EXPECT().GetCheck(context.Background()).Return(pc, nil).AnyTimes()
+		mcp.EXPECT().SetLastChecked().Return().AnyTimes()
+
+		// 创建 `NodeInfo`，默认 `Weight=1`
+		nodes[i] = &NodeInfo{
+			Address:    host,
+			Datacenter: dc,
+			Weight:     1,
+			ConnPool:   mcp,
+			Status:     slaveStatus[i],
+		}
+	}
+
+	// 直接返回 `DBInfo`
+	return &DBInfo{Nodes: nodes}, nil
 }
 
 func TestCheckSlaveSyncStatus(t *testing.T) {
@@ -1104,8 +1217,8 @@ func TestCheckSlaveSyncStatus(t *testing.T) {
 		})
 	}
 }
+
 func TestSlice_Close(t *testing.T) {
-	//requirement := require.New(t)
 	mockCtl := gomock.NewController(t)
 	defer mockCtl.Finish()
 
@@ -1119,173 +1232,36 @@ func TestSlice_Close(t *testing.T) {
 	mockSlavePool.EXPECT().Close().Times(1)
 	mockStatisticSlavePool.EXPECT().Close().Times(1)
 
-	// 创建 Slice 实例并使用 mock 连接池
+	// 创建 Slice 实例，并使用 mock 连接池
 	slice := &Slice{
 		Master: &DBInfo{
-			ConnPool: []ConnectionPool{mockMasterPool},
+			Nodes: []*NodeInfo{
+				{
+					Address:  "master_host",
+					ConnPool: mockMasterPool,
+				},
+			},
 		},
 		Slave: &DBInfo{
-			ConnPool: []ConnectionPool{mockSlavePool},
+			Nodes: []*NodeInfo{
+				{
+					Address:  "slave_host",
+					ConnPool: mockSlavePool,
+				},
+			},
 		},
 		StatisticSlave: &DBInfo{
-			ConnPool: []ConnectionPool{mockStatisticSlavePool},
+			Nodes: []*NodeInfo{
+				{
+					Address:  "stat_slave_host",
+					ConnPool: mockStatisticSlavePool,
+				},
+			},
 		},
 	}
 
 	// 调用 Close 方法
 	slice.Close()
-}
-
-func TestSlaveConsecutiveErrorCircuitBreaker(t *testing.T) {
-	mockCtl := gomock.NewController(t)
-	defer mockCtl.Finish()
-
-	// 定义测试用例
-	testCases := []struct {
-		name                   string
-		proxyDc                string
-		localSlaveReadPriority int
-		slaveAddrs             []string
-		slaveStatus            []StatusCode
-		errorThreshold         int
-		operations             []string // "success" 或 "fail"
-		expectedStatuses       []StatusCode
-	}{
-		// 连续错误未达到阈值，不熔断
-		{
-			name:                   "Continuous errors do not reach the threshold and the fuse does not blow",
-			proxyDc:                "dc1",
-			localSlaveReadPriority: LocalSlaveReadPrefer,
-			slaveAddrs:             []string{"slave1.dc1:3306", "slave2.dc1:3306"},
-			slaveStatus:            []StatusCode{StatusUp, StatusUp},
-			errorThreshold:         3,
-			operations:             []string{"fail", "fail", "success"},
-			expectedStatuses:       []StatusCode{StatusUp, StatusUp},
-		},
-		// 连续错误达到阈值，熔断从库
-		{
-			name:                   "Continuous errors reach the threshold, fuse slave",
-			proxyDc:                "dc1",
-			localSlaveReadPriority: LocalSlaveReadPrefer,
-			slaveAddrs:             []string{"slave1.dc1:3306", "slave2.dc1:3306"},
-			slaveStatus:            []StatusCode{StatusUp, StatusUp},
-			errorThreshold:         3,
-			operations:             []string{"fail", "fail", "fail"},
-			expectedStatuses:       []StatusCode{StatusDown, StatusUp},
-		},
-		// 错误后成功，错误计数重置，不熔断
-		{
-			name:                   "Success after error, error count reset, no fuse",
-			proxyDc:                "dc1",
-			localSlaveReadPriority: LocalSlaveReadPrefer,
-			slaveAddrs:             []string{"slave1.dc1:3306", "slave2.dc1:3306"},
-			slaveStatus:            []StatusCode{StatusUp, StatusUp},
-			errorThreshold:         3,
-			operations:             []string{"fail", "success", "fail", "fail", "fail"},
-			expectedStatuses:       []StatusCode{StatusDown, StatusUp},
-		},
-		// 多个从库分别统计错误计数
-		{
-			name:                   "Multiple slaves count error counts separately",
-			proxyDc:                "dc1",
-			localSlaveReadPriority: LocalSlaveReadPrefer,
-			slaveAddrs:             []string{"slave1.dc1:3306", "slave2.dc1:3306"},
-			slaveStatus:            []StatusCode{StatusUp, StatusUp},
-			errorThreshold:         3,
-			operations:             []string{"fail", "switch", "fail", "fail", "fail"},
-			expectedStatuses:       []StatusCode{StatusUp, StatusDown},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			// 初始化 Slice 和 DBInfo
-			s := &Slice{
-				ProxyDatacenter: tc.proxyDc,
-				Slave:           generateDBInfoWithMockPools(mockCtl, tc.slaveAddrs, tc.slaveStatus),
-			}
-
-			s.Slave.ConsecutiveErrors = &sync.Map{}
-			// 设置错误阈值
-			s.MaxSlaveFuseErrorCount = tc.errorThreshold
-
-			// 模拟操作
-			currentSlaveIndex := 0
-			for _, op := range tc.operations {
-				var err error
-				var pc PooledConnect
-
-				if op == "fail" {
-					// 模拟获取连接失败
-					pc, err = s.getSlaveConnWithMockError(s.Slave, tc.localSlaveReadPriority, currentSlaveIndex)
-					assert.NotNil(t, err)
-				} else if op == "success" {
-					// 模拟成功获取连接
-					pc, err = s.getSlaveConnWithMockSuccess(s.Slave, tc.localSlaveReadPriority, currentSlaveIndex)
-					assert.Nil(t, err)
-					assert.NotNil(t, pc)
-				} else if op == "switch" {
-					// 切换到下一个从库
-					currentSlaveIndex = (currentSlaveIndex + 1) % len(tc.slaveAddrs)
-					continue
-				}
-			}
-
-			// 检查最终的从库状态
-			for idx, expectedStatus := range tc.expectedStatuses {
-				status, _ := s.Slave.GetStatus(idx)
-				assert.Equal(t, expectedStatus, status, fmt.Sprintf("Slave %d status should be %v", idx, expectedStatus))
-			}
-		})
-	}
-}
-
-// 模拟获取从库连接失败，增加错误计数
-func (s *Slice) getSlaveConnWithMockError(slavesInfo *DBInfo, localSlaveReadPriority int, index int) (PooledConnect, error) {
-	// 增加错误计数
-	slavesInfo.IncrementErrorCount(index)
-	// 检查是否需要熔断
-	if slavesInfo.GetErrorCount(index) >= s.MaxSlaveFuseErrorCount {
-		slavesInfo.SetStatus(index, StatusDown)
-	}
-	return nil, fmt.Errorf("mock connection error")
-}
-
-// 模拟成功获取从库连接，重置错误计数
-func (s *Slice) getSlaveConnWithMockSuccess(slavesInfo *DBInfo, localSlaveReadPriority int, index int) (PooledConnect, error) {
-	// 重置错误计数
-	slavesInfo.ResetErrorCount(index)
-	// 返回模拟的连接
-	pc := NewMockPooledConnect(gomock.NewController(nil))
-	pc.EXPECT().GetAddr().Return(slavesInfo.ConnPool[index].Addr()).AnyTimes()
-	return pc, nil
-}
-
-func generateDBInfoWithMockPools(mockCtl *gomock.Controller, slaveAddrs []string, slaveStatus []StatusCode) *DBInfo {
-	connPool := make([]ConnectionPool, len(slaveAddrs))
-	slaveWeights := make([]int, len(slaveAddrs))
-	datacenter := make([]string, len(slaveAddrs))
-	statusMap := &sync.Map{}
-	slaveConsecutiveErrors := &sync.Map{}
-
-	for i, addr := range slaveAddrs {
-		dc, _ := util.GetInstanceDatacenter(addr)
-
-		mcp := NewMockConnectionPool(mockCtl)
-		mcp.EXPECT().Datacenter().Return(dc).AnyTimes()
-		mcp.EXPECT().Addr().Return(addr).AnyTimes()
-
-		connPool[i] = mcp
-		datacenter[i] = dc
-		slaveWeights[i] = 1
-		statusMap.Store(i, slaveStatus[i])
-		slaveConsecutiveErrors.Store(i, 0)
-	}
-	return &DBInfo{
-		ConnPool:          connPool,
-		StatusMap:         statusMap,
-		ConsecutiveErrors: slaveConsecutiveErrors,
-	}
 }
 
 func TestGetIndicesAndWeights(t *testing.T) {
@@ -1300,7 +1276,7 @@ func TestGetIndicesAndWeights(t *testing.T) {
 		{
 			name: "Valid indices",
 			dbInfo: &DBInfo{
-				Nodes: []NodeInfo{
+				Nodes: []*NodeInfo{
 					{Weight: 4, Datacenter: "c1"},
 					{Weight: 3, Datacenter: "c1"},
 					{Weight: 2, Datacenter: "c2"},
@@ -1324,7 +1300,7 @@ func TestGetIndicesAndWeights(t *testing.T) {
 		{
 			name: "All nodes have weight 0",
 			dbInfo: &DBInfo{
-				Nodes: []NodeInfo{
+				Nodes: []*NodeInfo{
 					{Weight: 0, Datacenter: "c1"},
 					{Weight: 0, Datacenter: "c1"},
 					{Weight: 0, Datacenter: "c2"},
@@ -1339,7 +1315,7 @@ func TestGetIndicesAndWeights(t *testing.T) {
 		{
 			name: "Some nodes have weight 0",
 			dbInfo: &DBInfo{
-				Nodes: []NodeInfo{
+				Nodes: []*NodeInfo{
 					{Weight: 4, Datacenter: "c1"},
 					{Weight: 0, Datacenter: "c1"},
 					{Weight: 2, Datacenter: "c2"},
@@ -1363,7 +1339,7 @@ func TestGetIndicesAndWeights(t *testing.T) {
 		{
 			name: "Some nodes have weight -1",
 			dbInfo: &DBInfo{
-				Nodes: []NodeInfo{
+				Nodes: []*NodeInfo{
 					{Weight: 4, Datacenter: "c1"},
 					{Weight: -1, Datacenter: "c1"},
 					{Weight: 2, Datacenter: "c2"},
@@ -1387,7 +1363,7 @@ func TestGetIndicesAndWeights(t *testing.T) {
 		{
 			name: "Some nodes have weight -1",
 			dbInfo: &DBInfo{
-				Nodes: []NodeInfo{
+				Nodes: []*NodeInfo{
 					{Weight: 5, Datacenter: "c1"},
 					{Weight: -1, Datacenter: "c1"},
 					{Weight: 0, Datacenter: "c2"},
@@ -1436,4 +1412,350 @@ func filterZeroWeight(iwl IndexWeightList) IndexWeightList {
 		}
 	}
 	return filtered
+}
+
+// 测试所有检查通过，从库应该保持 StatusUp。
+func TestCheckBackendSlaveStatus_All_Passed(t *testing.T) {
+	mockey.PatchConvey("Test checkBackendSlaveStatus - All Checks Passed", t, func() {
+		// 创建一个可控的 ticker
+		mockTicker := time.NewTicker(100 * time.Millisecond)
+		defer mockTicker.Stop()
+
+		// 创建一个不为nil的连接
+		mockConn := &pooledConnectImpl{}
+		// Mock time.NewTicker，使其返回 mockTicker
+		mockey.Mock(time.NewTicker).
+			Return(mockTicker).
+			Build()
+
+		mockCtl := gomock.NewController(t)
+		defer mockCtl.Finish()
+
+		slave, err := generateDBInfoDefault(mockCtl, []string{"127.0.0.1:3329"}, []StatusCode{StatusDown})
+		assert.Nil(t, err)
+
+		mockSlice := &Slice{
+			Slave:          slave,
+			StatisticSlave: slave,
+		}
+
+		// Mock `CheckConnectionPool` 从库连接池检查成功
+		mockey.Mock((*NodeInfo).GetPooledConnectWithHealthCheck).
+			Return(mockConn, nil).
+			Build()
+
+		// Mock `CheckDownAfterNoAlive` 从库没有超过下线阈值
+		mockey.Mock((*NodeInfo).ShouldDownAfterNoAlive).
+			Return(false, int64(10)).
+			Build()
+
+		// Mock `GetMasterStatus` 主库没有宕机
+		mockey.Mock((*Slice).GetMasterStatus).
+			Return(StatusUp, nil).
+			Build()
+
+		// Mock `checkSlaveSyncStatus` 从库同步正常
+		mockey.Mock(checkSlaveSyncStatus).
+			Return(true, nil).
+			Build()
+
+		// 执行 checkBackendSlaveStatus
+		ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
+		defer cancel()
+
+		mockSlice.checkBackendSlaveStatus(ctx, slave, "test_ns", 10, 30)
+
+		// Expect slave status to remain up even when master is down
+		for _, node := range slave.Nodes {
+			assert.Equal(t, StatusUp, node.GetStatus())
+		}
+	})
+}
+
+func TestCheckBackendSlaveStatus_CoonPool_Check_Error(t *testing.T) {
+	mockey.PatchConvey("Test checkBackendSlaveStatus - Slave ConnPool connect is nil, Start is Down, Not Exceeding the offline threshold", t, func() {
+
+		// 创建一个可控的 ticker
+		mockTicker := time.NewTicker(100 * time.Millisecond)
+		defer mockTicker.Stop()
+
+		// 创建一个为nil的连接池连接
+		var mockNilConn PooledConnect
+		// Mock time.NewTicker，使其返回 mockTicker
+		mockey.Mock(time.NewTicker).
+			Return(mockTicker).
+			Build()
+
+		mockCtl := gomock.NewController(t)
+		defer mockCtl.Finish()
+
+		slave, err := generateDBInfoDefault(mockCtl, []string{"127.0.0.1:3329"}, []StatusCode{StatusDown})
+		assert.Nil(t, err)
+
+		mockSlice := &Slice{
+			Slave:          slave,
+			StatisticSlave: slave,
+		}
+
+		// Mock `CheckConnectionPool` 从库连接池检查失败
+		mockey.Mock((*NodeInfo).GetPooledConnectWithHealthCheck).
+			Return(mockNilConn, nil).
+			Build()
+
+		// Mock `CheckDownAfterNoAlive` 从库没有超过下线阈值
+		mockey.Mock((*NodeInfo).ShouldDownAfterNoAlive).
+			Return(false, int64(10)).
+			Build()
+
+		// Mock `GetMasterStatus` 主库没有宕机
+		mockey.Mock((*Slice).GetMasterStatus).
+			Return(StatusUp, nil).
+			Build()
+
+		// Mock `checkSlaveSyncStatus` 从库同步正常
+		mockey.Mock(checkSlaveSyncStatus).
+			Return(true, fmt.Errorf("check slave sync status error: pc is nil")).
+			Build()
+
+		// 执行 checkBackendSlaveStatus
+		ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
+		defer cancel()
+
+		mockSlice.checkBackendSlaveStatus(ctx, slave, "test_ns", 10, 30)
+
+		// Expect slave status to remain up even when master is down
+		for _, node := range slave.Nodes {
+			assert.Equal(t, StatusDown, node.GetStatus())
+		}
+	})
+}
+
+func TestCheckBackendSlaveStatus_CoonPool_Check_Nil(t *testing.T) {
+	mockey.PatchConvey("Test checkBackendSlaveStatus - Slave ConnPool connect is nil, Start is UP, Exceeding the offline threshold", t, func() {
+
+		// 创建一个可控的 ticker
+		mockTicker := time.NewTicker(100 * time.Millisecond)
+		defer mockTicker.Stop()
+
+		// 创建一个为nil的连接池连接
+		var mockNilConn PooledConnect
+		// Mock time.NewTicker，使其返回 mockTicker
+		mockey.Mock(time.NewTicker).
+			Return(mockTicker).
+			Build()
+
+		mockCtl := gomock.NewController(t)
+		defer mockCtl.Finish()
+
+		slave, err := generateDBInfoDefault(mockCtl, []string{"127.0.0.1:3329"}, []StatusCode{StatusUp})
+		assert.Nil(t, err)
+
+		mockSlice := &Slice{
+			Slave:          slave,
+			StatisticSlave: slave,
+		}
+
+		// Mock `CheckConnectionPool` 从库连接池检查失败
+		mockey.Mock((*NodeInfo).GetPooledConnectWithHealthCheck).
+			Return(mockNilConn, nil).
+			Build()
+
+		// Mock `CheckDownAfterNoAlive` 从库没有超过下线阈值
+		mockey.Mock((*NodeInfo).ShouldDownAfterNoAlive).
+			Return(true, int64(10)).
+			Build()
+
+		// Mock `GetMasterStatus` 主库没有宕机
+		mockey.Mock((*Slice).GetMasterStatus).
+			Return(StatusUp, nil).
+			Build()
+
+		// Mock `checkSlaveSyncStatus` 从库同步正常
+		mockey.Mock(checkSlaveSyncStatus).
+			Return(true, fmt.Errorf("check slave sync status error: pc is nil")).
+			Build()
+
+		// 执行 checkBackendSlaveStatus
+		ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
+		defer cancel()
+
+		mockSlice.checkBackendSlaveStatus(ctx, slave, "test_ns", 1, 30)
+
+		// Expect slave status to remain up even when master is down
+		for _, node := range slave.Nodes {
+			assert.Equal(t, StatusDown, node.GetStatus())
+		}
+	})
+}
+
+// 主库下线，从库跳过同步
+func TestCheckBackendSlaveStatus_MasterDown(t *testing.T) {
+	mockey.PatchConvey("Test checkBackendSlaveStatus - Master down", t, func() {
+		// 创建一个可控的 ticker
+		mockTicker := time.NewTicker(100 * time.Millisecond)
+		defer mockTicker.Stop()
+
+		// 创建一个不为nil的连接
+		mockConn := &pooledConnectImpl{}
+
+		// Mock time.NewTicker，使其返回 mockTicker
+		mockey.Mock(time.NewTicker).
+			Return(mockTicker).
+			Build()
+
+		mockCtl := gomock.NewController(t)
+		defer mockCtl.Finish()
+
+		slave, err := generateDBInfoDefault(mockCtl, []string{"127.0.0.1:3329"}, []StatusCode{StatusDown})
+		assert.Nil(t, err)
+
+		mockSlice := &Slice{
+			Slave:          slave,
+			StatisticSlave: slave,
+		}
+
+		// Mock `CheckConnectionPool` 从库连接池检查成功
+		mockey.Mock((*NodeInfo).GetPooledConnectWithHealthCheck).
+			Return(mockConn, nil).
+			Build()
+
+		// Mock `CheckDownAfterNoAlive` 从库没有超过下线阈值
+		mockey.Mock((*NodeInfo).ShouldDownAfterNoAlive).
+			Return(false, int64(10)).
+			Build()
+
+		// Mock `GetMasterStatus` 主库下线，但没有错误
+		mockey.Mock((*Slice).GetMasterStatus).
+			Return(StatusDown, nil).
+			Build()
+
+		// Mock `checkSlaveSyncStatus` 从库同步没有超过阈值
+		mockey.Mock(checkSlaveSyncStatus).
+			Return(true, nil).
+			Build()
+
+		// 执行 checkBackendSlaveStatus
+		ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
+		defer cancel()
+
+		mockSlice.checkBackendSlaveStatus(ctx, slave, "test_ns", 10, 30)
+
+		// Expect slave status to remain up even when master is down
+		for _, node := range slave.Nodes {
+			assert.Equal(t, StatusUp, node.GetStatus())
+		}
+	})
+}
+
+// 主库宕机，从库跳过同步
+func TestCheckBackendSlaveStatus_MasterError(t *testing.T) {
+	mockey.PatchConvey("Test checkBackendSlaveStatus - Master error", t, func() {
+		// 创建一个可控的 ticker
+		mockTicker := time.NewTicker(100 * time.Millisecond)
+		defer mockTicker.Stop()
+
+		// 创建一个不为nil的连接
+		mockConn := &pooledConnectImpl{}
+
+		// Mock time.NewTicker，使其返回 mockTicker
+		mockey.Mock(time.NewTicker).
+			Return(mockTicker).
+			Build()
+
+		mockCtl := gomock.NewController(t)
+		defer mockCtl.Finish()
+
+		slave, err := generateDBInfoDefault(mockCtl, []string{"127.0.0.1:3329"}, []StatusCode{StatusDown})
+		assert.Nil(t, err)
+
+		mockSlice := &Slice{
+			Slave:          slave,
+			StatisticSlave: slave,
+		}
+
+		// Mock `CheckConnectionPool` 从库连接池检查成功
+		mockey.Mock((*NodeInfo).GetPooledConnectWithHealthCheck).
+			Return(mockConn, nil).
+			Build()
+
+		// Mock `CheckDownAfterNoAlive` 从库没有超过下线阈值
+		mockey.Mock((*NodeInfo).ShouldDownAfterNoAlive).
+			Return(false, int64(10)).
+			Build()
+
+		// Mock `GetMasterStatus` 主库宕机，返回错误
+		mockey.Mock((*Slice).GetMasterStatus).
+			Return(StatusDown, fmt.Errorf("get master status error")).
+			Build()
+
+		// 执行 checkBackendSlaveStatus
+		ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
+		defer cancel()
+
+		mockSlice.checkBackendSlaveStatus(ctx, slave, "test_ns", 10, 30)
+
+		// Expect slave status to remain up even when master is down
+		for _, node := range slave.Nodes {
+			assert.Equal(t, StatusUp, node.GetStatus())
+		}
+	})
+}
+
+// 主库正常，从库同步延迟
+func TestCheckBackendSlaveStatus_SlaveSyncDelay(t *testing.T) {
+	mockey.PatchConvey("Test checkBackendSlaveStatus - Slave Sync Delay", t, func() {
+		// 创建一个可控的 ticker
+		mockTicker := time.NewTicker(100 * time.Millisecond)
+		defer mockTicker.Stop()
+
+		// 创建一个不为nil的连接
+		mockConn := &pooledConnectImpl{}
+
+		// Mock time.NewTicker，使其返回 mockTicker
+		mockey.Mock(time.NewTicker).
+			Return(mockTicker).
+			Build()
+
+		mockCtl := gomock.NewController(t)
+		defer mockCtl.Finish()
+
+		slave, err := generateDBInfoDefault(mockCtl, []string{"127.0.0.1:3329"}, []StatusCode{StatusUp})
+		assert.Nil(t, err)
+
+		mockSlice := &Slice{
+			Slave:          slave,
+			StatisticSlave: slave,
+		}
+
+		// Mock `CheckConnectionPool` 从库连接池检查成功
+		mockey.Mock((*NodeInfo).GetPooledConnectWithHealthCheck).
+			Return(mockConn, nil).
+			Build()
+
+		// Mock `CheckDownAfterNoAlive` 从库没有超过下线阈值
+		mockey.Mock((*NodeInfo).ShouldDownAfterNoAlive).
+			Return(false, int64(10)).
+			Build()
+
+		// Mock `GetMasterStatus` 主库没有宕机
+		mockey.Mock((*Slice).GetMasterStatus).
+			Return(StatusUp, nil).
+			Build()
+
+		// Mock `checkSlaveSyncStatus` 从库同步延迟超过阈值
+		mockey.Mock(checkSlaveSyncStatus).
+			Return(false, fmt.Errorf("sync delay exceeded")).
+			Build()
+
+		// 执行 checkBackendSlaveStatus
+		ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
+		defer cancel()
+
+		mockSlice.checkBackendSlaveStatus(ctx, slave, "test_ns", 10, 30)
+
+		// Expect slave status to be down due to sync delay
+		for _, node := range slave.Nodes {
+			assert.Equal(t, StatusDown, node.GetStatus())
+		}
+	})
 }

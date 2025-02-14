@@ -31,6 +31,7 @@ package backend
 import (
 	"context"
 	"fmt"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,53 +67,78 @@ func (s *StatusCode) String() string {
 		r = "StatusDown"
 	}
 
-	return fmt.Sprintf(r)
+	return r
 }
 
 type DBInfo struct {
-	ConnPool       []ConnectionPool
-	Nodes          []NodeInfo // 存储所有节点的详细信息，索引对应 ConnPool
-	LocalBalancer  *balancer  // 仅包含数据中心与代理匹配的节点
-	RemoteBalancer *balancer  // 包含除本机外的所有其他数据节点
-	GlobalBalancer *balancer  // 包含所有节点
-
-	StatusMap *sync.Map
-	// 用于记录连续错误次数，键为索引，值为错误计数
-	ConsecutiveErrors *sync.Map
+	Nodes          []*NodeInfo // 节点信息
+	LocalBalancer  *balancer   // 仅包含数据中心与代理匹配的节点
+	RemoteBalancer *balancer   // 包含除本机外的所有其他数据节点
+	GlobalBalancer *balancer   // 包含所有节点
 }
 
+// GetNode 根据索引返回 `NodeInfo` 结构
+func (d *DBInfo) GetNode(index int) (*NodeInfo, error) {
+	if index < 0 || index >= len(d.Nodes) {
+		return nil, fmt.Errorf("index %d out of range", index)
+	}
+	return d.Nodes[index], nil
+}
+
+// 更新 `NodeInfo` 结构
 type NodeInfo struct {
-	Address    string // 节点地址，如 "c3-mysql-test00.bj:3306"
-	Datacenter string // 节点所属的数据中心，例如 "c3"、"c4"
-	Weight     int    // 该节点的负载均衡权重
+	sync.RWMutex                // 保护 `Status`
+	Address      string         // 节点地址
+	Datacenter   string         // 节点所属的数据中心
+	Weight       int            // 该节点的负载均衡权重
+	ConnPool     ConnectionPool // 该节点的连接池
+	Status       StatusCode     // 该节点状态`status` 只能通过`GetStatus` 和 `SetStatus` 访问
 }
 
-func (dbi *DBInfo) GetStatus(index int) (StatusCode, error) {
-	if index > len(dbi.ConnPool) {
-		return StatusDown, fmt.Errorf("index:%d out of range", index)
+// GetStatus 使用读锁，允许并发读取，提高性能
+func (n *NodeInfo) GetStatus() StatusCode {
+	n.RLock()
+	defer n.RUnlock()
+	return n.Status
+}
+
+// IsStatusUp 直接判断该节点是否为 UP
+func (n *NodeInfo) IsStatusUp() bool {
+	n.RLock()
+	defer n.RUnlock()
+	return n.Status == StatusUp
+}
+
+func (n *NodeInfo) IsStatusDown() bool {
+	n.RLock()
+	defer n.RUnlock()
+	return n.Status == StatusDown
+}
+
+// SetStatus 使用写锁，保证状态更新的线程安全
+func (n *NodeInfo) SetStatus(status StatusCode) {
+	n.Lock()
+	defer n.Unlock()
+	n.Status = status
+}
+
+// NodeInfo 封装获取 PooledConnect 的方法
+func (n *NodeInfo) GetPooledConnectWithHealthCheck(name string, healthCheckSql string) (PooledConnect, error) {
+	pc, err := checkInstanceStatus(name, n.ConnPool, healthCheckSql)
+	if err != nil {
+		return nil, err
 	}
-	if value, ok := dbi.StatusMap.Load(index); ok {
-		return value.(StatusCode), nil
+	if pc == nil {
+		return nil, fmt.Errorf("get nil check conn")
 	}
-	return StatusDown, fmt.Errorf("can't get status of index:%d", index)
+	return pc, nil
 }
 
-func (dbi *DBInfo) SetStatus(index int, status StatusCode) {
-	dbi.StatusMap.Store(index, status)
-}
-
-func (dbi *DBInfo) IncrementErrorCount(index int) {
-	count, _ := dbi.ConsecutiveErrors.LoadOrStore(index, 0)
-	dbi.ConsecutiveErrors.Store(index, count.(int)+1)
-}
-
-func (dbi *DBInfo) GetErrorCount(index int) int {
-	count, _ := dbi.ConsecutiveErrors.LoadOrStore(index, 0)
-	return count.(int)
-}
-
-func (dbi *DBInfo) ResetErrorCount(index int) {
-	dbi.ConsecutiveErrors.Store(index, 0)
+// 检查是否超过下线阈值
+// bool 表示是否需要将节点设为 StatusDown, int64 表示自 LastChecked 以来经过的时间，以便在外部直接用于日志记录
+func (n *NodeInfo) ShouldDownAfterNoAlive(downAfterNoAlive int) (bool, int64) {
+	elapsed := time.Now().Unix() - n.ConnPool.GetLastChecked()
+	return elapsed >= int64(downAfterNoAlive), elapsed
 }
 
 type IndexWeightList struct {
@@ -224,22 +250,29 @@ func (s *Slice) GetDirectConn(addr string) (*DirectConnection, error) {
 
 // GetMasterConn return a connection in master pool
 func (s *Slice) GetMasterConn() (PooledConnect, error) {
-	if v, _ := s.Master.StatusMap.Load(0); v != StatusUp {
-		return nil, fmt.Errorf("master:%s is Down", s.Cfg.Master)
+	// 取 Master 节点, ParseMaster 明确确保 s.Master != nil
+	node, err := s.Master.GetNode(0)
+	if err != nil {
+		return nil, fmt.Errorf("master node is not available, err: %v", err)
 	}
 
+	if !node.IsStatusUp() {
+		return nil, fmt.Errorf("master: %s is Down", node.Address)
+	}
+
+	// 获取连接
 	ctx := context.TODO()
-	return s.Master.ConnPool[0].Get(ctx)
+	return node.ConnPool.Get(ctx)
 }
 
 // GetMasterStatus return master status
 func (s *Slice) GetMasterStatus() (StatusCode, error) {
-	return s.Master.GetStatus(0)
-}
-
-// SetMasterStatus set master status
-func (s *Slice) SetMasterStatus(code StatusCode) {
-	s.Master.SetStatus(0, code)
+	// 取 Master 节点
+	node, err := s.Master.GetNode(0)
+	if err != nil {
+		return StatusDown, err
+	}
+	return node.GetStatus(), nil
 }
 
 // CheckStatus check slice instance status
@@ -252,106 +285,118 @@ func (s *Slice) CheckStatus(ctx context.Context, name string, downAfterNoAlive i
 func (s *Slice) checkBackendMasterStatus(ctx context.Context, name string, downAfterNoAlive int) {
 	defer func() {
 		if err := recover(); err != nil {
-			log.Fatal("[ns:%s, %s] check master status panic:%s", name, s.Cfg.Name, err)
+			log.Warn("[ns:%s, %s] check master status, panic: %v\n%s", name, s.Cfg.Name, err, debug.Stack())
 		}
 	}()
+
+	// 确保 Master 节点存在
+	if s.Master == nil || len(s.Master.Nodes) == 0 {
+		log.Warn("[ns:%s, %s] check master status, master node is empty", name, s.Cfg.Name)
+		return
+	}
+
+	ticker := time.NewTicker(time.Duration(PingPeriod) * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
-			log.Warn("[ns:%s, %s] check master status canceled", name, s.Cfg.Name)
+			log.Warn("[ns:%s, %s] check master status, context canceled", name, s.Cfg.Name)
 			return
-		case <-time.After(time.Duration(PingPeriod) * time.Second):
-			if len(s.Master.ConnPool) == 0 {
-				log.Warn("[ns:%s, %s] master is empty", name, s.Cfg.Name)
-				continue
-			}
-			cp := s.Master.ConnPool[0]
-			log.Debug("[ns:%s, %s:%s] start check master", name, s.Cfg.Name, cp.Addr())
-			_, err := checkInstanceStatus(name, cp, s.HealthCheckSql)
+		case <-ticker.C:
+			node := s.Master.Nodes[0]
+			log.Debug("[ns:%s, %s:%s] check master status, start", name, s.Cfg.Name, node.Address)
 
-			if time.Now().Unix()-cp.GetLastChecked() >= int64(downAfterNoAlive) {
-				s.SetMasterStatus(StatusDown)
-				log.Warn("[ns:%s, %s:%s] check master StatusDown for %ds. err: %s", name, s.Cfg.Name, cp.Addr(), time.Now().Unix()-cp.GetLastChecked(), err)
-				continue
-			}
+			// 1. Master 连接池健康检查
+			conn, err := node.GetPooledConnectWithHealthCheck(name, s.HealthCheckSql)
 			if err != nil {
-				log.Warn("[ns:%s, %s:%s] check master error:%s", name, s.Cfg.Name, cp.Addr(), err)
+				log.Warn("[ns:%s, %s:%s] check master status, Get master conn error: %v, last check time: %s", name, s.Cfg.Name, node.Address, err, time.Unix(node.ConnPool.GetLastChecked(), 0).Format(mysql.TimeFormat))
+				// 连接池可能因为网络原因导致Ping失败，这个时候继续向下检查
 			}
-			oldStatus, err := s.GetMasterStatus()
-			if err != nil {
-				log.Warn("[ns:%s, %s:%s] get master master status error:%s", name, s.Cfg.Name, cp.Addr(), err)
+
+			// 2. 判断 Master 是否要下线
+			shouldSetDown, elapsed := node.ShouldDownAfterNoAlive(downAfterNoAlive)
+			if shouldSetDown {
+				node.SetStatus(StatusDown)
+				log.Warn("[ns:%s, %s:%s] check master status, Marked as StatusDown for %ds", name, s.Cfg.Name, node.Address, elapsed)
 				continue
 			}
 
-			s.SetMasterStatus(StatusUp)
-			if oldStatus == StatusDown {
-				log.Warn("[ns:%s, %s:%s] check master StatusUp", name, s.Cfg.Name, cp.Addr())
+			// 3. 更新 Master 状态
+			if conn != nil && node.IsStatusDown() {
+				node.SetStatus(StatusUp)
+				log.Warn("[ns:%s, %s:%s] check master status, Master recovered and is now StatusUp", name, s.Cfg.Name, node.Address)
 			}
 		}
 	}
 }
 
-func (s *Slice) checkBackendSlaveStatus(ctx context.Context, db *DBInfo, name string, downAfterNoAlive int, secondBehindMaster int) {
+func (s *Slice) checkBackendSlaveStatus(ctx context.Context, slave *DBInfo, name string, downAfterNoAlive int, secondBehindMaster int) {
 	defer func() {
 		if err := recover(); err != nil {
-			log.Fatal("[ns:%s, %s] check slave status panic:%s", name, s.Cfg.Name, err)
+			log.Warn("[ns:%s, %s] check slave status, panic: %v\n%s", name, s.Cfg.Name, err, debug.Stack())
 		}
 	}()
+	// 先检查 `slave` 是否 `nil` 或者 `slave.Nodes` 是否为空
+	if slave == nil || len(slave.Nodes) == 0 {
+		log.Warn("[ns:%s, %s] check slave status, slave DBInfo is nil or no slave nodes", name, s.Cfg.Name)
+		return
+	}
+
+	ticker := time.NewTicker(time.Duration(PingPeriod) * time.Second)
+	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Warn("[ns:%s, %s] check slave status canceled", name, s.Cfg.Name)
+			log.Warn("[ns:%s, %s] check slave status, context canceled", name, s.Cfg.Name)
 			return
-		case <-time.After(time.Duration(PingPeriod) * time.Second):
-			for idx, cp := range db.ConnPool {
-				log.Debug("[ns:%s, %s:%s] start check slave", name, s.Cfg.Name, cp.Addr())
+		case <-ticker.C:
+			for _, node := range slave.Nodes {
+				log.Debug("[ns:%s, %s:%s] check slave status, start", name, s.Cfg.Name, node.Address)
 
-				oldStatus, err := db.GetStatus(idx)
+				// 1. 从库连接池健康检查
+				conn, err := node.GetPooledConnectWithHealthCheck(name, s.HealthCheckSql)
 				if err != nil {
-					log.Warn("[ns:%s, %s:%s] get slave status error:%s", name, s.Cfg.Name, cp.Addr(), err)
-					continue
+					log.Warn("[ns:%s, %s:%s] check slave status, Get slave conn error: %v, last check time: %s", name, s.Cfg.Name, node.Address, err, time.Unix(node.ConnPool.GetLastChecked(), 0).Format(mysql.TimeFormat))
+					// 连接池可能因为网络原因导致Ping失败，这个时候继续向下检查
 				}
-				pc, err := checkInstanceStatus(name, cp, s.HealthCheckSql)
-				// check slave status
-				if time.Now().Unix()-cp.GetLastChecked() >= int64(downAfterNoAlive) {
-					db.SetStatus(idx, StatusDown)
-					log.Warn("[ns:%s, %s:%s] check slave StatusDown for %ds. err:%s", name, s.Cfg.Name, cp.Addr(), time.Now().Unix()-cp.GetLastChecked(), err)
+
+				// 2. 判断是否需要下线
+				shouldSetDown, elapsed := node.ShouldDownAfterNoAlive(downAfterNoAlive)
+				if shouldSetDown {
+					node.SetStatus(StatusDown)
+					log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusDown for %ds", name, s.Cfg.Name, node.Address, elapsed)
 					continue
 				}
 
-				// check master status, if master is down, we should not check slave sync status,cause slave io thread is close
-				if masterStatus, err := s.GetMasterStatus(); err != nil {
-					log.Warn("[ns:%s, %s:%s] get master status error:%s", name, s.Cfg.Name, cp.Addr(), err)
-					continue
-				} else if masterStatus == StatusDown {
-					// set slave status to up to avoid slave down when master is down on startup
-					db.SetStatus(idx, StatusUp)
-					if oldStatus == StatusDown {
-						log.Warn("[ns:%s, %s:%s] check slave StatusUp", name, s.Cfg.Name, cp.Addr())
+				// 3. 获取主库状态
+				masterStatus, err := s.GetMasterStatus()
+				if err != nil || masterStatus == StatusDown {
+					log.Warn("[ns:%s, %s:%s] check slave status, Skipping slave sync check, get master status: %s, get master err: %v", name, s.Cfg.Name, node.Address, masterStatus.String(), err)
+					if node.IsStatusDown() {
+						node.SetStatus(StatusUp)
+						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp, Slave recovered from down, (case master down)", name, s.Cfg.Name, node.Address)
 					}
 					continue
 				}
 
-				if pc == nil {
-					errInfo := "get nil conn"
+				// 5. 检查从库同步状态
+				alive, err := checkSlaveSyncStatus(conn, secondBehindMaster)
+				if !alive {
+					node.SetStatus(StatusDown)
 					if err != nil {
-						errInfo += ", " + err.Error()
+						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusDown due to sync thread failure: %v", name, s.Cfg.Name, node.Address, err)
+					} else {
+						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusDown due to excessive replication delay", name, s.Cfg.Name, node.Address)
 					}
-					log.Warn("[ns:%s, %s:%s] skip check slave sync, %s", name, s.Cfg.Name, cp.Addr(), errInfo)
 					continue
 				}
 
-				if alive, err := checkSlaveSyncStatus(pc, secondBehindMaster); !alive {
-					db.SetStatus(idx, StatusDown)
-					log.Warn("[ns:%s, %s:%s] check slave sync error:%s", name, s.Cfg.Name, cp.Addr(), err)
-					continue
-				}
-
-				db.SetStatus(idx, StatusUp)
-				db.ResetErrorCount(idx) // 探活成功，错误计数置0
-				if oldStatus == StatusDown {
-					log.Warn("[ns:%s, %s:%s] check slave StatusUp", name, s.Cfg.Name, cp.Addr())
+				// 6. 所有检查通过，最终确认 `StatusUp`,如果 pc == nil,说明连接池可能因为网络原因断开，这个时候保持原状态, 直到通过 ShouldDownAfterNoAlive 超过阈值下线
+				if conn != nil && node.IsStatusDown() {
+					node.SetStatus(StatusUp)
+					log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp, Slave recovered from down, (case master up)", name, s.Cfg.Name, node.Address)
 				}
 			}
 		}
@@ -361,7 +406,7 @@ func (s *Slice) checkBackendSlaveStatus(ctx context.Context, db *DBInfo, name st
 func checkInstanceStatus(name string, cp ConnectionPool, healthCheckSql string) (PooledConnect, error) {
 	defer func() {
 		if err := recover(); err != nil {
-			log.Fatal("[ns:%s, %s] check instance status panic:%s", name, cp.Addr(), err)
+			log.Fatal("[ns:%s, %s] check instance status panic:%s", name, cp.Addr(), err, debug.Stack())
 		}
 	}()
 
@@ -398,20 +443,19 @@ func checkInstanceStatus(name string, cp ConnectionPool, healthCheckSql string) 
 	return pc, nil
 }
 
-func allSlaveIsOffline(SlaveStatusMap *sync.Map) bool {
-	var result = true
-	SlaveStatusMap.Range(func(k, v interface{}) bool {
-		if v == StatusUp {
-			result = false
-			return false
+func allSlaveIsOffline(slavesInfo *DBInfo) bool {
+	for _, node := range slavesInfo.Nodes {
+		if node.IsStatusUp() {
+			return false // 只要有一个 Slave 处于 UP 状态，则返回 false
 		}
-		return true
-	})
-
-	return result
+	}
+	return true // 所有 Slave 都 Down，则返回 true
 }
 
 func (dbInfo *DBInfo) InitBalancers(proxyDatacenter string) error {
+	if len(dbInfo.Nodes) == 0 {
+		return nil
+	}
 	// 1️ 获取本地、远程和全局的索引+权重
 	local, remote, global := dbInfo.getIndicesAndWeights(proxyDatacenter)
 
@@ -441,7 +485,7 @@ func (dbInfo *DBInfo) InitBalancers(proxyDatacenter string) error {
 
 func (s *Slice) GetSlaveConn(slavesInfo *DBInfo, localSlaveReadPriority int) (PooledConnect, error) {
 	// 如果整个 `ConnPool` 为空，或者所有节点都宕机，则直接返回错误
-	if len(slavesInfo.ConnPool) == 0 || allSlaveIsOffline(slavesInfo.StatusMap) {
+	if len(slavesInfo.Nodes) == 0 || allSlaveIsOffline(slavesInfo) {
 		return nil, errors.ErrNoSlaveDB
 	}
 
@@ -494,38 +538,23 @@ func (s *Slice) getConnFromBalancer(slavesInfo *DBInfo, bal *balancer) (PooledCo
 		if err != nil {
 			return nil, fmt.Errorf("failed to get next index from balancer: %v", err)
 		}
-		// 检查该节点是否健康
-		if status, err := slavesInfo.GetStatus(index); err != nil || status == StatusDown {
-			continue
+		if node, _ := slavesInfo.GetNode(index); node != nil && node.IsStatusUp() {
+			return s.getConnWithFuse(node)
 		}
-		// 找到一个健康节点，返回连接（并处理熔断逻辑）
-		return s.getConnWithFuse(slavesInfo, index)
 	}
 	return nil, fmt.Errorf("no healthy connection available from selected balancer")
 }
 
 // getConnWithFuse 封装从连接池获取连接并处理熔断的逻辑
-func (s *Slice) getConnWithFuse(slavesInfo *DBInfo, idx int) (PooledConnect, error) {
-	pc, err := slavesInfo.ConnPool[idx].Get(context.TODO())
+func (s *Slice) getConnWithFuse(node *NodeInfo) (PooledConnect, error) {
+	pc, err := node.ConnPool.Get(context.TODO())
 	if err != nil {
-		// 如果没有开启熔断 或者类型不是连接超时类型的错误直接返回错误
-		if s.MaxSlaveFuseErrorCount == 0 || !mysql.IsConnectionTimeoutError(err) {
-			log.Warn("Failed to get connection from pool (index: %d): %v", idx, err)
+		// 非超时错误，直接返回
+		if !mysql.IsConnectionTimeoutError(err) {
+			log.Warn("Failed to get connection from pool (%s): %v", node.Address, err)
 			return pc, err
 		}
-		// 增加错误计数
-		slavesInfo.IncrementErrorCount(idx)
-		// 检查是否需要熔断
-		if slavesInfo.GetErrorCount(idx) >= s.MaxSlaveFuseErrorCount {
-			slavesInfo.SetStatus(idx, StatusDown)
-			log.Warn("Fuse triggered for pool (index: %d). Set status to StatusDown.", idx)
-		}
 		return nil, err
-	}
-
-	// 如果获取连接成功，且有熔断机制，则重置错误计数
-	if s.MaxSlaveFuseErrorCount > 0 {
-		slavesInfo.ResetErrorCount(idx)
 	}
 	return pc, nil
 }
@@ -538,140 +567,171 @@ func (s *Slice) Close() error {
 	defer s.Unlock()
 
 	var wg sync.WaitGroup
-	closePool := func(connPools []ConnectionPool) {
+	closePool := func(nodes []*NodeInfo) {
 		defer wg.Done()
-		for i := range connPools {
-			connPools[i].Close()
+		for i := range nodes {
+			nodes[i].ConnPool.Close()
 		}
 	}
 	// close master
 	wg.Add(1)
-	go closePool(s.Master.ConnPool)
+	go closePool(s.Master.Nodes)
 
 	// close slaves
 	wg.Add(1)
-	go closePool(s.Slave.ConnPool)
+	go closePool(s.Slave.Nodes)
 
 	// close statistic slaves
 	wg.Add(1)
-	go closePool(s.StatisticSlave.ConnPool)
+	go closePool(s.StatisticSlave.Nodes)
 
 	wg.Wait()
 	return nil
 }
 
-// ParseMaster create master connection pool
-func (s *Slice) ParseMaster(masterStr string) error {
-	if len(masterStr) == 0 {
-		return errors.ErrNoMasterDB
+// ParseMaster 解析主库信息，并初始化负载均衡器
+func (s *Slice) ParseMaster(masterAddr string) error {
+	s.Master = &DBInfo{Nodes: []*NodeInfo{}} // 确保 Master 不为 nil
+	if len(masterAddr) == 0 {
+		return nil
 	}
-	idleTimeout, err := util.Int2TimeDuration(s.Cfg.IdleTimeout)
+
+	dbInfo, err := s.parseDBInfo([]string{masterAddr})
 	if err != nil {
 		return err
 	}
-	dc, err := util.GetInstanceDatacenter(masterStr)
-	if err != nil {
-		log.Warn("get master(%s) datacenter err:%s,will use default proxy datacenter.", masterStr, err)
-		dc = s.ProxyDatacenter
-	}
-	connectionPool := NewConnectionPool(masterStr, s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability, s.Cfg.InitConnect, dc, s.HandshakeTimeout)
-	if err := connectionPool.Open(); err != nil {
-		return err
+
+	// 初始化 `Balancer`
+	if err := dbInfo.InitBalancers(s.ProxyDatacenter); err != nil {
+		return fmt.Errorf("failed to initialize master balancer: %w", err)
 	}
 
-	status := &sync.Map{}
-	status.Store(0, StatusUp)
-
-	slaveConsecutiveErrors := &sync.Map{}
-	slaveConsecutiveErrors.Store(0, 0)
-
-	s.Master = &DBInfo{
-		ConnPool:          []ConnectionPool{connectionPool},
-		StatusMap:         status,
-		ConsecutiveErrors: slaveConsecutiveErrors,
-	}
+	s.Master = dbInfo
 	return nil
 }
 
-// ParseSlave create connection pool of slaves
-// (127.0.0.1:3306@2,192.168.0.12:3306@3)
-func (s *Slice) ParseSlave(slaves []string) (*DBInfo, error) {
-	if len(slaves) == 0 {
-		return &DBInfo{}, nil
+// ParseSlave 解析从库信息，并初始化负载均衡器
+func (s *Slice) ParseSlave(slaveAddrs []string) error {
+	// 确保 Slave 不为 nil
+	s.Slave = &DBInfo{Nodes: []*NodeInfo{}}
+	if len(slaveAddrs) == 0 {
+		return nil
+	}
+
+	dbInfo, err := s.parseDBInfo(slaveAddrs)
+	if err != nil {
+		return err
+	}
+
+	// 初始化 `Balancer`
+	if err := dbInfo.InitBalancers(s.ProxyDatacenter); err != nil {
+		return fmt.Errorf("failed to initialize slave balancer: %w", err)
+	}
+
+	s.Slave = dbInfo
+	return nil
+}
+
+// ParseStatisticSlave 解析统计从库信息（权重一般为 1）
+func (s *Slice) ParseStatisticSlave(statisticSlaveAddrs []string) error {
+	// 确保 StatisticSlave 不为 nil
+	s.StatisticSlave = &DBInfo{Nodes: []*NodeInfo{}}
+	if len(statisticSlaveAddrs) == 0 {
+		return nil
+	}
+
+	dbInfo, err := s.parseDBInfo(statisticSlaveAddrs)
+	if err != nil {
+		return err
+	}
+
+	// 初始化 `Balancer`
+	if err := dbInfo.InitBalancers(s.ProxyDatacenter); err != nil {
+		return fmt.Errorf("failed to initialize statistic slave balancer: %w", err)
+	}
+
+	s.StatisticSlave = dbInfo
+	return nil
+}
+
+// parseDBInfo 解析数据库节点信息，并返回 `DBInfo`,解析权重时：
+// 如果解析失败（非法字符，如 @&, @+, @-），默认权重 1。
+// 如果解析成功但 权重 < 0，默认权重 1。
+// 如果解析成功但 权重 = 0，默认 权重 0。
+// 其他情况下，使用解析出的权重。注意，`0` 权重的节点并没有被过滤。
+func (s *Slice) parseDBInfo(dbAddrs []string) (*DBInfo, error) {
+	if len(dbAddrs) == 0 {
+		return &DBInfo{Nodes: []*NodeInfo{}}, nil // 确保 `Nodes` 为空 slice，而不是 `nil`
 	}
 
 	var err error
-	var weight int
+	nodes := make([]*NodeInfo, 0, len(dbAddrs))
 
-	count := len(slaves)
-	connPool := make([]ConnectionPool, 0, count)
-	nodes := make([]NodeInfo, 0, count)
-
-	//parse addr and weight
-	for i := 0; i < count; i++ {
-		if slaves[i] == "" {
+	for _, addr := range dbAddrs {
+		if addr == "" {
 			continue
 		}
-		// slave[i] 格式: c3-mysql-test00.bj:3306@10#bj
+
+		// 解析数据中心和权重
 		dc := ""
-		addrAndWeightDatacenter := strings.Split(slaves[i], datacenterSplit)
+		addrAndWeightDatacenter := strings.Split(addr, datacenterSplit) // 格式: "host:port@权重#数据中心"
 		if len(addrAndWeightDatacenter) == 2 {
-			dc = addrAndWeightDatacenter[1]
-			slaves[i] = addrAndWeightDatacenter[0]
+			dc = addrAndWeightDatacenter[1] // 提取数据中心
+			addr = addrAndWeightDatacenter[0]
 		}
 
-		addrAndWeight := strings.Split(slaves[i], weightSplit)
+		// 解析权重（默认值为 `1`）
+		weight := 1
+		addrAndWeight := strings.Split(addr, weightSplit) // 格式: "host:port@权重"
 		if len(addrAndWeight) == 2 {
-			weight, err = strconv.Atoi(addrAndWeight[1])
+			parsedWeight, err := strconv.Atoi(addrAndWeight[1])
 			if err != nil {
-				return nil, err
+				log.Warn("parseDBInfo Error, Invalid weight format for %s: %v. defaulting to weight=1", addr, err)
+				weight = 1
+			} else if parsedWeight < 0 {
+				log.Warn("parseDBInfo Error, Negative or zero weight for %s. defaulting to weight=1", addr)
+				weight = 1
+			} else {
+				weight = parsedWeight
 			}
-		} else {
-			weight = 1
 		}
 
-		idleTimeout, err := util.Int2TimeDuration(s.Cfg.IdleTimeout)
-		if err != nil {
-			return nil, err
-		}
-		// if dc not config, get hostname prefix and suffix
+		// 获取数据中心（如果 `#` 解析不到，则调用 `util.GetInstanceDatacenter`）
 		if dc == "" {
 			dc, err = util.GetInstanceDatacenter(addrAndWeight[0])
 			if err != nil {
-				log.Warn("get master(%s) datacenter err:%s,will use default proxy datacenter.", addrAndWeight[0], err)
+				log.Warn("get datacenter failed for %s: %s, using default proxy datacenter.", addrAndWeight[0], err)
 				dc = s.ProxyDatacenter
 			}
 		}
 
-		cp := NewConnectionPool(addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity, s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID, s.Cfg.Capability, s.Cfg.InitConnect, dc, s.HandshakeTimeout)
+		// 创建连接池
+		idleTimeout, err := util.Int2TimeDuration(s.Cfg.IdleTimeout)
+		if err != nil {
+			return nil, err
+		}
+
+		cp := NewConnectionPool(
+			addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity,
+			s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID,
+			s.Cfg.Capability, s.Cfg.InitConnect, dc, s.HandshakeTimeout,
+		)
+
 		if err = cp.Open(); err != nil {
 			return nil, err
 		}
-		connPool = append(connPool, cp)
-		nodes = append(nodes, NodeInfo{
+
+		// 创建 `NodeInfo`
+		nodes = append(nodes, &NodeInfo{
 			Address:    addrAndWeight[0],
 			Datacenter: dc,
 			Weight:     weight,
+			ConnPool:   cp,
+			Status:     StatusUp, // 默认 `Up`
 		})
 	}
 
-	if len(nodes) == 0 {
-		return &DBInfo{}, nil
-	}
-
-	StatusMap := &sync.Map{}
-	slaveConsecutiveErrors := &sync.Map{}
-	for idx := range connPool {
-		StatusMap.Store(idx, StatusUp)
-		slaveConsecutiveErrors.Store(idx, 0)
-	}
-
-	return &DBInfo{
-		ConnPool:          connPool,
-		Nodes:             nodes,
-		StatusMap:         StatusMap,
-		ConsecutiveErrors: slaveConsecutiveErrors,
-	}, nil
+	return &DBInfo{Nodes: nodes}, nil
 }
 
 // SetCharsetInfo set charset
@@ -694,7 +754,7 @@ type SlaveStatus struct {
 func checkSlaveSyncStatus(pc PooledConnect, secondsBehindMaster int) (bool, error) {
 	defer func() {
 		if err := recover(); err != nil {
-			log.Fatal("check slave sync status panic:%s", err)
+			log.Warn("check slave sync status panic: %v", err)
 		}
 	}()
 
@@ -703,24 +763,32 @@ func checkSlaveSyncStatus(pc PooledConnect, secondsBehindMaster int) (bool, erro
 		return true, nil
 	}
 
+	if pc == nil {
+		return true, fmt.Errorf("check slave sync status error: pc is nil")
+	}
+
 	skipCheck, slaveStatus, err := GetSlaveStatus(pc)
 	if err != nil {
-		return false, fmt.Errorf("get slave status error:%s", err)
+		return false, fmt.Errorf("check slave sync status error: %v", err)
 	}
 	// if suspectedMaster is true, we think this is a master
 	if skipCheck {
 		return true, nil
 	}
 
+	// 如果 SecondsBehindMaster 超出阈值，标记 `StatusDown`
 	if slaveStatus.SecondsBehindMaster > uint64(secondsBehindMaster) {
-		return false, fmt.Errorf("SecondsBehindMaster(%d) larger than %d", slaveStatus.SecondsBehindMaster, secondsBehindMaster)
+		log.Warn("Slave has sync delay: SecondsBehindMaster=%d, Threshold=%d - marking as StatusDown", slaveStatus.SecondsBehindMaster, secondsBehindMaster)
+		return false, nil
 	}
 
+	// 处理同步线程状态异常（I/O 或 SQL 线程未运行），直接标记为 `StatusDown`
 	if slaveStatus.SlaveIORunning != "Yes" {
-		return false, fmt.Errorf("io thread not running")
+		return false, fmt.Errorf("slave sync threads not running, IO=%s", slaveStatus.SlaveIORunning)
 	}
+
 	if slaveStatus.SlaveSQLRunning != "Yes" {
-		return false, fmt.Errorf("sql thread not running")
+		return false, fmt.Errorf("slave sync threads not running, SQL=%s", slaveStatus.SlaveSQLRunning)
 	}
 
 	return true, nil

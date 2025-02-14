@@ -49,8 +49,9 @@ const (
 	defaultMaxSqlResultSize  = 10000 // 默认为10000, 限制查询返回的结果集大小不超过该阈值
 	defaultTimeAfterNoAlive  = 32    // 每间隔4秒进行一次检查， 默认 32秒后会探测到实例失败
 	// 认为Slave已下线，如果需要快速判定状态，可减少该值
-	defaultMaxClientConnections          = 100000000 //Big enough
-	defaultMaxConsecutiveSlaveErrorCount = 512
+	defaultMaxClientConnections = 100000000 //Big enough
+	defaultFuseWindowSize       = 5
+	defaultFuseWindowThreshold  = 512
 )
 
 // UserProperty means runtime user properties
@@ -215,11 +216,6 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 	// not configurable yet, use default
 	if namespace.downAfterNoAlive == 0 {
 		namespace.downAfterNoAlive = defaultTimeAfterNoAlive
-	}
-
-	// The maximum number of consecutive slave errors is not configured. The default value is used.
-	if namespace.maxConsecutiveSlaveErrorCount == 0 {
-		namespace.maxConsecutiveSlaveErrorCount = defaultMaxConsecutiveSlaveErrorCount
 	}
 
 	namespace.secondsBehindMaster = namespaceConfig.SecondsBehindMaster
@@ -588,20 +584,17 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	}
 
 	// parse slaves
-	slaveInfo, err := s.ParseSlave(cfg.Slaves)
+	err = s.ParseSlave(cfg.Slaves)
 	if err != nil {
 		return nil, err
 	}
-	slaveInfo.InitBalancers(s.ProxyDatacenter)
-	s.Slave = slaveInfo
 
 	// parse statistic slaves
-	statisticSalve, err := s.ParseSlave(cfg.StatisticSlaves)
+	err = s.ParseStatisticSlave(cfg.StatisticSlaves)
 	if err != nil {
 		return nil, err
 	}
-	statisticSalve.InitBalancers(s.ProxyDatacenter)
-	s.StatisticSlave = statisticSalve
+
 	return s, nil
 }
 

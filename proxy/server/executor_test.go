@@ -17,11 +17,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/bytedance/mockey"
 	"reflect"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/bytedance/mockey"
 
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/log"
@@ -146,9 +147,25 @@ func TestExecute(t *testing.T) {
 	slice1Status := &sync.Map{}
 	slice1Status.Store(0, backend.StatusUp)
 
-	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Master = &backend.DBInfo{ConnPool: []backend.ConnectionPool{slice0MasterPool}, StatusMap: slice0Status}
+	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Master = &backend.DBInfo{
+		Nodes: []*backend.NodeInfo{
+			{
+				Address:  "127.0.0.1:3306",
+				ConnPool: slice0MasterPool,
+				Status:   backend.StatusUp,
+			},
+		},
+	}
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-0"].Slave = &backend.DBInfo{}
-	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Master = &backend.DBInfo{ConnPool: []backend.ConnectionPool{slice1MasterPool}, StatusMap: slice1Status}
+	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Master = &backend.DBInfo{
+		Nodes: []*backend.NodeInfo{
+			{
+				Address:  "127.0.0.1:3307",
+				ConnPool: slice1MasterPool,
+				Status:   backend.StatusUp,
+			},
+		},
+	}
 	se.manager.GetNamespace("test_executor_namespace").slices["slice-1"].Slave = &backend.DBInfo{}
 
 	expectResult1 := &mysql.Result{}
