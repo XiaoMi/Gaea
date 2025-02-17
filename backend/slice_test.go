@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util"
 	"github.com/bytedance/mockey"
@@ -86,19 +87,30 @@ func TestParseDBInfo(t *testing.T) {
 	for _, tt := range testCases {
 		t.Run(tt.name, func(t *testing.T) {
 			s := new(Slice)
-			dbInfo, err := s.parseDBInfo(tt.addrs)
-			fmt.Println(err)
+			err := s.ParseSlave(tt.addrs)
+			assert.NoError(t, err)
+			assert.NotNil(t, s.Slave)
+			err = s.ParseMonitorSlave(tt.addrs)
+			assert.NoError(t, err)
+			assert.NotNil(t, s.MonitorSlave)
+
+			slave := s.Slave
+			monitorSlave := s.MonitorSlave
 			if tt.expectErr {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
-				assert.NotNil(t, dbInfo)
-				assert.Equal(t, len(tt.expectAddrs), len(dbInfo.Nodes))
+				assert.NotNil(t, s.Slave)
+				assert.Equal(t, len(tt.expectAddrs), len(s.Slave.Nodes))
 
 				for i := range tt.expectAddrs {
-					assert.Equal(t, tt.expectAddrs[i], dbInfo.Nodes[i].Address)
-					assert.Equal(t, tt.expectDatacenters[i], dbInfo.Nodes[i].Datacenter)
-					assert.Equal(t, tt.expectWeights[i], dbInfo.Nodes[i].Weight)
+					assert.Equal(t, tt.expectAddrs[i], slave.Nodes[i].Address)
+					assert.Equal(t, tt.expectDatacenters[i], slave.Nodes[i].Datacenter)
+					assert.Equal(t, tt.expectWeights[i], slave.Nodes[i].Weight)
+
+					assert.Equal(t, tt.expectAddrs[i], monitorSlave.Nodes[i].Address)
+					assert.Equal(t, tt.expectDatacenters[i], monitorSlave.Nodes[i].Datacenter)
+					assert.Equal(t, tt.expectWeights[i], monitorSlave.Nodes[i].Weight)
 				}
 			}
 		})
@@ -155,6 +167,63 @@ func TestParseSlave(t *testing.T) {
 			for i := range tt.expectAddrs {
 				assert.Equal(t, tt.expectAddrs[i], s.Slave.Nodes[i].Address)
 				assert.Equal(t, tt.expectDatacenters[i], s.Slave.Nodes[i].Datacenter)
+			}
+		})
+	}
+}
+
+func TestParseMonitorSlave(t *testing.T) {
+	testCases := []struct {
+		name              string
+		slaveAdders       []string
+		slaveStatus       []StatusCode
+		expectAddrs       []string
+		expectDatacenters []string
+	}{
+		{
+			name:              "test simple",
+			slaveAdders:       []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			expectAddrs:       []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			expectDatacenters: []string{"c3", "c3", "c4"},
+		},
+		{
+			name:              "test simple 2",
+			slaveAdders:       []string{"c3-mysql-test00:3306", "c3-mysql-t:3308", "c4-my:3310"},
+			expectAddrs:       []string{"c3-mysql-test00:3306", "c3-mysql-t:3308", "c4-my:3310"},
+			expectDatacenters: []string{"c3", "c3", "c4"},
+		},
+		{
+			name:              "test with weight",
+			slaveAdders:       []string{"c3-mysql-test00.bj:3306@10", "c3-mysql-test01.bj:3308@5", "c4-mysql-test02.bj:3310"},
+			expectAddrs:       []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			expectDatacenters: []string{"c3", "c3", "c4"},
+		},
+		{
+			name:              "test with weight and datacenter",
+			slaveAdders:       []string{"c3-mysql-test00.bj:3306@10#bj", "c3-mysql-test01.bj:3308@5#sgp", "c4-mysql-test02.bj:3310@3#c4"},
+			expectAddrs:       []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			expectDatacenters: []string{"bj", "sgp", "c4"},
+		},
+		{
+			name:              "test with datacenter",
+			slaveAdders:       []string{"c3-mysql-test00.bj:3306#bj", "c3-mysql-test01.bj:3308#sgp", "c4-mysql-test02.bj:3310#c4"},
+			expectAddrs:       []string{"c3-mysql-test00.bj:3306", "c3-mysql-test01.bj:3308", "c4-mysql-test02.bj:3310"},
+			expectDatacenters: []string{"bj", "sgp", "c4"},
+		},
+	}
+
+	mockCtl := gomock.NewController(t)
+	defer mockCtl.Finish()
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			s := new(Slice)
+			err := s.ParseMonitorSlave(tt.slaveAdders)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for i := range tt.expectAddrs {
+				assert.Equal(t, tt.expectAddrs[i], s.MonitorSlave.Nodes[i].ConnPool.Addr())
+				assert.Equal(t, tt.expectDatacenters[i], s.MonitorSlave.Nodes[i].Datacenter)
 			}
 		})
 	}
@@ -456,6 +525,7 @@ func TestGetSlaveConnWhenLocalSlaveReadClosed(t *testing.T) {
 	}
 
 }
+
 func TestGetSlaveConnWhenLocalSlaveReadPrefer(t *testing.T) {
 	testCases := []struct {
 		name                   string
@@ -1071,6 +1141,140 @@ func TestConcurrentGetSlaveConnWhenLocalSlaveReadPrefer(t *testing.T) {
 			// 校验失败的请求数
 			assert.Equal(t, actualError, tt.expectGetErrorCounts, fmt.Errorf("case: %s, actual error %d expect error %d",
 				tt.name, actualError, tt.expectGetErrorCounts))
+		})
+	}
+}
+
+func TestGetConn(t *testing.T) {
+	testCases := []struct {
+		name                   string
+		proxyDc                string
+		userType               int
+		fromSlave              bool
+		localSlaveReadPriority int
+		master                 string
+		masterStatus           StatusCode
+		slaveAddrs             []string
+		slaveStatus            []StatusCode
+		weights                []int
+		getCounts              int
+		expectAddrs            map[string]int // 预期每个连接地址被命中的次数
+		expectErr              int            // 预期的错误情况，0表示无错误
+	}{
+		{
+			name:                   "MonitorUser, fromSlave true, local slave up, should get slave connection",
+			proxyDc:                "c3",
+			userType:               models.MonitorUser,
+			fromSlave:              true,
+			localSlaveReadPriority: LocalSlaveReadPrefer,
+			master:                 "c3-mysql-test00.bj:3319",
+			masterStatus:           StatusUp,
+			slaveAddrs:             []string{"c3-mysql-test00.bj:3329", "c3-mysql-test00.bj:3339"},
+			slaveStatus:            []StatusCode{StatusUp, StatusUp},
+			weights:                []int{1, 1},
+			getCounts:              6,
+			expectAddrs: map[string]int{
+				"c3-mysql-test00.bj:3329": 3,
+				"c3-mysql-test00.bj:3339": 3,
+			},
+			expectErr: 0,
+		},
+		{
+			name:                   "MonitorUser, fromSlave true, slave down, fallback to master",
+			proxyDc:                "c3",
+			userType:               models.MonitorUser,
+			fromSlave:              true,
+			localSlaveReadPriority: LocalSlaveReadForce,
+			master:                 "c3-mysql-test00.bj:3319",
+			masterStatus:           StatusUp,
+			slaveAddrs:             []string{"c3-mysql-test00.bj:3329", "c3-mysql-test00.bj:3339"},
+			weights:                []int{1, 1},
+			slaveStatus:            []StatusCode{StatusDown, StatusUp},
+			getCounts:              6,
+			expectAddrs: map[string]int{
+				"c3-mysql-test00.bj:3339": 6, // All connections should go to the available slave
+			},
+			expectErr: 0,
+		},
+		{
+			name:                   "MonitorUser, fromSlave true, all slaves down, master up, should return error",
+			proxyDc:                "c3",
+			userType:               models.MonitorUser,
+			fromSlave:              true,
+			localSlaveReadPriority: LocalSlaveReadForce,
+			master:                 "c3-mysql-test00.bj:3319",
+			masterStatus:           StatusUp,
+			slaveAddrs:             []string{"c3-mysql-test00.bj:3329", "c3-mysql-test00.bj:3339"},
+			weights:                []int{1, 1},
+			slaveStatus:            []StatusCode{StatusDown, StatusDown},
+			getCounts:              6,
+			expectAddrs: map[string]int{
+				"c3-mysql-test00.bj:3319": 6,
+			}, // No connection should be made
+			expectErr: 0, // Expecting 6 errors
+		},
+		{
+			name:                   "MonitorUser, fromSlave true, all slaves down, master down, should return error",
+			proxyDc:                "c3",
+			userType:               models.MonitorUser,
+			fromSlave:              true,
+			localSlaveReadPriority: LocalSlaveReadForce,
+			master:                 "c3-mysql-test00.bj:3319",
+			masterStatus:           StatusDown,
+			slaveAddrs:             []string{"c3-mysql-test00.bj:3329", "c3-mysql-test00.bj:3339"},
+			weights:                []int{1, 1},
+			slaveStatus:            []StatusCode{StatusDown, StatusDown},
+			getCounts:              6,
+			expectAddrs:            nil, // No connection should be made
+			expectErr:              6,   // Expecting 6 errors
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+
+			mockCtl := gomock.NewController(t)
+			defer mockCtl.Finish()
+
+			// 生成数据库连接池
+			master, err := generateDBInfoWithWeights(mockCtl, []string{tc.master}, []StatusCode{tc.masterStatus}, []int{1})
+			assert.Nil(t, err)
+			master.InitBalancers(tc.proxyDc)
+
+			// 生成数据库连接池
+			slave, err := generateDBInfoWithWeights(mockCtl, tc.slaveAddrs, tc.slaveStatus, tc.weights)
+			slave.InitBalancers(tc.proxyDc)
+			assert.Nil(t, err)
+
+			s := &Slice{
+				MonitorMaster: master,
+				MonitorSlave:  slave,
+			}
+			s.ProxyDatacenter = tc.proxyDc
+			var actualError int
+			var actualAddrs = make(map[string]int)
+			// Call GetConn the expected number of times and track the connection counts
+			for j := 0; j < tc.getCounts; j++ {
+				pc, err := s.GetConn(tc.fromSlave, tc.userType, tc.localSlaveReadPriority)
+				if err != nil {
+					actualError++
+				} else {
+					// Track the address of the connection
+					actualAddrs[pc.GetAddr()]++
+				}
+			}
+
+			// Check if the addresses match the expected values
+			for expectedAddr, expectedCount := range tc.expectAddrs {
+				if actualAddrs[expectedAddr] != expectedCount {
+					t.Errorf("for case %s, expected %d calls to %s, but got %d", tc.name, expectedCount, expectedAddr, actualAddrs[expectedAddr])
+				}
+			}
+
+			// Verify the number of errors
+			if actualError != tc.expectErr {
+				t.Errorf("for case %s, expected %d errors, but got %d", tc.name, tc.expectErr, actualError)
+			}
 		})
 	}
 }

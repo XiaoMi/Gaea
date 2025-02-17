@@ -595,6 +595,17 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 		return nil, err
 	}
 
+	// parser monitor master
+	err = s.ParseMonitorMaster(cfg.Master)
+	if err != nil {
+		return nil, fmt.Errorf("parse monitor master error: %v", err)
+	}
+
+	err = s.ParseMonitorSlave(cfg.Slaves)
+	if err != nil {
+		return nil, fmt.Errorf("parse monitor slave error: %v", err)
+	}
+
 	return s, nil
 }
 

@@ -33,6 +33,11 @@ const (
 	handshakeTimeoutDefault = 500 * time.Millisecond
 )
 
+const (
+	MonitorDefaultCapacity    = 3
+	MonitorDefaultMaxCapacity = 5
+)
+
 var (
 	// ErrConnectionPoolClosed means pool closed error
 	ErrConnectionPoolClosed = errors.New("connection pool is closed")

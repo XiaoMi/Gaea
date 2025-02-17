@@ -37,6 +37,8 @@ const (
 	ReadWriteSplit = 1
 	// StatisticUser 统计用户
 	StatisticUser = 1
+	// MonitorUser 监控
+	MonitorUser = 2
 )
 
 // User meand user struct

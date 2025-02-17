@@ -183,9 +183,13 @@ type Slice struct {
 	Cfg models.Slice
 	sync.RWMutex
 
-	Master                      *DBInfo
-	Slave                       *DBInfo
-	StatisticSlave              *DBInfo
+	Master         *DBInfo // 业务主库
+	Slave          *DBInfo // 业务从库
+	StatisticSlave *DBInfo // 业务统计用从库(StatisticUser)
+
+	MonitorMaster *DBInfo // 监控用户的主库
+	MonitorSlave  *DBInfo // 监控用户的从库
+
 	ProxyDatacenter             string
 	charset                     string
 	collationID                 mysql.CollationID
@@ -202,31 +206,73 @@ func (s *Slice) GetSliceName() string {
 
 // GetConn get backend connection from different node based on fromSlave and userType
 func (s *Slice) GetConn(fromSlave bool, userType int, localSlaveReadPriority int) (pc PooledConnect, err error) {
+	switch userType {
+	case models.MonitorUser:
+		// 监控用户，走监控专用连接池
+		return s.getMonitorConnection(fromSlave, localSlaveReadPriority)
+	case models.StatisticUser:
+		// 统计用户，走业务后端连接池
+		return s.getStatisticConnection(fromSlave, localSlaveReadPriority)
+	default:
+		// 普通用户: 走业务后端连接池
+		return s.getNormalConnection(fromSlave, localSlaveReadPriority)
+	}
+}
+
+// getStatisticConnection get connection from statistic slave, not to get from master, Most of the SQL queries for user statistics are slow queries
+func (s *Slice) getStatisticConnection(fromSlave bool, localSlaveReadPriority int) (pc PooledConnect, err error) {
+	// 从统计从库获取
+	pc, err = s.GetSlaveConn(s.StatisticSlave, localSlaveReadPriority)
+	if err != nil {
+		log.Warn("StatisticUser: Failed to get connection. fromSlave: %v, Error: %v, Didn't try to get from master", fromSlave, err)
+	}
+	return pc, err
+}
+
+func (s *Slice) getNormalConnection(fromSlave bool, localSlaveReadPriority int) (pc PooledConnect, err error) {
+	var fallbackToMaster bool
 	if fromSlave {
-		if userType == models.StatisticUser {
-			pc, err = s.GetSlaveConn(s.StatisticSlave, localSlaveReadPriority)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			pc, err = s.GetSlaveConn(s.Slave, localSlaveReadPriority)
-			if err != nil {
-				// 如果从库连接失败，根据配置决定是否回退
-				if s.ShouldFallbackToMasterOnSlaveFail() {
-					log.Warn("get connection from slave failed, try to get from master, error: %s", err.Error())
-					pc, err = s.GetMasterConn()
-				} else {
-					return nil, err
-				}
+		// 从普通从库获取
+		pc, err = s.GetSlaveConn(s.Slave, localSlaveReadPriority)
+		if err != nil {
+			// 如果获取从库连接失败，决定是否回退到主库
+			fallbackToMaster = s.ShouldFallbackToMasterOnSlaveFail()
+			if fallbackToMaster {
+				log.Warn("NormalUser: Failed to get slave connection. Error: %v, Trying to get master connection.", err)
+				pc, err = s.GetMasterConn()
 			}
 		}
 	} else {
+		// 不从库就直接主库
 		pc, err = s.GetMasterConn()
 	}
 	if err != nil {
-		log.Warn("get connection from backend failed, error: %s", err.Error())
+		log.Warn("NormalUser: Failed to get connection. fromSlave: %v, fallbackToMaster: %v, Error: %v", fromSlave, fallbackToMaster, err)
 	}
-	return
+	return pc, err
+}
+
+func (s *Slice) getMonitorConnection(fromSlave bool, localSlaveReadPriority int) (pc PooledConnect, err error) {
+	var fallbackToMaster bool
+	if fromSlave {
+		// 从监控从库获取连接
+		pc, err = s.GetSlaveConn(s.MonitorSlave, localSlaveReadPriority)
+		if err != nil {
+			// 如果获取从库连接失败，决定是否回退到主库
+			fallbackToMaster = s.ShouldFallbackToMasterOnSlaveFail()
+			if fallbackToMaster {
+				log.Warn("MonitorUser: Failed to get slave connection. Error: %v, Trying to get master connection.", err)
+				pc, err = s.GetMonitorMasterConn()
+			}
+		}
+	} else {
+		// 不从库就直接从主库获取
+		pc, err = s.GetMonitorMasterConn()
+	}
+	if err != nil {
+		log.Warn("MonitorUser: Failed to get connection. fromSlave: %v, fallbackToMaster: %v, Error: %v", fromSlave, fallbackToMaster, err)
+	}
+	return pc, err
 }
 
 func (s *Slice) ShouldFallbackToMasterOnSlaveFail() bool {
@@ -250,8 +296,24 @@ func (s *Slice) GetDirectConn(addr string) (*DirectConnection, error) {
 
 // GetMasterConn return a connection in master pool
 func (s *Slice) GetMasterConn() (PooledConnect, error) {
-	// 取 Master 节点, ParseMaster 明确确保 s.Master != nil
 	node, err := s.Master.GetNode(0)
+	if err != nil {
+		return nil, fmt.Errorf("master node is not available, err: %v", err)
+	}
+
+	if !node.IsStatusUp() {
+		return nil, fmt.Errorf("master: %s is Down", node.Address)
+	}
+
+	// 获取连接
+	ctx := context.TODO()
+	return node.ConnPool.Get(ctx)
+}
+
+// GetMonitorMasterConn return a connection in monitor master pool
+func (s *Slice) GetMonitorMasterConn() (PooledConnect, error) {
+	// 取 Master 节点, ParseMaster 明确确保 s.Master != nil
+	node, err := s.MonitorMaster.GetNode(0)
 	if err != nil {
 		return nil, fmt.Errorf("master node is not available, err: %v", err)
 	}
@@ -273,6 +335,51 @@ func (s *Slice) GetMasterStatus() (StatusCode, error) {
 		return StatusDown, err
 	}
 	return node.GetStatus(), nil
+}
+
+func (s *Slice) GetSlaveConn(slavesInfo *DBInfo, localSlaveReadPriority int) (PooledConnect, error) {
+	// 如果整个 `ConnPool` 为空，或者所有节点都宕机，则直接返回错误
+	if len(slavesInfo.Nodes) == 0 || allSlaveIsOffline(slavesInfo) {
+		return nil, errors.ErrNoSlaveDB
+	}
+
+	switch localSlaveReadPriority {
+	case LocalSlaveReadForce:
+		// 强制使用本地，从库不可用直接返回错误
+		if slavesInfo.LocalBalancer == nil {
+			return nil, fmt.Errorf("no local balancer available")
+		}
+		return s.getConnFromBalancer(slavesInfo, slavesInfo.LocalBalancer)
+
+	case LocalSlaveReadClosed:
+		// 不启用本地优先，直接使用 `GlobalBalancer`
+		if slavesInfo.GlobalBalancer == nil {
+			return nil, fmt.Errorf("no global balancer available")
+		}
+		return s.getConnFromBalancer(slavesInfo, slavesInfo.GlobalBalancer)
+
+	case LocalSlaveReadPrefer:
+		// 优先尝试本地 `LocalBalancer`
+		if slavesInfo.LocalBalancer != nil {
+			if conn, err := s.getConnFromBalancer(slavesInfo, slavesInfo.LocalBalancer); err == nil {
+				return conn, nil
+			}
+		}
+		// 降级尝试 `RemoteBalancer`
+		if slavesInfo.RemoteBalancer != nil {
+			if conn, err := s.getConnFromBalancer(slavesInfo, slavesInfo.RemoteBalancer); err == nil {
+				return conn, nil
+			}
+		}
+		// 如果本地和远程都不可用，直接返回错误
+		return nil, fmt.Errorf("no available slave DB in local or remote data centers")
+	default:
+		// 默认使用 `GlobalBalancer`
+		if slavesInfo.GlobalBalancer == nil {
+			return nil, fmt.Errorf("no global balancer available,invalid localSlaveReadPriority: %d	", localSlaveReadPriority)
+		}
+		return s.getConnFromBalancer(slavesInfo, slavesInfo.GlobalBalancer)
+	}
 }
 
 // CheckStatus check slice instance status
@@ -483,51 +590,6 @@ func (dbInfo *DBInfo) InitBalancers(proxyDatacenter string) error {
 	return nil
 }
 
-func (s *Slice) GetSlaveConn(slavesInfo *DBInfo, localSlaveReadPriority int) (PooledConnect, error) {
-	// 如果整个 `ConnPool` 为空，或者所有节点都宕机，则直接返回错误
-	if len(slavesInfo.Nodes) == 0 || allSlaveIsOffline(slavesInfo) {
-		return nil, errors.ErrNoSlaveDB
-	}
-
-	switch localSlaveReadPriority {
-	case LocalSlaveReadForce:
-		// 强制使用本地，从库不可用直接返回错误
-		if slavesInfo.LocalBalancer == nil {
-			return nil, fmt.Errorf("no local balancer available")
-		}
-		return s.getConnFromBalancer(slavesInfo, slavesInfo.LocalBalancer)
-
-	case LocalSlaveReadClosed:
-		// 不启用本地优先，直接使用 `GlobalBalancer`
-		if slavesInfo.GlobalBalancer == nil {
-			return nil, fmt.Errorf("no global balancer available")
-		}
-		return s.getConnFromBalancer(slavesInfo, slavesInfo.GlobalBalancer)
-
-	case LocalSlaveReadPrefer:
-		// 优先尝试本地 `LocalBalancer`
-		if slavesInfo.LocalBalancer != nil {
-			if conn, err := s.getConnFromBalancer(slavesInfo, slavesInfo.LocalBalancer); err == nil {
-				return conn, nil
-			}
-		}
-		// 降级尝试 `RemoteBalancer`
-		if slavesInfo.RemoteBalancer != nil {
-			if conn, err := s.getConnFromBalancer(slavesInfo, slavesInfo.RemoteBalancer); err == nil {
-				return conn, nil
-			}
-		}
-		// 如果本地和远程都不可用，直接返回错误
-		return nil, fmt.Errorf("no available slave DB in local or remote data centers")
-	default:
-		// 默认使用 `GlobalBalancer`
-		if slavesInfo.GlobalBalancer == nil {
-			return nil, fmt.Errorf("no global balancer available,invalid localSlaveReadPriority: %d	", localSlaveReadPriority)
-		}
-		return s.getConnFromBalancer(slavesInfo, slavesInfo.GlobalBalancer)
-	}
-}
-
 // getConnFromBalancer 封装从给定 balancer 中依次尝试选取健康连接的逻辑
 func (s *Slice) getConnFromBalancer(slavesInfo *DBInfo, bal *balancer) (PooledConnect, error) {
 	// 加锁保证同一时刻只有一个 Session 在使用该 balancer
@@ -567,23 +629,33 @@ func (s *Slice) Close() error {
 	defer s.Unlock()
 
 	var wg sync.WaitGroup
-	closePool := func(nodes []*NodeInfo) {
+	closePool := func(info *DBInfo) {
 		defer wg.Done()
-		for i := range nodes {
-			nodes[i].ConnPool.Close()
+		if info != nil {
+			for _, node := range info.Nodes {
+				node.ConnPool.Close()
+			}
 		}
 	}
 	// close master
 	wg.Add(1)
-	go closePool(s.Master.Nodes)
+	go closePool(s.Master)
 
 	// close slaves
 	wg.Add(1)
-	go closePool(s.Slave.Nodes)
+	go closePool(s.Slave)
 
 	// close statistic slaves
 	wg.Add(1)
-	go closePool(s.StatisticSlave.Nodes)
+	go closePool(s.StatisticSlave)
+
+	// close monitor master
+	wg.Add(1)
+	go closePool(s.MonitorMaster)
+
+	// close monitor slaves
+	wg.Add(1)
+	go closePool(s.MonitorSlave)
 
 	wg.Wait()
 	return nil
@@ -596,7 +668,7 @@ func (s *Slice) ParseMaster(masterAddr string) error {
 		return nil
 	}
 
-	dbInfo, err := s.parseDBInfo([]string{masterAddr})
+	dbInfo, err := s.parseDBInfo([]string{masterAddr}, false)
 	if err != nil {
 		return err
 	}
@@ -610,6 +682,26 @@ func (s *Slice) ParseMaster(masterAddr string) error {
 	return nil
 }
 
+func (s *Slice) ParseMonitorMaster(masterAddr string) error {
+	s.MonitorMaster = &DBInfo{Nodes: []*NodeInfo{}} // 确保 Master 不为 nil
+	if len(masterAddr) == 0 {
+		return nil
+	}
+
+	dbInfo, err := s.parseDBInfo([]string{masterAddr}, true)
+	if err != nil {
+		return fmt.Errorf("failed to parse monitor master db info: %w", err)
+	}
+
+	// 初始化 `Balancer`
+	if err := dbInfo.InitBalancers(s.ProxyDatacenter); err != nil {
+		return fmt.Errorf("failed to initialize master balancer: %w", err)
+	}
+
+	s.MonitorMaster = dbInfo
+	return nil
+}
+
 // ParseSlave 解析从库信息，并初始化负载均衡器
 func (s *Slice) ParseSlave(slaveAddrs []string) error {
 	// 确保 Slave 不为 nil
@@ -618,7 +710,7 @@ func (s *Slice) ParseSlave(slaveAddrs []string) error {
 		return nil
 	}
 
-	dbInfo, err := s.parseDBInfo(slaveAddrs)
+	dbInfo, err := s.parseDBInfo(slaveAddrs, false)
 	if err != nil {
 		return err
 	}
@@ -632,6 +724,28 @@ func (s *Slice) ParseSlave(slaveAddrs []string) error {
 	return nil
 }
 
+func (s *Slice) ParseMonitorSlave(slaveAddrs []string) error {
+	// 确保 Slave 不为 nil
+	s.MonitorSlave = &DBInfo{Nodes: []*NodeInfo{}}
+	if len(slaveAddrs) == 0 {
+		return nil
+	}
+
+	dbInfo, err := s.parseDBInfo(slaveAddrs, true)
+
+	if err != nil {
+		return fmt.Errorf("failed to parse monitor slave db info: %w", err)
+	}
+
+	// 初始化 `Balancer`
+	if err := dbInfo.InitBalancers(s.ProxyDatacenter); err != nil {
+		return fmt.Errorf("failed to initialize slave balancer: %w", err)
+	}
+
+	s.MonitorSlave = dbInfo
+	return nil
+}
+
 // ParseStatisticSlave 解析统计从库信息（权重一般为 1）
 func (s *Slice) ParseStatisticSlave(statisticSlaveAddrs []string) error {
 	// 确保 StatisticSlave 不为 nil
@@ -640,7 +754,7 @@ func (s *Slice) ParseStatisticSlave(statisticSlaveAddrs []string) error {
 		return nil
 	}
 
-	dbInfo, err := s.parseDBInfo(statisticSlaveAddrs)
+	dbInfo, err := s.parseDBInfo(statisticSlaveAddrs, false)
 	if err != nil {
 		return err
 	}
@@ -659,7 +773,7 @@ func (s *Slice) ParseStatisticSlave(statisticSlaveAddrs []string) error {
 // 如果解析成功但 权重 < 0，默认权重 1。
 // 如果解析成功但 权重 = 0，默认 权重 0。
 // 其他情况下，使用解析出的权重。注意，`0` 权重的节点并没有被过滤。
-func (s *Slice) parseDBInfo(dbAddrs []string) (*DBInfo, error) {
+func (s *Slice) parseDBInfo(dbAddrs []string, isMonitorUser bool) (*DBInfo, error) {
 	if len(dbAddrs) == 0 {
 		return &DBInfo{Nodes: []*NodeInfo{}}, nil // 确保 `Nodes` 为空 slice，而不是 `nil`
 	}
@@ -710,12 +824,20 @@ func (s *Slice) parseDBInfo(dbAddrs []string) (*DBInfo, error) {
 		if err != nil {
 			return nil, err
 		}
-
-		cp := NewConnectionPool(
-			addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity,
-			s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID,
-			s.Cfg.Capability, s.Cfg.InitConnect, dc, s.HandshakeTimeout,
-		)
+		var cp ConnectionPool
+		if isMonitorUser {
+			cp = NewConnectionPool(
+				addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", MonitorDefaultCapacity,
+				MonitorDefaultMaxCapacity, idleTimeout, s.charset, s.collationID,
+				s.Cfg.Capability, s.Cfg.InitConnect, dc, s.HandshakeTimeout,
+			)
+		} else {
+			cp = NewConnectionPool(
+				addrAndWeight[0], s.Cfg.UserName, s.Cfg.Password, "", s.Cfg.Capacity,
+				s.Cfg.MaxCapacity, idleTimeout, s.charset, s.collationID,
+				s.Cfg.Capability, s.Cfg.InitConnect, dc, s.HandshakeTimeout,
+			)
+		}
 
 		if err = cp.Open(); err != nil {
 			return nil, err
