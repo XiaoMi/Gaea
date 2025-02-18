@@ -34,6 +34,7 @@ type LogEntry struct {
 	MySQLConnectionID int
 	Query             string
 	ResponseTimeMs    float64
+	IsPrepare         bool
 	InTx              bool
 }
 
@@ -44,7 +45,7 @@ func CompareTimeStrings(currentTime string, time2 string) (int, error) {
 	t1, err1 := time.Parse("2006-01-02 15:04:05.999", currentTime)
 	t2, err2 := time.Parse("2006-01-02 15:04:05.999", time2)
 	if err1 != nil || err2 != nil {
-		return 0, fmt.Errorf("解析错误：%v %v", err1, err2)
+		return 0, fmt.Errorf("parser time error: %v, %v", err1, err2)
 	}
 
 	// 比较时间
@@ -67,7 +68,7 @@ func ParseLogEntries(file *os.File, re *regexp.Regexp, currentTime time.Time, se
 		line := scanner.Text()
 		// 使用正则表达式匹配日志行
 		matches := re.FindStringSubmatch(line)
-		if len(matches) != 13 {
+		if len(matches) != 14 {
 			continue
 		}
 		// 解析并填充结构体
@@ -89,8 +90,9 @@ func ParseLogEntries(file *os.File, re *regexp.Regexp, currentTime time.Time, se
 		logEntry.Database = matches[8]
 		fmt.Sscanf(matches[9], "%d", &logEntry.ConnectionID)
 		fmt.Sscanf(matches[10], "%d", &logEntry.MySQLConnectionID)
-		fmt.Sscanf(matches[11], "%t", &logEntry.InTx)
-		logEntry.Query = matches[12]
+		fmt.Sscanf(matches[11], "%t", &logEntry.IsPrepare)
+		fmt.Sscanf(matches[12], "%t", &logEntry.InTx)
+		logEntry.Query = matches[13]
 
 		if strings.Compare(searchString, logEntry.Query) != 0 {
 			continue

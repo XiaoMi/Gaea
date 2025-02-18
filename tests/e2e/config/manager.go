@@ -60,7 +60,7 @@ const (
 	// SliceDualSlave 表示测试的主从 MySQL 集群 3319 3329 3339
 	SliceDualSlave = "slice-dual-slave"
 	// LogExpression 标识 Gaea SQL Log 的格式
-	LogExpression = `\[(.*?)\] \[INFO\] \[(\d+)\] OK - (\d+\.\d+)ms - ns=(.*?), (.*?)@(.*?)->(.*?)/(.*?), connect_id=(\d+), mysql_connect_id=(\d+), transaction=(\w+)\|(.*?)$`
+	LogExpression = `\[(.*?)\] \[INFO\] \[(\d+)\] OK - (\d+\.\d+)ms - ns=(.*?), (.*?)@(.*?)->(.*?)/(.*?), connect_id=(\d+), mysql_connect_id=(\d+), prepare=(\w+), transaction=(\w+)\|(.*?)$`
 )
 
 var logDirectory = "cmd/logs"
@@ -437,7 +437,7 @@ func (g *GaeaCCManager) listNamespaces() ([]string, error) {
 // It uses regular expressions to parse and match log entries based on the input parameters.
 // If a matching entry is found, it's added to the result slice. The function handles errors such as file access issues and returns an error if any problems occur during the file reading and parsing process.
 func (e *E2eManager) SearchSqlLog(searchString string, currentTime time.Time) ([]util.LogEntry, error) {
-	// 等待日志落盘
+	// 等待日志落盘÷/
 	time.Sleep(100 * time.Millisecond)
 	searchString = strings.TrimSuffix(searchString, ";")
 	var allEntries []util.LogEntry

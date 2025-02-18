@@ -324,6 +324,8 @@ func (se *SessionExecutor) IsKeepSession() bool {
 
 // ExecuteCommand execute command
 func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
+	reqCtx := util.NewRequestContext()
+
 	switch cmd {
 	case mysql.ComQuit:
 		_ = se.manager.statistics.generalLogger.Notice("Quit - conn_id=%d, ns=%s, %s@%s/%s",
@@ -335,7 +337,7 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 	case mysql.ComQuery: // data type: string[EOF]
 		sql := string(data)
 		// handle phase
-		r, err := se.handleQuery(sql)
+		r, err := se.handleQuery(reqCtx, sql)
 		if err != nil {
 			return CreateErrorResponse(se.status, err)
 		}
@@ -362,6 +364,7 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		}
 		return CreateFieldListResponse(se.status, fs)
 	case mysql.ComStmtPrepare:
+		reqCtx.SetCmdStmtType(mysql.ComStmtPrepare)
 		sql := string(data)
 		stmt, err := se.handleStmtPrepare(sql)
 		if err != nil {
@@ -369,9 +372,10 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		}
 		return CreatePrepareResponse(se.status, stmt)
 	case mysql.ComStmtExecute:
+		reqCtx.SetCmdStmtType(mysql.ComStmtExecute)
 		values := make([]byte, len(data))
 		copy(values, data)
-		r, err := se.handleStmtExecute(values)
+		r, err := se.handleStmtExecute(reqCtx, values)
 		if err != nil {
 			return CreateErrorResponse(se.status, err)
 		}
@@ -1285,8 +1289,8 @@ func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string) (
 }
 
 func (se *SessionExecutor) handleKill(reqCtx *util.RequestContext, sql string) (*mysql.Result, error) {
-	se.manager.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, transaction=%t|%v. err:%s",
-		SQLExecStatusIgnore, 0, se.namespace, se.user, se.clientAddr, "", se.db, se.session.c.GetConnectionID(), 0, se.isInTransaction(), sql, "ignore kill sql")
+	se.manager.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, prepare=%t, transaction=%t|%v. err:%s",
+		SQLExecStatusIgnore, 0, se.namespace, se.user, se.clientAddr, "", se.db, se.session.c.GetConnectionID(), 0, reqCtx.IsPrepareSQL(), se.isInTransaction(), sql, "ignore kill sql")
 	return mysql.ResultPool.GetWithoutResultSet(), nil
 }
 

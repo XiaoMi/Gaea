@@ -14,10 +14,13 @@
 
 package util
 
+import "github.com/XiaoMi/Gaea/mysql"
+
 // RequestContext means request scope context with values
 // 旧版 thread safe，因为 context 是顺序执行的，把锁去掉，提升性能，新版本 thread unsafe
 type RequestContext struct {
 	tokens         []string
+	cmdType        byte
 	stmtType       int
 	fromSlave      int
 	fingerprint    string
@@ -36,6 +39,19 @@ func (reqCtx *RequestContext) GetStmtType() int {
 
 func (reqCtx *RequestContext) SetStmtType(value int) {
 	reqCtx.stmtType = value
+}
+
+// SetCmdStmtType sets the command statement type for the request context.
+// This method is used to assign the `cmdType` in the RequestContext,
+// which helps identify the type of command being executed (e.g., prepare or execute SQL).
+func (reqCtx *RequestContext) SetCmdStmtType(value byte) {
+	reqCtx.cmdType = value
+}
+
+// IsPrepareSQL checks if the current command is a prepared SQL statement (either COM_STMT_PREPARE or COM_STMT_EXECUTE).
+// This method is used for logging purposes to differentiate between regular SQL and prepared SQL statements.
+func (reqCtx *RequestContext) IsPrepareSQL() bool {
+	return reqCtx.cmdType == mysql.ComStmtExecute || reqCtx.cmdType == mysql.ComStmtPrepare
 }
 
 func (reqCtx *RequestContext) GetTokens() []string {

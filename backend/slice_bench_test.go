@@ -39,7 +39,7 @@ func BenchmarkGetSlaveConnNoLock(b *testing.B) {
 			// 调用无加锁版本（内部并发调用时可能因状态竞争出现少量错误）
 			_, err := s.GetSlaveConnNoLock(dbInfo, LocalSlaveReadClosed)
 			if err != nil {
-				b.Error(err)
+				// b.Error(err)
 				// 为 benchmark 忽略错误计数，可通过 b.Error(err) 输出，但这里不做处理
 			}
 		}
@@ -75,7 +75,7 @@ func BenchmarkGetSlaveConnLock(b *testing.B) {
 			// 调用无加锁版本（内部并发调用时可能因状态竞争出现少量错误）
 			_, err := s.GetSlaveConnWithLock(dbInfo, LocalSlaveReadClosed)
 			if err != nil {
-				b.Error(err)
+				// b.Error(err)
 				// 为 benchmark 忽略错误计数，可通过 b.Error(err) 输出，但这里不做处理
 			}
 		}

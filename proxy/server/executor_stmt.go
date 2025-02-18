@@ -33,10 +33,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/XiaoMi/Gaea/mysql"
-	"github.com/XiaoMi/Gaea/util"
 	"math"
 	"strconv"
+
+	"github.com/XiaoMi/Gaea/mysql"
+	"github.com/XiaoMi/Gaea/util"
 )
 
 var p = &mysql.Field{Name: []byte("?")}
@@ -137,7 +138,7 @@ func (s *Stmt) GetRewriteSQL() (string, error) {
 	return buffer.String(), nil
 }
 
-func (se *SessionExecutor) handleStmtExecute(data []byte) (*mysql.Result, error) {
+func (se *SessionExecutor) handleStmtExecute(reqCtx *util.RequestContext, data []byte) (*mysql.Result, error) {
 	if len(data) < 9 {
 		return nil, mysql.ErrMalformPacket
 	}
@@ -207,7 +208,7 @@ func (se *SessionExecutor) handleStmtExecute(data []byte) (*mysql.Result, error)
 	}
 	defer s.ResetParams()
 	// execute sql using ComQuery
-	return se.handleQuery(executeSQL)
+	return se.handleQuery(reqCtx, executeSQL)
 }
 
 // long data and generic args are all in s.args
