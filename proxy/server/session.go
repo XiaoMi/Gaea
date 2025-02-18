@@ -246,17 +246,37 @@ func (cc *Session) handleHandshakeResponse(info HandshakeResponseInfo) error {
 
 // Close close session with it's resources
 func (cc *Session) Close() {
+	// 使用 defer 捕获 panic
+	defer func() {
+		if r := recover(); r != nil {
+			// 处理 panic，避免程序崩溃
+			log.Warn("[Session.Close] Panic recovered: %v", r)
+		}
+	}()
 	if cc.IsClosed() {
 		return
 	}
 	cc.closed.Store(true)
+
+	// 事务回滚
 	if err := cc.executor.rollback(); err != nil {
-		log.Warn("executor rollback error when Session close: %v", err)
+		log.Warn("[Session.Close] Rollback failed, error: %v", err)
 	}
 
+	// 处理 KS 退出
 	cc.executor.handleKsQuit()
+
+	// 记录会话关闭的日志
+	cc.proxy.manager.statistics.generalLogger.Notice("Session Close - conn_id=%d, ns=%s, %s@%s/%s, capability: %d",
+		cc.c.ConnectionID,
+		cc.executor.namespace,
+		cc.executor.user,
+		cc.executor.clientAddr,
+		cc.executor.db,
+		cc.c.capability)
+
+	// 关闭底层连接
 	cc.c.Close()
-	log.Debug("client closed, %d", cc.c.GetConnectionID())
 
 	return
 }
