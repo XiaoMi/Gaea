@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -249,10 +250,10 @@ func (cc *Session) Close() {
 	// 使用 defer 捕获 panic
 	defer func() {
 		if r := recover(); r != nil {
-			// 处理 panic，避免程序崩溃
-			log.Warn("[Session.Close] Panic recovered: %v", r)
+			log.Warn("[Session.Close] Panic recovered: %v\nStacktrace: %s", r, string(debug.Stack()))
 		}
 	}()
+
 	if cc.IsClosed() {
 		return
 	}
