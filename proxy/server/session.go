@@ -269,7 +269,7 @@ func (cc *Session) Close() {
 
 	// 记录会话关闭的日志
 	cc.proxy.manager.statistics.generalLogger.Notice("Session Close - conn_id=%d, ns=%s, %s@%s/%s, capability: %d",
-		cc.c.ConnectionID,
+		cc.c.GetConnectionID(),
 		cc.executor.namespace,
 		cc.executor.user,
 		cc.executor.clientAddr,
