@@ -206,12 +206,12 @@ func (dc *DirectConnection) connect() error {
 	//【Stag 6】: Shake Hands
 	// step1: read handshake requirements
 	if err := dc.readInitialHandshake(); err != nil {
-		stags[StageHandshake] = append(stags[StageHandshake], fmt.Sprintf("failed to read initial handshake (timeout: %v)", dc.handshakeTimeout))
+		stags[StageHandshake] = append(stags[StageHandshake], fmt.Sprintf("failed to read initial handshake (timeout: %v), err: %v", dc.handshakeTimeout, err))
 		dc.conn.Close()
 		recordErrlog(stags)
 		return &mysql.ConnectionError{
 			Addr: dc.addr,
-			Msg:  fmt.Sprintf("failed to read initial handshake (timeout: %v)", dc.handshakeTimeout),
+			Msg:  fmt.Sprintf("failed to read initial handshake (timeout: %v), err: %v", dc.handshakeTimeout, err),
 		}
 	}
 	stags[StageHandshake] = append(stags[StageHandshake], "initial handshake read successfully")
