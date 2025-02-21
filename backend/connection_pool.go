@@ -31,6 +31,7 @@ const (
 	GetConnTimeout          = 2 * time.Second
 	pingPeriod              = 4 * time.Second
 	handshakeTimeoutDefault = 500 * time.Millisecond
+	defaultConnectLimit     = 100 // 这个是经验值
 )
 
 const (
@@ -108,7 +109,10 @@ func (cp *connectionPoolImpl) Open() error {
 	cp.mu.Lock()
 	defer cp.mu.Unlock()
 	var err error = nil
-	cp.connections, err = util.NewResourcePool(cp.connect, cp.capacity, cp.maxCapacity, cp.idleTimeout)
+	cp.connections, err = util.NewResourcePool(
+		util.NewResourceLimitWrapper(cp.Addr(), defaultConnectLimit, cp.connect).Factory,
+		cp.capacity, cp.maxCapacity, cp.idleTimeout,
+	)
 	return err
 }
 

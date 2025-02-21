@@ -749,3 +749,76 @@ func TestScaleOutResource(t *testing.T) {
 	t.Logf("capacity is %d", p.capacity.Get())
 	t.Logf("err timeout count is %d", errTimeoutCount.Get())
 }
+
+func TestNewResourceLimitWrapperNormal(t *testing.T) {
+	var num sync2.AtomicInt64
+	testFactory := func() (Resource, error) {
+		num.Add(1)
+		return &TestResource{}, nil
+	}
+	wrapper := NewResourceLimitWrapper("", 10, testFactory)
+	wrapperFactory := wrapper.Factory
+	wg := sync.WaitGroup{}
+	errCount := sync2.AtomicInt64{}
+	q := make(chan int, 10)
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		q <- 1
+		go func() {
+			defer wg.Done()
+			defer func() {
+				<-q
+			}()
+			_, err := wrapperFactory()
+			if err != nil {
+				errCount.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	assert.Equal(t, 100, int(num.Get()))
+	assert.Equal(t, 0, wrapper.GetRunningNum())
+	assert.Equal(t, 0, int(errCount.Get()))
+
+}
+
+func TestNewResourceLimitWrapperAbnormal(t *testing.T) {
+	var num sync2.AtomicInt64
+	testFactory := func() (Resource, error) {
+		num.Add(1)
+		return &TestResource{}, nil
+	}
+	threads := 100
+	allowed := 10
+	errCount := sync2.AtomicInt64{}
+	wrapper := NewResourceLimitWrapper("", allowed, func() (Resource, error) {
+		time.Sleep(1 * time.Second)
+		return testFactory()
+	})
+	wrapperFactory := wrapper.Factory
+	errCount.Set(0)
+	wg := sync.WaitGroup{}
+	q := make(chan int, threads)
+	for i := 0; i < threads; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			q <- 1
+			_, err := wrapperFactory()
+			if err != nil {
+				errCount.Add(1)
+			}
+		}()
+	}
+	for i := 0; i < threads; i++ {
+		<-q
+	}
+	assert.Equal(t, 0, int(num.Get()))
+	assert.Equal(t, allowed, wrapper.GetRunningNum())
+	wg.Wait()
+	// rate Allow 存在武昌
+	assert.Equal(t, int(num.Get()) >= allowed, true)
+	assert.Equal(t, int(num.Get()) < allowed*2, true)
+	assert.Equal(t, 0, wrapper.GetRunningNum())
+	assert.Equal(t, threads-int(num.Get()), int(errCount.Get()))
+}
