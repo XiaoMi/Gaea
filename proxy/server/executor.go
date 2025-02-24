@@ -26,8 +26,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/XiaoMi/Gaea/models"
-
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
@@ -358,7 +356,7 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 		}
 		return CreateOKResponse(se.status)
 	case mysql.ComFieldList:
-		fs, err := se.handleFieldList(data)
+		fs, err := se.handleFieldList(reqCtx, data)
 		if err != nil {
 			return CreateErrorResponse(se.status, err)
 		}
@@ -406,14 +404,14 @@ func (se *SessionExecutor) ExecuteCommand(cmd byte, data []byte) Response {
 	}
 }
 
-func (se *SessionExecutor) getBackendConns(sqls map[string]map[string][]string, fromSlave bool) (pcs map[string]backend.PooledConnect, err error) {
+func (se *SessionExecutor) getBackendConns(reqCtx *util.RequestContext, sqls map[string]map[string][]string) (pcs map[string]backend.PooledConnect, err error) {
 	pcs = make(map[string]backend.PooledConnect)
 	backendAddr := ""
 	backendConnectionID := int64(0)
 
 	for sliceName := range sqls {
 		var pc backend.PooledConnect
-		pc, err = se.getBackendConn(sliceName, fromSlave)
+		pc, err = se.getBackendConn(reqCtx, sliceName)
 		if err != nil {
 			return
 		}
@@ -429,29 +427,29 @@ func (se *SessionExecutor) getBackendConns(sqls map[string]map[string][]string, 
 	return
 }
 
-func (se *SessionExecutor) getBackendConn(sliceName string, fromSlave bool) (pc backend.PooledConnect, err error) {
+func (se *SessionExecutor) getBackendConn(reqCtx *util.RequestContext, sliceName string) (pc backend.PooledConnect, err error) {
 	if se.IsKeepSession() {
-		return se.getBackendKsConn(sliceName)
+		return se.getBackendKsConn(reqCtx, sliceName)
 	}
-	return se.getBackendNoKsConn(sliceName, fromSlave)
+	return se.getBackendNoKsConn(reqCtx, sliceName)
 }
 
-func (se *SessionExecutor) getBackendNoKsConn(sliceName string, fromSlave bool) (pc backend.PooledConnect, err error) {
+func (se *SessionExecutor) getBackendNoKsConn(reqCtx *util.RequestContext, sliceName string) (pc backend.PooledConnect, err error) {
 	if !se.isInTransaction() {
 		slice := se.GetNamespace().GetSlice(sliceName)
-		return slice.GetConn(fromSlave, se.GetNamespace().GetUserProperty(se.user), se.GetNamespace().localSlaveReadPriority)
+		return slice.GetConn(reqCtx, se.GetNamespace().GetUserProperty(se.user), se.GetNamespace().localSlaveReadPriority)
 	}
 	return se.getTransactionConn(sliceName)
 }
 
-func (se *SessionExecutor) getBackendKsConn(sliceName string) (pc backend.PooledConnect, err error) {
+func (se *SessionExecutor) getBackendKsConn(reqCtx *util.RequestContext, sliceName string) (pc backend.PooledConnect, err error) {
 	pc, ok := se.ksConns[sliceName]
 	if ok {
 		return pc, nil
 	}
 
 	slice := se.GetNamespace().GetSlice(sliceName)
-	pc, err = slice.GetConn(se.userPriv == models.ReadOnly, se.GetNamespace().GetUserProperty(se.user), se.GetNamespace().localSlaveReadPriority)
+	pc, err = slice.GetConn(reqCtx, se.GetNamespace().GetUserProperty(se.user), se.GetNamespace().localSlaveReadPriority)
 	if err != nil {
 		log.Warn("get connection from backend failed, error: %s", err.Error())
 		return
@@ -1222,11 +1220,6 @@ func createShowGeneralLogResult() *mysql.Result {
 	return result
 }
 
-func getFromSlave(reqCtx *util.RequestContext) bool {
-	slaveFlag := reqCtx.GetFromSlave()
-	return slaveFlag == 1
-}
-
 // 仅多语句执行时使用
 func setContextSQLFingerprint(reqCtx *util.RequestContext, sql string) {
 	fingerprint := mysql.GetFingerprint(sql)
@@ -1273,11 +1266,11 @@ func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string) (
 	}
 	// readonly && readwrite user send to slave
 	if !se.GetNamespace().IsAllowWrite(se.user) || se.GetNamespace().IsRWSplit(se.user) {
-		reqCtx.SetFromSlave(1)
+		reqCtx.SetFromSlave(true)
 	}
 	// handle show variables like '%read_only%' default to master
 	if strings.Contains(sql, readonlyVariable) && se.GetNamespace().IsAllowWrite(se.user) {
-		reqCtx.SetFromSlave(0)
+		reqCtx.SetFromSlave(false)
 	}
 	r, err := se.ExecuteSQL(reqCtx, se.GetNamespace().GetDefaultSlice(), se.db, sql)
 	if err != nil {
@@ -1443,7 +1436,7 @@ func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sq
 		return nil, err
 	}
 
-	pc, err := se.getBackendConn(slice, getFromSlave(reqCtx))
+	pc, err := se.getBackendConn(reqCtx, slice)
 	defer se.recycleBackendConn(pc)
 
 	if err != nil {
@@ -1471,7 +1464,7 @@ func (se *SessionExecutor) ExecuteSQLs(reqCtx *util.RequestContext, sqls map[str
 		return nil, fmt.Errorf("no sql to execute")
 	}
 
-	pcs, err := se.getBackendConns(sqls, getFromSlave(reqCtx))
+	pcs, err := se.getBackendConns(reqCtx, sqls)
 	defer se.recycleBackendConns(pcs, false)
 	if err != nil {
 		log.Warn("getShardConns failed: %v", err)

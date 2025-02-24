@@ -205,33 +205,36 @@ func (s *Slice) GetSliceName() string {
 }
 
 // GetConn get backend connection from different node based on fromSlave and userType
-func (s *Slice) GetConn(fromSlave bool, userType int, localSlaveReadPriority int) (pc PooledConnect, err error) {
+func (s *Slice) GetConn(reqCtx *util.RequestContext, userType int, localSlaveReadPriority int) (pc PooledConnect, err error) {
 	switch userType {
 	case models.MonitorUser:
 		// 监控用户，走监控专用连接池
-		return s.getMonitorConnection(fromSlave, localSlaveReadPriority)
+		return s.getMonitorConnection(reqCtx, localSlaveReadPriority)
 	case models.StatisticUser:
 		// 统计用户，走业务后端连接池
-		return s.getStatisticConnection(fromSlave, localSlaveReadPriority)
+		return s.getStatisticConnection(localSlaveReadPriority)
 	default:
 		// 普通用户: 走业务后端连接池
-		return s.getNormalConnection(fromSlave, localSlaveReadPriority)
+		return s.getNormalConnection(reqCtx, localSlaveReadPriority)
 	}
 }
 
 // getStatisticConnection get connection from statistic slave, not to get from master, Most of the SQL queries for user statistics are slow queries
-func (s *Slice) getStatisticConnection(fromSlave bool, localSlaveReadPriority int) (pc PooledConnect, err error) {
+func (s *Slice) getStatisticConnection(localSlaveReadPriority int) (pc PooledConnect, err error) {
 	// 从统计从库获取
 	pc, err = s.GetSlaveConn(s.StatisticSlave, localSlaveReadPriority)
 	if err != nil {
-		log.Warn("StatisticUser: Failed to get connection. fromSlave: %v, Error: %v, Didn't try to get from master", fromSlave, err)
+		log.Warn("StatisticUser: Failed to get connection. Error: %v, Didn't try to get from master", err)
 	}
 	return pc, err
 }
 
-func (s *Slice) getNormalConnection(fromSlave bool, localSlaveReadPriority int) (pc PooledConnect, err error) {
+func (s *Slice) getNormalConnection(reqCtx *util.RequestContext, localSlaveReadPriority int) (pc PooledConnect, err error) {
+	fromSlave := reqCtx.GetFromSlave()
 	var fallbackToMaster bool
 	if fromSlave {
+		// 记录业务从库切换到主库的监控指标
+		reqCtx.SetSwitchedToMaster(true)
 		// 从普通从库获取
 		pc, err = s.GetSlaveConn(s.Slave, localSlaveReadPriority)
 		if err != nil {
@@ -252,9 +255,12 @@ func (s *Slice) getNormalConnection(fromSlave bool, localSlaveReadPriority int) 
 	return pc, err
 }
 
-func (s *Slice) getMonitorConnection(fromSlave bool, localSlaveReadPriority int) (pc PooledConnect, err error) {
+func (s *Slice) getMonitorConnection(reqCtx *util.RequestContext, localSlaveReadPriority int) (pc PooledConnect, err error) {
+	fromSlave := reqCtx.GetFromSlave()
 	var fallbackToMaster bool
 	if fromSlave {
+		// 记录监控从库切换到主库的监控指标
+		reqCtx.SetSwitchedToMaster(true)
 		// 从监控从库获取连接
 		pc, err = s.GetSlaveConn(s.MonitorSlave, localSlaveReadPriority)
 		if err != nil {

@@ -19,13 +19,14 @@ import "github.com/XiaoMi/Gaea/mysql"
 // RequestContext means request scope context with values
 // 旧版 thread safe，因为 context 是顺序执行的，把锁去掉，提升性能，新版本 thread unsafe
 type RequestContext struct {
-	tokens         []string
-	cmdType        byte
-	stmtType       int
-	fromSlave      int
-	fingerprint    string
-	fingerprintMD5 string
-	defaultSlice   string
+	tokens           []string
+	cmdType          byte
+	stmtType         int
+	fromSlave        bool
+	fingerprint      string
+	fingerprintMD5   string
+	defaultSlice     string
+	switchedToMaster bool // 记录是否从从库切换到主库
 }
 
 // NewRequestContext return request scopre context
@@ -39,6 +40,14 @@ func (reqCtx *RequestContext) GetStmtType() int {
 
 func (reqCtx *RequestContext) SetStmtType(value int) {
 	reqCtx.stmtType = value
+}
+
+func (reqCtx *RequestContext) IsSwitchedToMaster() bool {
+	return reqCtx.switchedToMaster
+}
+
+func (reqCtx *RequestContext) SetSwitchedToMaster(value bool) {
+	reqCtx.switchedToMaster = value
 }
 
 // SetCmdStmtType sets the command statement type for the request context.
@@ -62,11 +71,11 @@ func (reqCtx *RequestContext) SetTokens(value []string) {
 	reqCtx.tokens = value
 }
 
-func (reqCtx *RequestContext) GetFromSlave() int {
+func (reqCtx *RequestContext) GetFromSlave() bool {
 	return reqCtx.fromSlave
 }
 
-func (reqCtx *RequestContext) SetFromSlave(value int) {
+func (reqCtx *RequestContext) SetFromSlave(value bool) {
 	reqCtx.fromSlave = value
 }
 

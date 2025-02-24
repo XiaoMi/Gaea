@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/XiaoMi/Gaea/core/errors"
+	"github.com/XiaoMi/Gaea/models"
 
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/log"
@@ -165,10 +166,10 @@ func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*my
 	}
 
 	// 防止多语句执行的时候被复用
-	if checkExecuteFromSlave(reqCtx, se, sql) {
-		reqCtx.SetFromSlave(1)
+	if checkExecuteFromSlave(reqCtx, se, sql) || se.userPriv == models.ReadOnly {
+		reqCtx.SetFromSlave(true)
 	} else {
-		reqCtx.SetFromSlave(0)
+		reqCtx.SetFromSlave(false)
 	}
 
 	reqCtx.SetDefaultSlice(se.GetNamespace().GetDefaultSlice())
@@ -600,14 +601,16 @@ func (se *SessionExecutor) handleStmtClose(data []byte) error {
 	return nil
 }
 
-func (se *SessionExecutor) handleFieldList(data []byte) ([]*mysql.Field, error) {
+func (se *SessionExecutor) handleFieldList(reqCtx *util.RequestContext, data []byte) ([]*mysql.Field, error) {
+	reqCtx.SetFromSlave(se.GetNamespace().IsRWSplit(se.user) || se.userPriv == models.ReadOnly)
+
 	index := bytes.IndexByte(data, 0x00)
 	table := string(data[0:index])
 	wildcard := string(data[index+1:])
 
 	sliceName := se.GetNamespace().GetRouter().GetRule(se.GetDatabase(), table).GetSlice(0)
 
-	pc, err := se.getBackendConn(sliceName, se.GetNamespace().IsRWSplit(se.user))
+	pc, err := se.getBackendConn(reqCtx, sliceName)
 	if err != nil {
 		return nil, err
 	}

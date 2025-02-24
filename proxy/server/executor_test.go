@@ -110,30 +110,30 @@ func TestExecute(t *testing.T) {
 	reqCtx := util.NewRequestContext()
 
 	reqCtx.SetStmtType(parser.StmtSelect)
-	reqCtx.SetFromSlave(0)
+	reqCtx.SetFromSlave(false)
 
 	type testCase struct {
 		sql             string
-		expectFromSlave int
+		expectFromSlave bool
 	}
 
 	testCases := []testCase{
-		{"/*master*/ select * from t1", 0},
-		{"select * from t1", 1},
-		{"select /*master*/ * from t1", 0},
-		{"/*master*/ select /*master*/ * from t1", 0},
-		{"/*master*/ select /* master*/ * from t1", 0},
-		{"select /* master*/ * from t1", 1},
-		{"/*master */ select * from t1", 1},
-		{"/*master*/ select * from t1 inner join t2 on t1.id = t2.id", 0},
-		{"select /*master*/ * from t1 inner join t2 on t1.id = t2.id", 0},
+		{"/*master*/ select * from t1", false},
+		{"select * from t1", true},
+		{"select /*master*/ * from t1", false},
+		{"/*master*/ select /*master*/ * from t1", false},
+		{"/*master*/ select /* master*/ * from t1", false},
+		{"select /* master*/ * from t1", true},
+		{"/*master */ select * from t1", true},
+		{"/*master*/ select * from t1 inner join t2 on t1.id = t2.id", false},
+		{"select /*master*/ * from t1 inner join t2 on t1.id = t2.id", false},
 	}
 
 	for _, ca := range testCases {
 		t.Run(ca.sql, func(t *testing.T) {
 			_ = se.forTest(ca.sql, reqCtx)
 			assert.Equal(t, reqCtx.GetFromSlave(), ca.expectFromSlave)
-			reqCtx.SetFromSlave(0)
+			reqCtx.SetFromSlave(false)
 		})
 	}
 	mockCtl := gomock.NewController(t)

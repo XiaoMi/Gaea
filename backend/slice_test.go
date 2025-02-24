@@ -1255,7 +1255,9 @@ func TestGetConn(t *testing.T) {
 			var actualAddrs = make(map[string]int)
 			// Call GetConn the expected number of times and track the connection counts
 			for j := 0; j < tc.getCounts; j++ {
-				pc, err := s.GetConn(tc.fromSlave, tc.userType, tc.localSlaveReadPriority)
+				reqCtx := util.NewRequestContext()
+				reqCtx.SetFromSlave(tc.fromSlave)
+				pc, err := s.GetConn(reqCtx, tc.userType, tc.localSlaveReadPriority)
 				if err != nil {
 					actualError++
 				} else {

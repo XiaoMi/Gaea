@@ -486,6 +486,11 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 		ns.SetBackendErrorSQLFingerprint(md5, fingerprint)
 		m.statistics.recordBackendErrorSQLFingerprint(se.namespace, operation, md5)
 	}
+
+	// record get conn err, switching from a slave to a master
+	if reqCtx.IsSwitchedToMaster() {
+		m.statistics.recordSQLSwitchMasterCounts(se.namespace, sliceName, backendAddr)
+	}
 }
 
 func (m *Manager) startConnectPoolMetricsTask(interval int) {
@@ -822,15 +827,16 @@ type StatisticManager struct {
 	handlers      map[string]http.Handler
 	generalLogger log.Logger
 
-	sqlTimings                *stats.MultiTimings            // SQL耗时统计
-	sqlFingerprintSlowCounts  *stats.CountersWithMultiLabels // 慢SQL指纹数量统计
-	sqlErrorCounts            *stats.CountersWithMultiLabels // SQL错误数统计
-	sqlFingerprintErrorCounts *stats.CountersWithMultiLabels // SQL指纹错误数统计
-	sqlForbidenCounts         *stats.CountersWithMultiLabels // SQL黑名单请求统计
-	flowCounts                *stats.CountersWithMultiLabels // 业务流量统计
-	sessionCounts             *stats.GaugesWithMultiLabels   // 前端会话数统计
-	CPUBusy                   *stats.GaugesWithMultiLabels   // Gaea服务器CPU消耗情况
-	clientConnecions          sync.Map                       // 等同于sessionCounts, 用于限制前端连接
+	sqlTimings                   *stats.MultiTimings            // SQL耗时统计
+	sqlFingerprintSlowCounts     *stats.CountersWithMultiLabels // 慢SQL指纹数量统计
+	sqlErrorCounts               *stats.CountersWithMultiLabels // SQL错误数统计
+	sqlFingerprintErrorCounts    *stats.CountersWithMultiLabels // SQL指纹错误数统计
+	sqlForbidenCounts            *stats.CountersWithMultiLabels // SQL黑名单请求统计
+	flowCounts                   *stats.CountersWithMultiLabels // 业务流量统计
+	sessionCounts                *stats.GaugesWithMultiLabels   // 前端会话数统计
+	CPUBusy                      *stats.GaugesWithMultiLabels   // Gaea服务器CPU消耗情况
+	clientConnecions             sync.Map                       // 等同于sessionCounts, 用于限制前端连接
+	backendSQLSwitchMasterCounts *stats.CountersWithMultiLabels // 记录从库切到主库的流量
 
 	backendSQLTimings                *stats.MultiTimings            // 后端SQL耗时统计
 	backendSQLFingerprintSlowCounts  *stats.CountersWithMultiLabels // 后端慢SQL指纹数量统计
@@ -1021,6 +1027,10 @@ func (s *StatisticManager) Init(cfg *models.Proxy) error {
 		"gaea proxy backend sql sqlTimings P95 avg", []string{statsLabelCluster, statsLabelNamespace, statsLabelIPAddr})
 	s.uptimeCounts = stats.NewGaugesWithMultiLabels("UptimeCounts",
 		"gaea proxy uptime counts", []string{statsLabelCluster})
+	// 初始化主库切换统计字段
+	s.backendSQLSwitchMasterCounts = stats.NewCountersWithMultiLabels("backendSQLSwitchMasterCounts",
+		"gaea proxy backend sql switch master counts", []string{statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
+
 	s.clientConnecions = sync.Map{}
 	s.startClearTask()
 	return nil
@@ -1177,6 +1187,13 @@ func (s *StatisticManager) AddWriteFlowCount(namespace string, byteCount int) {
 func (s *StatisticManager) recordConnectPoolIdleCount(namespace string, slice string, addr string, count int64, role string) {
 	statsKey := []string{s.clusterName, namespace, slice, addr, role}
 	s.backendConnectPoolIdleCounts.Set(statsKey, count)
+}
+
+// record idle connect count
+
+func (s *StatisticManager) recordSQLSwitchMasterCounts(namespace string, sliceName string, backendAddr string) {
+	statsKey := []string{namespace, sliceName, backendAddr}
+	s.backendSQLSwitchMasterCounts.Add(statsKey, 1)
 }
 
 // record in-use connect count
