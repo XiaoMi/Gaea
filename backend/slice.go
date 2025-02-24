@@ -77,6 +77,40 @@ type DBInfo struct {
 	GlobalBalancer *balancer   // 包含所有节点
 }
 
+func (dbInfo *DBInfo) InitFuseSlideWindow(fuseWindowSize int, fuseWindowThreshold int, fueseMinRequestsPerSec int64) error {
+	// 参数校验
+	if fuseWindowSize < 0 {
+		return fmt.Errorf("invalid fuse window size: %d (must > 0)", fuseWindowSize)
+	}
+	if fuseWindowThreshold < 0 || fuseWindowThreshold > 100 { // 合理的阈值范围是 0~100%
+		return fmt.Errorf("invalid fuse threshold: %d%% (must 0~100)", fuseWindowThreshold)
+	}
+
+	// 将百分比阈值转换为浮点数 (e.g. 50% -> 0.5)
+	threshold := float64(fuseWindowThreshold) / 100.0
+
+	// 为每个节点初始化独立的滑动窗口
+	for _, node := range dbInfo.Nodes {
+		if node == nil {
+			continue // 跳过空节点
+		}
+
+		// 创建滑动窗口实例（参数不合法时会返回 disabled 状态）
+		node.FuseWindow = NewSlidingWindow(
+			fuseWindowSize,
+			threshold,
+			fueseMinRequestsPerSec,
+		)
+
+		// 若窗口参数非法则强制禁用熔断
+		if !node.FuseWindow.IsEnabled() {
+			log.Warn("Disable fuse for node %s due to invalid params (size=%d threshold=%.2f)",
+				node.Address, fuseWindowSize, threshold)
+		}
+	}
+	return nil
+}
+
 // GetNode 根据索引返回 `NodeInfo` 结构
 func (d *DBInfo) GetNode(index int) (*NodeInfo, error) {
 	if index < 0 || index >= len(d.Nodes) {
@@ -93,6 +127,7 @@ type NodeInfo struct {
 	Weight       int            // 该节点的负载均衡权重
 	ConnPool     ConnectionPool // 该节点的连接池
 	Status       StatusCode     // 该节点状态`status` 只能通过`GetStatus` 和 `SetStatus` 访问
+	FuseWindow   *SlidingWindow
 }
 
 // GetStatus 使用读锁，允许并发读取，提高性能
@@ -197,11 +232,23 @@ type Slice struct {
 	MaxSlaveFuseErrorCount      int
 	HandshakeTimeout            time.Duration
 	FallbackToMasterOnSlaveFail string // 控制从库获取失败时是否回退到主库
+	FuseWindowSize              int
+	FuseWindowThreshold         int
+	FuseMinRequestCount         int64
 }
 
 // GetSliceName return name of slice
 func (s *Slice) GetSliceName() string {
 	return s.Cfg.Name
+}
+
+// InitFuseSlideWindow init fuse slide window
+func (s *Slice) InitFuseSlideWindow(dbInfo *DBInfo) error {
+	// 初始化 `FuseSlideWindow`
+	if err := dbInfo.InitFuseSlideWindow(s.FuseWindowSize, s.FuseWindowThreshold, s.FuseMinRequestCount); err != nil {
+		return fmt.Errorf("failed to initialize fuse slide window: %w", err)
+	}
+	return nil
 }
 
 // GetConn get backend connection from different node based on fromSlave and userType
@@ -615,13 +662,18 @@ func (s *Slice) getConnFromBalancer(slavesInfo *DBInfo, bal *balancer) (PooledCo
 
 // getConnWithFuse 封装从连接池获取连接并处理熔断的逻辑
 func (s *Slice) getConnWithFuse(node *NodeInfo) (PooledConnect, error) {
+	now := time.Now().Unix()
 	pc, err := node.ConnPool.Get(context.TODO())
+	isConnErr := mysql.IsConnectionTimeoutError(err)
+
+	// 统一处理熔断统计：根据错误类型判断是否为连接型错误
+	if isConnErr && node.FuseWindow != nil && node.FuseWindow.ShouldTrigger(now, isConnErr) {
+		node.SetStatus(StatusDown)
+		log.Warn("[addr:%s] Triggered fuse, node marked as DOWN", node.Address)
+	}
+
 	if err != nil {
-		// 非超时错误，直接返回
-		if !mysql.IsConnectionTimeoutError(err) {
-			log.Warn("Failed to get connection from pool (%s): %v", node.Address, err)
-			return pc, err
-		}
+		log.Warn("[addr:%s] Failed to get connection from pool, error: %v", node.Address, err)
 		return nil, err
 	}
 	return pc, nil
