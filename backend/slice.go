@@ -645,6 +645,14 @@ func (dbInfo *DBInfo) InitBalancers(proxyDatacenter string) error {
 
 // getConnFromBalancer 封装从给定 balancer 中依次尝试选取健康连接的逻辑
 func (s *Slice) getConnFromBalancer(slavesInfo *DBInfo, bal *balancer) (PooledConnect, error) {
+	node, err := s.getNodeFromBalancer(slavesInfo, bal)
+	if err != nil {
+		return nil, err
+	}
+	return s.getConnWithFuse(node)
+}
+
+func (s *Slice) getNodeFromBalancer(slavesInfo *DBInfo, bal *balancer) (*NodeInfo, error) {
 	// 加锁保证同一时刻只有一个 Session 在使用该 balancer
 	s.Lock()
 	defer s.Unlock()
@@ -654,7 +662,7 @@ func (s *Slice) getConnFromBalancer(slavesInfo *DBInfo, bal *balancer) (PooledCo
 			return nil, fmt.Errorf("failed to get next index from balancer: %v", err)
 		}
 		if node, _ := slavesInfo.GetNode(index); node != nil && node.IsStatusUp() {
-			return s.getConnWithFuse(node)
+			return node, nil
 		}
 	}
 	return nil, fmt.Errorf("no healthy connection available from selected balancer")

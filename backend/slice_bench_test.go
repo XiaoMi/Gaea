@@ -163,7 +163,14 @@ func (s *Slice) getConnFromBalancerNoLock(slavesInfo *DBInfo, bal *balancer) (Po
 }
 
 func (s *Slice) getConnFromBalancerLock(slavesInfo *DBInfo, bal *balancer) (PooledConnect, error) {
-	// 加锁保证同一时刻只有一个 Session 在使用该 balancer
+	node, err := s.getNodeFromBalancerLock(slavesInfo, bal)
+	if err != nil {
+		return nil, err
+	}
+	return s.getConnWithFuse(node)
+}
+
+func (s *Slice) getNodeFromBalancerLock(slavesInfo *DBInfo, bal *balancer) (*NodeInfo, error) {
 	s.Lock()
 	defer s.Unlock()
 	for i := 0; i < len(bal.roundRobinQ); i++ {
@@ -176,8 +183,7 @@ func (s *Slice) getConnFromBalancerLock(slavesInfo *DBInfo, bal *balancer) (Pool
 		if !node.IsStatusUp() {
 			continue
 		}
-		// 返回健康节点的连接
-		return s.getConnWithFuse(node)
+		return node, nil
 	}
 	return nil, fmt.Errorf("no healthy connection available from selected balancer")
 }
