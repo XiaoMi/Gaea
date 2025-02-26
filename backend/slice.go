@@ -71,6 +71,7 @@ func (s *StatusCode) String() string {
 }
 
 type DBInfo struct {
+	sync.Mutex
 	Nodes          []*NodeInfo // 节点信息
 	LocalBalancer  *balancer   // 仅包含数据中心与代理匹配的节点
 	RemoteBalancer *balancer   // 包含除本机外的所有其他数据节点
@@ -654,8 +655,8 @@ func (s *Slice) getConnFromBalancer(slavesInfo *DBInfo, bal *balancer) (PooledCo
 
 func (s *Slice) getNodeFromBalancer(slavesInfo *DBInfo, bal *balancer) (*NodeInfo, error) {
 	// 加锁保证同一时刻只有一个 Session 在使用该 balancer
-	s.Lock()
-	defer s.Unlock()
+	slavesInfo.Lock()
+	defer slavesInfo.Unlock()
 	for i := 0; i < len(bal.roundRobinQ); i++ {
 		index, err := bal.next()
 		if err != nil {

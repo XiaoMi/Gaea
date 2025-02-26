@@ -146,6 +146,14 @@ func (s *Slice) GetSlaveConnWithLock(dbInfo *DBInfo, localSlaveReadPriority int)
 }
 
 func (s *Slice) getConnFromBalancerNoLock(slavesInfo *DBInfo, bal *balancer) (PooledConnect, error) {
+	node, err := s.getNodeFromBalancerNoLock(slavesInfo, bal)
+	if err != nil {
+		return nil, err
+	}
+	return s.getConnWithFuse(node)
+}
+
+func (s *Slice) getNodeFromBalancerNoLock(slavesInfo *DBInfo, bal *balancer) (*NodeInfo, error) {
 	for i := 0; i < len(bal.roundRobinQ); i++ {
 		index, err := bal.next()
 		if err != nil {
@@ -156,8 +164,7 @@ func (s *Slice) getConnFromBalancerNoLock(slavesInfo *DBInfo, bal *balancer) (Po
 		if !node.IsStatusUp() {
 			continue
 		}
-		// 返回健康节点的连接
-		return s.getConnWithFuse(node)
+		return node, nil
 	}
 	return nil, fmt.Errorf("no healthy connection available from selected balancer")
 }
@@ -171,8 +178,8 @@ func (s *Slice) getConnFromBalancerLock(slavesInfo *DBInfo, bal *balancer) (Pool
 }
 
 func (s *Slice) getNodeFromBalancerLock(slavesInfo *DBInfo, bal *balancer) (*NodeInfo, error) {
-	s.Lock()
-	defer s.Unlock()
+	slavesInfo.Lock()
+	defer slavesInfo.Unlock()
 	for i := 0; i < len(bal.roundRobinQ); i++ {
 		index, err := bal.next()
 		if err != nil {
