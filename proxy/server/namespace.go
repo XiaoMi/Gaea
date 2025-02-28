@@ -51,8 +51,7 @@ const (
 	// 认为Slave已下线，如果需要快速判定状态，可减少该值
 	defaultMaxClientConnections = 100000000 //Big enough
 	defaultFuseWindowSize       = 4         // 熔断窗口是4s
-	defaultFuseWindowThreshold  = 50        // 50%错误率
-	defaultFueseMinRequestCount = 6         // 至少6个请求
+	defaultFueseMinErrorCount   = 6         // 至少6个请求
 )
 
 // UserProperty means runtime user properties
@@ -100,9 +99,8 @@ type Namespace struct {
 	namespaceChangeIndex    uint32
 	allowedSessionVariables map[string]string
 
-	FuseWindowSize      int
-	FuseWindowThreshold int
-	FuseMinRequestCount int64
+	FuseWindowSize    int
+	FuseMinErrorCount int64
 }
 
 // DumpToJSON  means easy encode json
@@ -217,16 +215,10 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 		namespace.FuseWindowSize = namespaceConfig.FuseWindowSize
 	}
 
-	if namespaceConfig.FuseWindowThreshold <= 0 {
-		namespace.FuseWindowThreshold = defaultFuseWindowThreshold
+	if namespaceConfig.FuseMinErrorCount <= 0 {
+		namespace.FuseMinErrorCount = defaultFueseMinErrorCount
 	} else {
-		namespace.FuseWindowThreshold = namespaceConfig.FuseWindowThreshold
-	}
-
-	if namespaceConfig.FuseMinRequestCount <= 0 {
-		namespace.FuseMinRequestCount = defaultFueseMinRequestCount
-	} else {
-		namespace.FuseMinRequestCount = namespaceConfig.FuseMinRequestCount
+		namespace.FuseMinErrorCount = namespaceConfig.FuseMinErrorCount
 	}
 
 	namespace.downAfterNoAlive = namespaceConfig.DownAfterNoAlive
@@ -251,7 +243,7 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 	}
 
 	// init backend slices
-	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID, proxyDatacenter, namespace.FuseWindowSize, namespace.FuseWindowThreshold, namespace.FuseMinRequestCount)
+	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID, proxyDatacenter, namespace.FuseWindowSize, namespace.FuseMinErrorCount)
 	if err != nil {
 		return nil, fmt.Errorf("init slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
 	}
@@ -629,7 +621,7 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	return s, nil
 }
 
-func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.CollationID, dc string, fuseSize int, fuseThreshold int, fuseMinRequestCount int64) (map[string]*backend.Slice, error) {
+func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.CollationID, dc string, fuseSize int, fuseMinErrorCount int64) (map[string]*backend.Slice, error) {
 	slices := make(map[string]*backend.Slice, len(cfgSlices))
 	for _, v := range cfgSlices {
 		v.Name = strings.TrimSpace(v.Name) // modify origin slice name, trim space
@@ -643,8 +635,7 @@ func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.Co
 		}
 
 		s.FuseWindowSize = fuseSize
-		s.FuseWindowThreshold = fuseThreshold
-		s.FuseMinRequestCount = fuseMinRequestCount
+		s.FuseMinErrorCount = fuseMinErrorCount
 
 		if err = s.InitFuseSlideWindow(s.Slave); err != nil {
 			return nil, fmt.Errorf("failed to initialize slave fuse slide window: %w", err)

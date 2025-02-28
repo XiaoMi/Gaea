@@ -60,8 +60,7 @@ type Namespace struct {
 	SupportLimitTransaction bool              `json:"support_limit_transaction"` // 是否支持限制事务
 	AllowedSessionVariables map[string]string `json:"allowed_session_variables"` // 允许设置的会话变量
 	FuseWindowSize          int               `json:"fuse_window_size"`          // fuse窗口,即禁用
-	FuseWindowThreshold     int               `json:"fuse_window_threshold"`     // fuse阈值,默认为 0，即无限大, 即禁用
-	FuseMinRequestCount     int64             `json:"fuse_min_request_count"`    // fuse的窗口内总的错误数，默认为 0, 即禁用
+	FuseMinErrorCount       int64             `json:"fuse_min_error_count"`      // fuse的窗口内触发熔断的总的错误数
 }
 
 // Encode encode json

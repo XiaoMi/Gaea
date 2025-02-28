@@ -78,17 +78,11 @@ type DBInfo struct {
 	GlobalBalancer *balancer   // 包含所有节点
 }
 
-func (dbInfo *DBInfo) InitFuseSlideWindow(fuseWindowSize int, fuseWindowThreshold int, fueseMinRequestsPerSec int64) error {
+func (dbInfo *DBInfo) InitFuseSlideWindow(fuseWindowSize int, fueseMinErrorCount int64) error {
 	// 参数校验
 	if fuseWindowSize < 0 {
 		return fmt.Errorf("invalid fuse window size: %d (must > 0)", fuseWindowSize)
 	}
-	if fuseWindowThreshold < 0 || fuseWindowThreshold > 100 { // 合理的阈值范围是 0~100%
-		return fmt.Errorf("invalid fuse threshold: %d%% (must 0~100)", fuseWindowThreshold)
-	}
-
-	// 将百分比阈值转换为浮点数 (e.g. 50% -> 0.5)
-	threshold := float64(fuseWindowThreshold) / 100.0
 
 	// 为每个节点初始化独立的滑动窗口
 	for _, node := range dbInfo.Nodes {
@@ -98,15 +92,14 @@ func (dbInfo *DBInfo) InitFuseSlideWindow(fuseWindowSize int, fuseWindowThreshol
 
 		// 创建滑动窗口实例（参数不合法时会返回 disabled 状态）
 		node.FuseWindow = NewSlidingWindow(
-			fuseWindowSize,
-			threshold,
-			fueseMinRequestsPerSec,
+			int64(fuseWindowSize),
+			fueseMinErrorCount,
 		)
 
 		// 若窗口参数非法则强制禁用熔断
 		if !node.FuseWindow.IsEnabled() {
-			log.Warn("Disable fuse for node %s due to invalid params (size=%d threshold=%.2f)",
-				node.Address, fuseWindowSize, threshold)
+			log.Warn("Disable fuse for node %s due to invalid params (size=%d minfuseErrorCount=%d)",
+				node.Address, fuseWindowSize, fueseMinErrorCount)
 		}
 	}
 	return nil
@@ -234,8 +227,7 @@ type Slice struct {
 	HandshakeTimeout            time.Duration
 	FallbackToMasterOnSlaveFail string // 控制从库获取失败时是否回退到主库
 	FuseWindowSize              int
-	FuseWindowThreshold         int
-	FuseMinRequestCount         int64
+	FuseMinErrorCount           int64
 }
 
 // GetSliceName return name of slice
@@ -246,7 +238,7 @@ func (s *Slice) GetSliceName() string {
 // InitFuseSlideWindow init fuse slide window
 func (s *Slice) InitFuseSlideWindow(dbInfo *DBInfo) error {
 	// 初始化 `FuseSlideWindow`
-	if err := dbInfo.InitFuseSlideWindow(s.FuseWindowSize, s.FuseWindowThreshold, s.FuseMinRequestCount); err != nil {
+	if err := dbInfo.InitFuseSlideWindow(s.FuseWindowSize, s.FuseMinErrorCount); err != nil {
 		return fmt.Errorf("failed to initialize fuse slide window: %w", err)
 	}
 	return nil
@@ -675,8 +667,7 @@ func (s *Slice) getConnWithFuse(node *NodeInfo) (PooledConnect, error) {
 	pc, err := node.ConnPool.Get(context.TODO())
 	isConnErr := mysql.IsConnectionTimeoutError(err)
 
-	// 统一处理熔断统计：根据错误类型判断是否为连接型错误
-	if isConnErr && node.FuseWindow != nil && node.FuseWindow.ShouldTrigger(now, isConnErr) {
+	if node.FuseWindow != nil && isConnErr && node.FuseWindow.Trigger(now) {
 		node.SetStatus(StatusDown)
 		log.Warn("[addr:%s] Triggered fuse, node marked as DOWN", node.Address)
 	}
