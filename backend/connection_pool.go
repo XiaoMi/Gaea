@@ -31,7 +31,6 @@ const (
 	GetConnTimeout          = 2 * time.Second
 	pingPeriod              = 4 * time.Second
 	handshakeTimeoutDefault = 500 * time.Millisecond
-	defaultConnectLimit     = 100 // 这个是经验值
 )
 
 const (
@@ -110,8 +109,7 @@ func (cp *connectionPoolImpl) Open() error {
 	defer cp.mu.Unlock()
 	var err error = nil
 	cp.connections, err = util.NewResourcePool(
-		util.NewResourceLimitWrapper(cp.Addr(), defaultConnectLimit, cp.connect).Factory,
-		cp.capacity, cp.maxCapacity, cp.idleTimeout,
+		cp.connect, cp.capacity, cp.maxCapacity, cp.idleTimeout,
 	)
 	return err
 }
@@ -186,6 +184,11 @@ func (cp *connectionPoolImpl) Get(ctx context.Context) (pc PooledConnect, err er
 	if !pc.GetReturnTime().IsZero() && time.Until(pc.GetReturnTime().Add(pingPeriod)) < 0 {
 		if err = pc.PingWithTimeout(GetConnTimeout); err != nil {
 			err = pc.Reconnect()
+		}
+		// 这边防止连接泄漏
+		if err != nil {
+			pc.Recycle()
+			return nil, err
 		}
 	}
 

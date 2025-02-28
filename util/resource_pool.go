@@ -22,8 +22,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/XiaoMi/Gaea/mysql"
-	"golang.org/x/time/rate"
 	"sync"
 	"time"
 
@@ -179,10 +177,10 @@ func (rp *ResourcePool) closeIdleResources() {
 // Get会返回下一个可用的资源
 // 如果容量没有达到上线，它会根据factory创建一个新的资源，否则会一直等待直到资源可用或超时
 func (rp *ResourcePool) Get(ctx context.Context) (resource Resource, err error) {
-	return rp.get(ctx, true)
+	return rp.get(ctx)
 }
 
-func (rp *ResourcePool) get(ctx context.Context, wait bool) (resource Resource, err error) {
+func (rp *ResourcePool) get(ctx context.Context) (resource Resource, err error) {
 	// If ctx has already expired, avoid racing with rp's resource channel.
 	select {
 	case <-ctx.Done():
@@ -203,9 +201,6 @@ func (rp *ResourcePool) get(ctx context.Context, wait bool) (resource Resource, 
 		if ok {
 			wrapper = newWrapper
 		} else {
-			if !wait {
-				return nil, nil
-			}
 			startTime := time.Now()
 			select {
 			case wrapper, ok = <-rp.resources:
@@ -496,73 +491,4 @@ func (rp *ResourcePool) IdleTimeout() time.Duration {
 // IdleClosed returns the count of resources closed due to idle timeout.
 func (rp *ResourcePool) IdleClosed() int64 {
 	return rp.idleClosed.Get()
-}
-
-type ResourceLimitWrapper struct {
-	sync.Mutex
-	factory Factory
-	limiter *rate.Limiter
-	addr    string
-	running sync2.AtomicInt64
-}
-
-// NewResourceLimitWrapper returns a new ResourceLimitWrapper.
-func NewResourceLimitWrapper(addr string, resourceLimit int, factory Factory) *ResourceLimitWrapper {
-	return &ResourceLimitWrapper{
-		addr:    addr,
-		factory: factory,
-		limiter: rate.NewLimiter(rate.Limit(resourceLimit), resourceLimit),
-		running: sync2.NewAtomicInt64(0),
-	}
-}
-
-/*
-每秒允许创建有限个 resource
-符合预期的场景，当某个时刻实例突然不可用了，连接被阻塞了，能够快速识别出来，而不是一直等待
-因此，当同时有 limit 个数的 resouce 在创建中被阻塞了，则任务数据库实例存在问题，返回 mysql.ConnectionError 设置实例状态为 down
-假设 limit 为 100，每秒种允许新建 100 个连接
-如果只有 golang.org/x/time/rate 包，则会有个问题，并发量高的情况下，比如 1000，如果前面 100 个连接创建成功了，则后面连接无法继续创建了
-即
-如果 每秒超过了 建立 100 个连接，但是正在建连的线程数 < 100 仍然允许继续建连
-如果 正在建立连接的线程数为 100，仍然下一秒后，可以以每秒 100 的数量继续建连
-当然如果 正在建立连接的线程数为 100， 当前秒已经建立了 100个连接，该秒内不再被允许建连，返回 mysql.ConnectionError 设置实例状态为 down
-*/
-func (r *ResourceLimitWrapper) Factory() (Resource, error) {
-	ok1 := r.limiter.Allow()
-	ok2 := r.runningAllow()
-	if ok2 {
-		defer r.runningFinish()
-	}
-	if ok1 || ok2 {
-		return r.factory()
-	}
-	return nil, &mysql.ConnectionError{
-		Addr: r.addr,
-		Msg:  "resource limit exceeded",
-	}
-}
-
-func (r *ResourceLimitWrapper) runningAllow() bool {
-	r.Lock()
-	defer r.Unlock()
-	if r.running.Get() < int64(r.limiter.Limit()) {
-		r.running.Add(1)
-		return true
-	}
-	return false
-}
-
-func (r *ResourceLimitWrapper) runningFinish() {
-	r.Lock()
-	defer r.Unlock()
-	r.running.Add(-1)
-	if r.running.Get() < 0 {
-		r.running.Set(0)
-	}
-}
-
-func (r *ResourceLimitWrapper) GetRunningNum() int {
-	r.Lock()
-	defer r.Unlock()
-	return int(r.running.Get())
 }
