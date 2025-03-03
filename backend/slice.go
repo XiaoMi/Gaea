@@ -361,14 +361,14 @@ func (s *Slice) getNormalConnection(reqCtx *util.RequestContext, localSlaveReadP
 	fromSlave := reqCtx.GetFromSlave()
 	var fallbackToMaster bool
 	if fromSlave {
-		// 记录业务从库切换到主库的监控指标
-		reqCtx.SetSwitchedToMaster(true)
 		// 从普通从库获取
 		pc, err = s.GetSlaveConn(s.Slave, localSlaveReadPriority)
 		if err != nil {
 			// 如果获取从库连接失败，决定是否回退到主库
 			fallbackToMaster = s.ShouldFallbackToMasterOnSlaveFail()
 			if fallbackToMaster {
+				// 记录业务从库切换到主库的监控指标
+				reqCtx.SetSwitchedToMaster(true)
 				log.Warn("NormalUser: Failed to get slave connection. Error: %v, Trying to get master connection.", err)
 				pc, err = s.GetMasterConn()
 			}
@@ -387,14 +387,14 @@ func (s *Slice) getMonitorConnection(reqCtx *util.RequestContext, localSlaveRead
 	fromSlave := reqCtx.GetFromSlave()
 	var fallbackToMaster bool
 	if fromSlave {
-		// 记录监控从库切换到主库的监控指标
-		reqCtx.SetSwitchedToMaster(true)
 		// 从监控从库获取连接
 		pc, err = s.GetSlaveConn(s.MonitorSlave, localSlaveReadPriority)
 		if err != nil {
 			// 如果获取从库连接失败，决定是否回退到主库
 			fallbackToMaster = s.ShouldFallbackToMasterOnSlaveFail()
 			if fallbackToMaster {
+				// 记录监控从库切换到主库的监控指标
+				reqCtx.SetSwitchedToMaster(true)
 				log.Warn("MonitorUser: Failed to get slave connection. Error: %v, Trying to get master connection.", err)
 				pc, err = s.GetMonitorMasterConn()
 			}
