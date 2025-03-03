@@ -59,6 +59,7 @@ const (
 	LocalSlaveReadClosed            = 0 // 不启用本地优先
 	LocalSlaveReadPrefer            = 1 // 优先本地，但无本地时降级使用全局
 	LocalSlaveReadForce             = 2 // 强制只用本地
+	CheckRepeat                     = 3
 )
 
 func (s *StatusCode) String() string {
@@ -115,13 +116,16 @@ func (d *DBInfo) GetNode(index int) (*NodeInfo, error) {
 
 // 更新 `NodeInfo` 结构
 type NodeInfo struct {
-	sync.RWMutex                // 保护 `Status`
-	Address      string         // 节点地址
-	Datacenter   string         // 节点所属的数据中心
-	Weight       int            // 该节点的负载均衡权重
-	ConnPool     ConnectionPool // 该节点的连接池
-	Status       StatusCode     // 该节点状态`status` 只能通过`GetStatus` 和 `SetStatus` 访问
-	FuseWindow   *SlidingWindow
+	sync.RWMutex                           // 保护 `Status`
+	Address                 string         // 节点地址
+	Datacenter              string         // 节点所属的数据中心
+	Weight                  int            // 该节点的负载均衡权重
+	ConnPool                ConnectionPool // 该节点的连接池
+	Status                  StatusCode     // 该节点状态`status` 只能通过`GetStatus` 和 `SetStatus` 访问
+	FuseWindow              *SlidingWindow
+	RecoveryTime            int64 // 最近一次恢复时间
+	RecoveryShouldSkipCount int64 // 这个是一个动态值
+	ErrorRecoveryCount      int64 // 这个是一个累计值
 }
 
 // GetStatus 使用读锁，允许并发读取，提高性能
@@ -146,9 +150,93 @@ func (n *NodeInfo) IsStatusDown() bool {
 
 // SetStatus 使用写锁，保证状态更新的线程安全
 func (n *NodeInfo) SetStatus(status StatusCode) {
+	if status == StatusUp {
+		n.SetStatusUp()
+	} else {
+		n.SetStatusDown()
+	}
+}
+
+// 置为 up 状态
+func (n *NodeInfo) SetStatusUp() {
 	n.Lock()
 	defer n.Unlock()
-	n.Status = status
+	// 由 down 变为 up 时，触发，误恢复次数越多，越难以真正设置为 up 状态
+	if !n.checkShouldUp() {
+		return
+	}
+	n.Status = StatusUp
+}
+
+// 主要处理由 down 变为 up 的情况
+func (n *NodeInfo) checkShouldUp() bool {
+	// 已经为 up 状态，不处理
+	if n.Status == StatusUp {
+		return false
+	}
+	// 未开启熔断状态，需要设为 up
+	if n.FuseWindow == nil || !n.FuseWindow.IsEnabled() {
+		return true
+	}
+	// 记录恢复时间
+	n.RecoveryTime = time.Now().Unix()
+	// 计数器越多，越难以恢复
+	if n.RecoveryShouldSkipCount > 0 {
+		n.RecoveryShouldSkipCount -= 1
+		return false
+	}
+	return true
+}
+
+// 置为 down 状态
+func (n *NodeInfo) SetStatusDown() {
+	n.Lock()
+	defer n.Unlock()
+	n.checkBadRecovery()
+	n.Status = StatusDown
+}
+
+// 主要处理 up 变为 down 的情况
+func (n *NodeInfo) checkBadRecovery() {
+	// 已经为 down 状态不处理
+	if n.Status == StatusDown {
+		return
+	}
+	// 未开启熔断状态不处理
+	if n.FuseWindow == nil || !n.FuseWindow.IsEnabled() {
+		return
+	}
+	nowTime := time.Now().Unix()
+	// 如果恢复间隔时间小于等于2倍窗口时间，则表示误恢复
+	if nowTime-n.RecoveryTime <= n.FuseWindow.windowSizeSec*2 {
+		// 误恢复数计数 +1
+		n.ErrorRecoveryCount += 1
+		// 1+2+3+ ... +n
+		n.RecoveryShouldSkipCount = (1 + n.ErrorRecoveryCount) * n.ErrorRecoveryCount / 2
+		// 每 4 秒检测一次，恢复间隔时间最多为 10分钟， 4*150=600
+		if n.RecoveryShouldSkipCount > 150 {
+			n.RecoveryShouldSkipCount = 150
+		}
+	} else {
+		// 正常恢复的情况
+		n.ErrorRecoveryCount = 0
+		n.RecoveryShouldSkipCount = 0
+	}
+}
+
+// 强制计数，如果不是连续探测成功，则恢复计数， 这边不能直接被 checkBadRecovery 调用不然会死锁
+func (n *NodeInfo) RefreshSkipCount() {
+	n.Lock()
+	defer n.Unlock()
+	// 未开启熔断状态不处理
+	if n.FuseWindow == nil || !n.FuseWindow.IsEnabled() {
+		return
+	}
+	n.RecoveryShouldSkipCount = (1 + n.ErrorRecoveryCount) * n.ErrorRecoveryCount / 2
+	// 每 4 秒检测一次，恢复间隔时间最多为 10分钟， 4*150=600
+	if n.RecoveryShouldSkipCount > 150 {
+		n.RecoveryShouldSkipCount = 150
+	}
 }
 
 // NodeInfo 封装获取 PooledConnect 的方法
@@ -467,7 +555,13 @@ func (s *Slice) checkBackendMasterStatus(ctx context.Context, name string, downA
 				// 连接池可能因为网络原因导致Ping失败，这个时候继续向下检查
 			}
 
-			// 2. 判断 Master 是否要下线
+			// 2. 重置恢复计数
+			if conn == nil && node.IsStatusDown() {
+				node.RefreshSkipCount()
+				log.Warn("[ns:%s, %s:%s] check master status, Reset recovery count, skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
+			}
+
+			// 3. 判断 Master 是否要下线
 			shouldSetDown, elapsed := node.ShouldDownAfterNoAlive(downAfterNoAlive)
 			if shouldSetDown {
 				node.SetStatus(StatusDown)
@@ -475,10 +569,15 @@ func (s *Slice) checkBackendMasterStatus(ctx context.Context, name string, downA
 				continue
 			}
 
-			// 3. 更新 Master 状态
+			// 4. 更新 Master 状态
 			if conn != nil && node.IsStatusDown() {
 				node.SetStatus(StatusUp)
-				log.Warn("[ns:%s, %s:%s] check master status, Master recovered and is now StatusUp", name, s.Cfg.Name, node.Address)
+				// 如果仍然为 down 状态，表示存在误恢复的情况
+				if node.IsStatusDown() {
+					log.Warn("[ns:%s, %s:%s] check master status, Master recovered, Marked as StatusUp fail, skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
+				} else {
+					log.Warn("[ns:%s, %s:%s] check master status, Master recovered, Marked as StatusUp success, skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
+				}
 			}
 		}
 	}
@@ -515,7 +614,13 @@ func (s *Slice) checkBackendSlaveStatus(ctx context.Context, slave *DBInfo, name
 					// 连接池可能因为网络原因导致Ping失败，这个时候继续向下检查
 				}
 
-				// 2. 判断是否需要下线
+				// 2. 重置恢复计数
+				if conn == nil && node.IsStatusDown() {
+					node.RefreshSkipCount()
+					log.Warn("[ns:%s, %s:%s] check slave status, Reset recovery count, skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
+				}
+
+				// 3. 判断是否需要下线
 				shouldSetDown, elapsed := node.ShouldDownAfterNoAlive(downAfterNoAlive)
 				if shouldSetDown {
 					node.SetStatus(StatusDown)
@@ -523,13 +628,18 @@ func (s *Slice) checkBackendSlaveStatus(ctx context.Context, slave *DBInfo, name
 					continue
 				}
 
-				// 3. 获取主库状态
+				// 4. 获取主库状态
 				masterStatus, err := s.GetMasterStatus()
 				if err != nil || masterStatus == StatusDown {
 					log.Warn("[ns:%s, %s:%s] check slave status, Skipping slave sync check, get master status: %s, get master err: %v", name, s.Cfg.Name, node.Address, masterStatus.String(), err)
 					if node.IsStatusDown() {
 						node.SetStatus(StatusUp)
-						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp, Slave recovered from down, (case master down)", name, s.Cfg.Name, node.Address)
+						// 如果仍然为 down 状态，表示存在误恢复的情况
+						if node.IsStatusDown() {
+							log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp fail, Slave recovered from down, (case master down), skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
+						} else {
+							log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp success, Slave recovered from down, (case master down), skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
+						}
 					}
 					continue
 				}
@@ -549,7 +659,11 @@ func (s *Slice) checkBackendSlaveStatus(ctx context.Context, slave *DBInfo, name
 				// 6. 所有检查通过，最终确认 `StatusUp`,如果 pc == nil,说明连接池可能因为网络原因断开，这个时候保持原状态, 直到通过 ShouldDownAfterNoAlive 超过阈值下线
 				if conn != nil && node.IsStatusDown() {
 					node.SetStatus(StatusUp)
-					log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp, Slave recovered from down, (case master up)", name, s.Cfg.Name, node.Address)
+					if node.IsStatusDown() {
+						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp fail, Slave recovered from down, (case master up), skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
+					} else {
+						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp success, Slave recovered from down, (case master up), skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
+					}
 				}
 			}
 		}
@@ -575,21 +689,29 @@ func checkInstanceStatus(name string, cp ConnectionPool, healthCheckSql string) 
 		return nil, fmt.Errorf("get nil check conn, ins:%s", cp.Addr())
 	}
 
-	if len(healthCheckSql) > 0 {
-		_, err := pc.ExecuteWithTimeout(healthCheckSql, 0, ExecTimeOut)
-		if err == nil {
-			cp.SetLastChecked()
-			return pc, nil
+	// 重复多次检测通过，才算通过，网络不稳定时，可以使得检测更准确
+	for i := 0; i <= CheckRepeat; i++ {
+		if len(healthCheckSql) > 0 {
+			_, err := pc.ExecuteWithTimeout(healthCheckSql, 0, ExecTimeOut)
+			if err == nil {
+				cp.SetLastChecked()
+				return pc, nil
+			}
+			log.Warn("[ns:%s instance:%s] exec health check sql:%s sqlError:%v", name, cp.Addr(), healthCheckSql, err)
+			if mysql.IsServerShutdownErr(err) || mysql.IsTableSpaceMissingErr(err) || mysql.IsTableSpaceDiscardeErr(err) || err == ErrExecuteTimeout {
+				pc.Close()
+				return nil, fmt.Errorf("exec health check query error:%s", err)
+			}
 		}
-		log.Warn("[ns:%s instance:%s] exec health check sql:%s sqlError:%v", name, cp.Addr(), healthCheckSql, err)
-		if mysql.IsServerShutdownErr(err) || mysql.IsTableSpaceMissingErr(err) || mysql.IsTableSpaceDiscardeErr(err) || err == ErrExecuteTimeout {
+		if err = pc.PingWithTimeout(GetConnTimeout); err != nil {
 			pc.Close()
-			return nil, fmt.Errorf("exec health check query error:%s", err)
+			return nil, fmt.Errorf("ping conn error:%s", err)
 		}
-	}
-	if err = pc.PingWithTimeout(GetConnTimeout); err != nil {
-		pc.Close()
-		return nil, fmt.Errorf("ping conn error:%s", err)
+		// 增加 select 1 探活
+		if _, err = pc.ExecuteWithTimeout("select 1", 0, ExecTimeOut); err != nil {
+			pc.Close()
+			return nil, fmt.Errorf("ping conn error:%s", err)
+		}
 	}
 
 	cp.SetLastChecked()
