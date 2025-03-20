@@ -267,15 +267,16 @@ func (cc *Session) Close() {
 	// 处理 KS 退出
 	cc.executor.handleKsQuit()
 
-	// 记录会话关闭的日志
-	cc.proxy.manager.statistics.generalLogger.Notice("Session Close - conn_id=%d, ns=%s, %s@%s/%s, capability: %d",
-		cc.c.GetConnectionID(),
-		cc.executor.namespace,
-		cc.executor.user,
-		cc.executor.clientAddr,
-		cc.executor.db,
-		cc.c.capability)
-
+	// 记录实际业务用户会话关闭的日志，而不是LB
+	if len(cc.executor.namespace) > 0 {
+		cc.proxy.manager.statistics.generalLogger.Notice("Session Close - conn_id=%d, ns=%s, %s@%s/%s, capability: %d",
+			cc.c.GetConnectionID(),
+			cc.executor.namespace,
+			cc.executor.user,
+			cc.executor.clientAddr,
+			cc.executor.db,
+			cc.c.capability)
+	}
 	// 关闭底层连接
 	cc.c.Close()
 
