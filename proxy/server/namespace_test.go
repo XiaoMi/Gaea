@@ -55,13 +55,12 @@ func TestParseSlice(t *testing.T) {
 		{
 			name: "valid master and slaves",
 			cfg: &models.Slice{
-				Name:                        "slice-0",
-				Master:                      "master-db:3306",
-				Slaves:                      []string{"slave-db-1:3306", "slave-db-2:3307"},
-				StatisticSlaves:             []string{"stat-db-1:3308"},
-				FallbackToMasterOnSlaveFail: "on",
-				HandshakeTimeout:            3000, // 3s
-				HealthCheckSql:              "SELECT 1",
+				Name:             "slice-0",
+				Master:           "master-db:3306",
+				Slaves:           []string{"slave-db-1:3306", "slave-db-2:3307"},
+				StatisticSlaves:  []string{"stat-db-1:3308"},
+				HandshakeTimeout: 3000, // 3s
+				HealthCheckSql:   "SELECT 1",
 			},
 			expectMasterNodes:    1, // Master 存在
 			expectSlaveNodes:     2, // 有 2 个 Slave

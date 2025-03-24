@@ -17,26 +17,23 @@ package models
 import (
 	"errors"
 	"fmt"
-	"strings"
 )
 
 // Slice means config model of slice
 type Slice struct {
-	Name                        string   `json:"name"`
-	UserName                    string   `json:"user_name"`
-	Password                    string   `json:"password"`
-	Master                      string   `json:"master"`
-	Slaves                      []string `json:"slaves"`
-	StatisticSlaves             []string `json:"statistic_slaves"`
-	Capacity                    int      `json:"capacity"`                         // connection pool capacity
-	MaxCapacity                 int      `json:"max_capacity"`                     // max connection pool capacity
-	IdleTimeout                 int      `json:"idle_timeout"`                     // close backend direct connection after idle_timeout,unit: seconds
-	Capability                  uint32   `json:"capability"`                       // capability set by client, this capability is used as mysql client parameter when
-	InitConnect                 string   `json:"init_connect"`                     // 与MySQL的init_connect相同，连接池中的连接新建之后即会发送请求，以分号分隔
-	HealthCheckSql              string   `json:"health_check_sql"`                 // 简单语句的健康查询
-	HandshakeTimeout            int      `json:"handshake_timeout"`                // 建立连接的超时时间
-	FallbackToMasterOnSlaveFail string   `json:"fallback_to_master_on_slave_fail"` // 当从库连接失败时，是否回退到主库
-	FuseEnabled                 string   `json:"fuse_enabled"`                     // 是否开启熔断
+	Name             string   `json:"name"`
+	UserName         string   `json:"user_name"`
+	Password         string   `json:"password"`
+	Master           string   `json:"master"`
+	Slaves           []string `json:"slaves"`
+	StatisticSlaves  []string `json:"statistic_slaves"`
+	Capacity         int      `json:"capacity"`          // connection pool capacity
+	MaxCapacity      int      `json:"max_capacity"`      // max connection pool capacity
+	IdleTimeout      int      `json:"idle_timeout"`      // close backend direct connection after idle_timeout,unit: seconds
+	Capability       uint32   `json:"capability"`        // capability set by client, this capability is used as mysql client parameter when
+	InitConnect      string   `json:"init_connect"`      // 与MySQL的init_connect相同，连接池中的连接新建之后即会发送请求，以分号分隔
+	HealthCheckSql   string   `json:"health_check_sql"`  // 简单语句的健康查询
+	HandshakeTimeout int      `json:"handshake_timeout"` // 建立连接的超时时间
 	// gaea proxy as client connected to MySQL  default is 0
 }
 
@@ -69,18 +66,6 @@ func (s *Slice) verify() error {
 
 	if s.Capacity > s.MaxCapacity {
 		return fmt.Errorf("connection pool capacity should be less than max connection pool capactiy")
-	}
-
-	// 校验 fallback_to_master_on_slave_fail 字段
-	val := strings.ToLower(s.FallbackToMasterOnSlaveFail)
-	if val != "" && val != "on" && val != "off" {
-		return errors.New(`fallback_to_master_on_slave_fail must be "on", "off" or empty`)
-	}
-
-	// 校验 fuse_enabled 字段
-	fuse := strings.ToLower(s.FuseEnabled)
-	if fuse != "" && fuse != "on" && fuse != "off" {
-		return errors.New(`fuse_enabled must be "on", "off" or empty`)
 	}
 
 	return nil

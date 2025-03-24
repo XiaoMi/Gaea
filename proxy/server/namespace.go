@@ -99,8 +99,10 @@ type Namespace struct {
 	namespaceChangeIndex    uint32
 	allowedSessionVariables map[string]string
 
-	FuseWindowSize    int
-	FuseMinErrorCount int64
+	fuseWindowSize              int
+	fuseMinErrorCount           int64
+	fallbackToMasterOnSlaveFail string
+	fuseEnabled                 string
 }
 
 // DumpToJSON  means easy encode json
@@ -112,17 +114,19 @@ func (n *Namespace) DumpToJSON() []byte {
 func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*Namespace, error) {
 	var err error
 	namespace := &Namespace{
-		name:                    namespaceConfig.Name,
-		sqls:                    make(map[string]string, 16),
-		userProperties:          make(map[string]*UserProperty, 2),
-		openGeneralLog:          namespaceConfig.OpenGeneralLog,
-		slowSQLCache:            cache.NewLRUCache(defaultSQLCacheCapacity),
-		errorSQLCache:           cache.NewLRUCache(defaultSQLCacheCapacity),
-		backendSlowSQLCache:     cache.NewLRUCache(defaultSQLCacheCapacity),
-		backendErrorSQLCache:    cache.NewLRUCache(defaultSQLCacheCapacity),
-		planCache:               cache.NewLRUCache(defaultPlanCacheCapacity),
-		defaultSlice:            namespaceConfig.DefaultSlice,
-		allowedSessionVariables: namespaceConfig.AllowedSessionVariables,
+		name:                        namespaceConfig.Name,
+		sqls:                        make(map[string]string, 16),
+		userProperties:              make(map[string]*UserProperty, 2),
+		openGeneralLog:              namespaceConfig.OpenGeneralLog,
+		slowSQLCache:                cache.NewLRUCache(defaultSQLCacheCapacity),
+		errorSQLCache:               cache.NewLRUCache(defaultSQLCacheCapacity),
+		backendSlowSQLCache:         cache.NewLRUCache(defaultSQLCacheCapacity),
+		backendErrorSQLCache:        cache.NewLRUCache(defaultSQLCacheCapacity),
+		planCache:                   cache.NewLRUCache(defaultPlanCacheCapacity),
+		defaultSlice:                namespaceConfig.DefaultSlice,
+		allowedSessionVariables:     namespaceConfig.AllowedSessionVariables,
+		fallbackToMasterOnSlaveFail: namespaceConfig.FallbackToMasterOnSlaveFail,
+		fuseEnabled:                 namespaceConfig.FuseEnabled,
 	}
 
 	defer func() {
@@ -210,15 +214,15 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 	}
 
 	if namespaceConfig.FuseWindowSize <= 0 {
-		namespace.FuseWindowSize = defaultFuseWindowSize
+		namespace.fuseWindowSize = defaultFuseWindowSize
 	} else {
-		namespace.FuseWindowSize = namespaceConfig.FuseWindowSize
+		namespace.fuseWindowSize = namespaceConfig.FuseWindowSize
 	}
 
 	if namespaceConfig.FuseMinErrorCount <= 0 {
-		namespace.FuseMinErrorCount = defaultFuseMinErrorCount
+		namespace.fuseMinErrorCount = defaultFuseMinErrorCount
 	} else {
-		namespace.FuseMinErrorCount = namespaceConfig.FuseMinErrorCount
+		namespace.fuseMinErrorCount = namespaceConfig.FuseMinErrorCount
 	}
 
 	namespace.downAfterNoAlive = namespaceConfig.DownAfterNoAlive
@@ -243,7 +247,7 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 	}
 
 	// init backend slices
-	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID, proxyDatacenter, namespace.FuseWindowSize, namespace.FuseMinErrorCount)
+	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID, proxyDatacenter, namespace.fuseWindowSize, namespace.fuseMinErrorCount, namespace.fallbackToMasterOnSlaveFail, namespace.fuseEnabled)
 	if err != nil {
 		return nil, fmt.Errorf("init slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
 	}
@@ -584,8 +588,6 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	var err error
 	s := new(backend.Slice)
 	s.Cfg = *cfg
-	s.FallbackToMasterOnSlaveFail = cfg.FallbackToMasterOnSlaveFail
-	s.FuseEnabled = cfg.FuseEnabled
 	s.HandshakeTimeout = time.Duration(cfg.HandshakeTimeout) * time.Millisecond
 	s.ProxyDatacenter = dc
 	s.SetCharsetInfo(charset, collationID)
@@ -622,7 +624,7 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	return s, nil
 }
 
-func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.CollationID, dc string, fuseSize int, fuseMinErrorCount int64) (map[string]*backend.Slice, error) {
+func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.CollationID, dc string, fuseSize int, fuseMinErrorCount int64, fallbackToMasterOnSlaveFail string, fuseEnabled string) (map[string]*backend.Slice, error) {
 	slices := make(map[string]*backend.Slice, len(cfgSlices))
 	for _, v := range cfgSlices {
 		v.Name = strings.TrimSpace(v.Name) // modify origin slice name, trim space
@@ -635,6 +637,8 @@ func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.Co
 			return nil, err
 		}
 
+		s.FallbackToMasterOnSlaveFail = fallbackToMasterOnSlaveFail
+		s.FuseEnabled = fuseEnabled
 		s.FuseWindowSize = fuseSize
 		s.FuseMinErrorCount = fuseMinErrorCount
 
