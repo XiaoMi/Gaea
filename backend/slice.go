@@ -79,7 +79,7 @@ type DBInfo struct {
 	GlobalBalancer *balancer   // 包含所有节点
 }
 
-func (dbInfo *DBInfo) InitFuseSlideWindow(fuseWindowSize int, fueseMinErrorCount int64) error {
+func (dbInfo *DBInfo) InitFuseSlideWindow(fuseWindowSize int, fuseMinErrorCount int64) error {
 	// 参数校验
 	if fuseWindowSize < 0 {
 		return fmt.Errorf("invalid fuse window size: %d (must > 0)", fuseWindowSize)
@@ -94,13 +94,13 @@ func (dbInfo *DBInfo) InitFuseSlideWindow(fuseWindowSize int, fueseMinErrorCount
 		// 创建滑动窗口实例（参数不合法时会返回 disabled 状态）
 		node.FuseWindow = NewSlidingWindow(
 			int64(fuseWindowSize),
-			fueseMinErrorCount,
+			fuseMinErrorCount,
 		)
 
 		// 若窗口参数非法则强制禁用熔断
 		if !node.FuseWindow.IsEnabled() {
 			log.Warn("Disable fuse for node %s due to invalid params (size=%d minfuseErrorCount=%d)",
-				node.Address, fuseWindowSize, fueseMinErrorCount)
+				node.Address, fuseWindowSize, fuseMinErrorCount)
 		}
 	}
 	return nil
@@ -314,6 +314,7 @@ type Slice struct {
 	MaxSlaveFuseErrorCount      int
 	HandshakeTimeout            time.Duration
 	FallbackToMasterOnSlaveFail string // 控制从库获取失败时是否回退到主库
+	FuseEnabled                 string // 控制是否开启熔断
 	FuseWindowSize              int
 	FuseMinErrorCount           int64
 }
@@ -410,7 +411,7 @@ func (s *Slice) getMonitorConnection(reqCtx *util.RequestContext, localSlaveRead
 }
 
 func (s *Slice) ShouldFallbackToMasterOnSlaveFail() bool {
-	val := s.Cfg.FallbackToMasterOnSlaveFail
+	val := s.FallbackToMasterOnSlaveFail
 
 	// 用户配置了该字段，根据配置值来判断
 	switch strings.ToLower(val) {
@@ -420,6 +421,21 @@ func (s *Slice) ShouldFallbackToMasterOnSlaveFail() bool {
 		return false
 	default:
 		// 如果用户填写了其他值，这里默认回退
+		return true
+	}
+}
+
+func (s *Slice) IsFuseEnabled() bool {
+	val := s.FuseEnabled
+
+	// 用户配置了该字段，根据配置值来判断
+	switch strings.ToLower(val) {
+	case "on":
+		return true
+	case "off":
+		return false
+	default:
+		// 如果用户填写了其他值，这里默认开启
 		return true
 	}
 }

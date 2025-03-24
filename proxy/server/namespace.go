@@ -51,7 +51,7 @@ const (
 	// 认为Slave已下线，如果需要快速判定状态，可减少该值
 	defaultMaxClientConnections = 100000000 //Big enough
 	defaultFuseWindowSize       = 4         // 熔断窗口是4s
-	defaultFueseMinErrorCount   = 6         // 至少6个请求
+	defaultFuseMinErrorCount    = 6         // 至少6个请求
 )
 
 // UserProperty means runtime user properties
@@ -216,7 +216,7 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 	}
 
 	if namespaceConfig.FuseMinErrorCount <= 0 {
-		namespace.FuseMinErrorCount = defaultFueseMinErrorCount
+		namespace.FuseMinErrorCount = defaultFuseMinErrorCount
 	} else {
 		namespace.FuseMinErrorCount = namespaceConfig.FuseMinErrorCount
 	}
@@ -585,6 +585,7 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	s := new(backend.Slice)
 	s.Cfg = *cfg
 	s.FallbackToMasterOnSlaveFail = cfg.FallbackToMasterOnSlaveFail
+	s.FuseEnabled = cfg.FuseEnabled
 	s.HandshakeTimeout = time.Duration(cfg.HandshakeTimeout) * time.Millisecond
 	s.ProxyDatacenter = dc
 	s.SetCharsetInfo(charset, collationID)
@@ -637,15 +638,18 @@ func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.Co
 		s.FuseWindowSize = fuseSize
 		s.FuseMinErrorCount = fuseMinErrorCount
 
-		if err = s.InitFuseSlideWindow(s.Slave); err != nil {
-			return nil, fmt.Errorf("failed to initialize slave fuse slide window: %w", err)
+		if s.IsFuseEnabled() {
+			if err = s.InitFuseSlideWindow(s.Slave); err != nil {
+				return nil, fmt.Errorf("failed to initialize slave fuse slide window: %w", err)
+			}
+			if err = s.InitFuseSlideWindow(s.StatisticSlave); err != nil {
+				return nil, fmt.Errorf("failed to initialize statistic slave fuse slide window: %w", err)
+			}
+			if err = s.InitFuseSlideWindow(s.MonitorSlave); err != nil {
+				return nil, fmt.Errorf("failed to initialize monitor slave fuse slide window: %w", err)
+			}
 		}
-		if err = s.InitFuseSlideWindow(s.StatisticSlave); err != nil {
-			return nil, fmt.Errorf("failed to initialize statistic slave fuse slide window: %w", err)
-		}
-		if err = s.InitFuseSlideWindow(s.MonitorSlave); err != nil {
-			return nil, fmt.Errorf("failed to initialize monitor slave fuse slide window: %w", err)
-		}
+
 		slices[v.Name] = s
 	}
 

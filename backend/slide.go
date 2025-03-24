@@ -10,27 +10,27 @@ type SlideBucket struct {
 }
 
 type SlidingWindow struct {
-	mu                 sync.Mutex
-	windowSizeSec      int64 // 窗口总时长（秒）
-	buckets            []*SlideBucket
-	enabled            bool
-	startSec           int64
-	allErrorCount      int64
-	fueseMinErrorCount int64
+	mu                sync.Mutex
+	windowSizeSec     int64 // 窗口总时长（秒）
+	buckets           []*SlideBucket
+	enabled           bool
+	startSec          int64
+	allErrorCount     int64
+	fuseMinErrorCount int64
 }
 
-func NewSlidingWindow(windowSec int64, fueseMinErrorCount int64) *SlidingWindow {
+func NewSlidingWindow(windowSec int64, fuseMinErrorCount int64) *SlidingWindow {
 	// 强制校验参数，非法时禁用
-	if windowSec <= 0 || fueseMinErrorCount <= 0 {
+	if windowSec <= 0 || fuseMinErrorCount <= 0 {
 		return &SlidingWindow{enabled: false}
 	}
 	return &SlidingWindow{
-		windowSizeSec:      windowSec,
-		buckets:            make([]*SlideBucket, windowSec),
-		fueseMinErrorCount: fueseMinErrorCount,
-		enabled:            true,
-		startSec:           0,
-		allErrorCount:      0,
+		windowSizeSec:     windowSec,
+		buckets:           make([]*SlideBucket, windowSec),
+		fuseMinErrorCount: fuseMinErrorCount,
+		enabled:           true,
+		startSec:          0,
+		allErrorCount:     0,
 	}
 }
 
@@ -60,7 +60,7 @@ func (sw *SlidingWindow) Trigger(now int64) bool {
 
 	sw.buckets[index].ErrorCount++
 	sw.allErrorCount++
-	return sw.allErrorCount >= sw.fueseMinErrorCount
+	return sw.allErrorCount >= sw.fuseMinErrorCount
 }
 
 func (sw *SlidingWindow) slide(newStartSec int64) {

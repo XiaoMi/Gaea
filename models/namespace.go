@@ -61,6 +61,7 @@ type Namespace struct {
 	AllowedSessionVariables map[string]string `json:"allowed_session_variables"` // 允许设置的会话变量
 	FuseWindowSize          int               `json:"fuse_window_size"`          // fuse窗口,即禁用
 	FuseMinErrorCount       int64             `json:"fuse_min_error_count"`      // fuse的窗口内触发熔断的总的错误数
+	FuseEnabled             string            `json:"fuse_enabled"`              // fuse是否开启
 }
 
 // Encode encode json

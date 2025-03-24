@@ -1,8 +1,10 @@
 package backend
 
 import (
+	"math/rand"
 	"sync"
 	"testing"
+	"time"
 )
 
 func BenchmarkSlidingWindow_All(b *testing.B) {
@@ -10,7 +12,35 @@ func BenchmarkSlidingWindow_All(b *testing.B) {
 	b.Run("HighTraffic", BenchmarkSlidingWindow_HighTraffic)
 	b.Run("HighErrorRate", BenchmarkSlidingWindow_HighErrorRate)
 	b.Run("ExpiredRequests", BenchmarkSlidingWindow_ExpiredRequests)
+	b.Run("TimestampAdvance", BenchmarkSlidingWindow_TimestampAdvance)
+	b.Run("TimestampFluctuation", BenchmarkSlidingWindow_Fluctuation)
 }
+
+func BenchmarkSlidingWindow_TimestampAdvance(b *testing.B) {
+	window := NewSlidingWindow(1000, 1000)
+	now := time.Now().Unix()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			window.Trigger(now)
+			now++
+		}
+	})
+}
+
+// 波动时间测试
+func BenchmarkSlidingWindow_Fluctuation(b *testing.B) {
+	rand.Seed(time.Now().Unix())
+	window := NewSlidingWindow(1000, 1000)
+	base := time.Now().Unix()
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			now := base + rand.Int63n(10000) // 10秒时间波动
+			window.Trigger(now)
+		}
+	})
+}
+
 func BenchmarkSlidingWindow_HighErrorRate(b *testing.B) {
 	// 设置窗口大小为 5 秒，错误率阈值为 60%，最小请求数阈值为 100
 	windowSize := int64(1000)

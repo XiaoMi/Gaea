@@ -36,6 +36,7 @@ type Slice struct {
 	HealthCheckSql              string   `json:"health_check_sql"`                 // 简单语句的健康查询
 	HandshakeTimeout            int      `json:"handshake_timeout"`                // 建立连接的超时时间
 	FallbackToMasterOnSlaveFail string   `json:"fallback_to_master_on_slave_fail"` // 当从库连接失败时，是否回退到主库
+	FuseEnabled                 string   `json:"fuse_enabled"`                     // 是否开启熔断
 	// gaea proxy as client connected to MySQL  default is 0
 }
 
@@ -74,6 +75,12 @@ func (s *Slice) verify() error {
 	val := strings.ToLower(s.FallbackToMasterOnSlaveFail)
 	if val != "" && val != "on" && val != "off" {
 		return errors.New(`fallback_to_master_on_slave_fail must be "on", "off" or empty`)
+	}
+
+	// 校验 fuse_enabled 字段
+	fuse := strings.ToLower(s.FuseEnabled)
+	if fuse != "" && fuse != "on" && fuse != "off" {
+		return errors.New(`fuse_enabled must be "on", "off" or empty`)
 	}
 
 	return nil
