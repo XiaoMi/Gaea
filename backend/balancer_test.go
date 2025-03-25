@@ -16,6 +16,7 @@ package backend
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -353,4 +354,12 @@ func TestBalancerSequenceFixedSeed(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestBalancerNextIndexMax(t *testing.T) {
+	var u uint32 = math.MaxUint32
+	res := atomic.AddUint32(&u, 1)
+	if int(res) < 0 {
+		t.Errorf("index %d: overflow", u)
+	}
 }

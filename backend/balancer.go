@@ -16,18 +16,17 @@ package backend
 
 import (
 	"fmt"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"math/rand"
 )
 
 type balancer struct {
-	mu          sync.Mutex // 保护并发安全
-	nextIndex   int        // 当前轮询指针，指向 roundRobinQ 中的下一个候选
-	roundRobinQ []int      // 按照权重扩展后的候选队列（存储原始连接池的下标）
-	poolIndices []int      // 连接池的下标
-	poolWeights []int      // 连接池的下标对应的权重
+	nextIndex   uint32 // 原子操作指针（改为 uint32）
+	roundRobinQ []int  // 权重扩展后的候选队列（只读，无需锁）
+	poolIndices []int  // 原始连接池下标（只读，无需锁）
+	poolWeights []int  // 连接池权重（只读，无需锁）
 }
 
 // 计算 GCD（欧几里得算法）
@@ -86,7 +85,6 @@ func newBalancer(indices []int, weights []int) (*balancer, error) {
 
 	// 生成 balancer
 	b := &balancer{
-		mu:          sync.Mutex{},
 		nextIndex:   0,
 		roundRobinQ: queue,
 		poolWeights: weights,
@@ -106,8 +104,6 @@ func newBalancer(indices []int, weights []int) (*balancer, error) {
 
 // next 返回 roundRobinQ 中下一个候选的节点下标，
 func (b *balancer) next() (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
 
 	if len(b.roundRobinQ) == 0 {
 		return 0, fmt.Errorf("no candidate available in balancer")
@@ -115,11 +111,8 @@ func (b *balancer) next() (int, error) {
 	if len(b.roundRobinQ) == 1 {
 		return b.roundRobinQ[0], nil
 	}
-	// 直接取出 roundRobinQ 中的元素
-	elem := b.roundRobinQ[b.nextIndex]
-
-	// 轮询更新 nextIndex
-	b.nextIndex = (b.nextIndex + 1) % len(b.roundRobinQ)
-
-	return elem, nil
+	// 无锁原子自增（自动处理溢出）
+	newIndex := atomic.AddUint32(&b.nextIndex, 1)
+	idx := int64(newIndex) % int64(len(b.roundRobinQ))
+	return b.roundRobinQ[idx], nil
 }
