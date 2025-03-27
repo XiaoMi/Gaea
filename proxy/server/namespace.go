@@ -247,7 +247,7 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 	}
 
 	// init backend slices
-	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID, proxyDatacenter, namespace.fuseWindowSize, namespace.fuseMinErrorCount, namespace.fallbackToMasterOnSlaveFail, namespace.fuseEnabled)
+	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID, proxyDatacenter, namespace.fuseWindowSize, namespace.fuseMinErrorCount, namespace.fallbackToMasterOnSlaveFail, namespace.fuseEnabled, namespaceConfig.Name)
 	if err != nil {
 		return nil, fmt.Errorf("init slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
 	}
@@ -624,7 +624,7 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	return s, nil
 }
 
-func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.CollationID, dc string, fuseSize int, fuseMinErrorCount int64, fallbackToMasterOnSlaveFail string, fuseEnabled string) (map[string]*backend.Slice, error) {
+func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.CollationID, dc string, fuseSize int, fuseMinErrorCount int64, fallbackToMasterOnSlaveFail string, fuseEnabled string, namespace string) (map[string]*backend.Slice, error) {
 	slices := make(map[string]*backend.Slice, len(cfgSlices))
 	for _, v := range cfgSlices {
 		v.Name = strings.TrimSpace(v.Name) // modify origin slice name, trim space
@@ -641,6 +641,7 @@ func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.Co
 		s.FuseEnabled = fuseEnabled
 		s.FuseWindowSize = fuseSize
 		s.FuseMinErrorCount = fuseMinErrorCount
+		s.Namespace = namespace
 
 		if s.IsFuseEnabled() {
 			if err = s.InitFuseSlideWindow(s.Slave); err != nil {

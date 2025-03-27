@@ -270,7 +270,7 @@ func (rp *ResourcePool) createResourceWithRetry(ctx context.Context) (Resource, 
 		select {
 		case <-ctx.Done():
 			rp.recordWait(startTime)
-			log.Warn("connection attempt canceled. UUID: %s, Retry: %d, Error: %v", connectionUUID.String(), retryCount, ctx.Err())
+			log.Warn("create resource failed. UUID: %s, Retry: %d, Error: %v", connectionUUID.String(), retryCount, ctx.Err())
 			return nil, fmt.Errorf("new connection timeout: %s", ctx.Err())
 		case result := <-resultChan:
 			resource = result.resource
@@ -283,7 +283,7 @@ func (rp *ResourcePool) createResourceWithRetry(ctx context.Context) (Resource, 
 		}
 		// If the first attempt fails, start the wait timer
 		// Log the error with UUID and retry count
-		log.Warn("connection attempt failed. UUID: %s, Retry: %d, Error: %v", connectionUUID.String(), retryCount, err)
+		log.Warn("create resource failed. UUID: %s, Retry: %d, Error: %v", connectionUUID.String(), retryCount, err)
 	}
 
 	// If we needed to wait (first attempt failed), record the wait time once
@@ -292,7 +292,6 @@ func (rp *ResourcePool) createResourceWithRetry(ctx context.Context) (Resource, 
 	}
 
 	if err != nil {
-		log.Warn("[ERROR] all connection attempts failed. UUID: %s, Total Retries: %d, Last Error: %v", connectionUUID.String(), retryCount, err)
 		return nil, err
 	}
 

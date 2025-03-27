@@ -61,6 +61,10 @@ const (
 	LocalSlaveReadForce             = 2 // 强制只用本地
 	CheckRepeat                     = 3
 )
+const (
+	NormalUser  = "Normal User"
+	MonitorUser = "Monitor User"
+)
 
 func (s *StatusCode) String() string {
 	r := "StatusUp"
@@ -300,6 +304,7 @@ type Slice struct {
 	Cfg models.Slice
 	sync.RWMutex
 
+	Namespace      string
 	Master         *DBInfo // 业务主库
 	Slave          *DBInfo // 业务从库
 	StatisticSlave *DBInfo // 业务统计用从库(StatisticUser)
@@ -317,6 +322,34 @@ type Slice struct {
 	FuseEnabled                 string // 控制是否开启熔断
 	FuseWindowSize              int
 	FuseMinErrorCount           int64
+}
+
+type getConnError struct {
+	Namespace string
+	Addr      string
+	Err       error
+}
+
+func NewGetConnError(err error, opts ...string) error {
+	var namespace, addr string
+	if len(opts) >= 1 {
+		namespace = opts[0]
+	}
+	if len(opts) >= 2 {
+		addr = opts[1]
+	}
+	return &getConnError{
+		Namespace: namespace,
+		Addr:      addr,
+		Err:       err,
+	}
+}
+
+func (e *getConnError) Error() string {
+	if len(e.Addr) == 0 {
+		return fmt.Sprintf("[ns=%s] %v", e.Namespace, e.Err)
+	}
+	return fmt.Sprintf("[ns=%s][addr=%s] %v", e.Namespace, e.Addr, e.Err)
 }
 
 // GetSliceName return name of slice
@@ -358,56 +391,76 @@ func (s *Slice) getStatisticConnection(localSlaveReadPriority int) (pc PooledCon
 	return pc, err
 }
 
-func (s *Slice) getNormalConnection(reqCtx *util.RequestContext, localSlaveReadPriority int) (pc PooledConnect, err error) {
-	fromSlave := reqCtx.GetFromSlave()
-	var fallbackToMaster bool
-	if fromSlave {
-		// 从普通从库获取
-		pc, err = s.GetSlaveConn(s.Slave, localSlaveReadPriority)
+func (s *Slice) getNormalConnection(reqCtx *util.RequestContext, localSlaveReadPriority int) (PooledConnect, error) {
+	var (
+		pc  PooledConnect
+		err error
+	)
+	// 统一错误处理
+	defer func() {
 		if err != nil {
-			// 如果获取从库连接失败，决定是否回退到主库
-			fallbackToMaster = s.ShouldFallbackToMasterOnSlaveFail()
-			if fallbackToMaster {
-				// 记录业务从库切换到主库的监控指标
-				reqCtx.SetSwitchedToMaster(true)
-				log.Warn("NormalUser: Failed to get slave connection. Error: %v, Trying to get master connection.", err)
-				pc, err = s.GetMasterConn()
-			}
+			log.Warn("connection failed, user: %s, fromSlave: %v, fallbackToMaster: %v, error: %v", NormalUser, reqCtx.GetFromSlave(), s.ShouldFallbackToMasterOnSlaveFail(), err)
 		}
+	}()
+
+	// 选择数据源
+	if reqCtx.GetFromSlave() {
+		pc, err = s.trySlaveThenFallback(reqCtx, NormalUser, s.Slave, s.Master, localSlaveReadPriority)
 	} else {
-		// 不从库就直接主库
-		pc, err = s.GetMasterConn()
+		pc, err = s.GetMasterConn(s.Master)
 	}
-	if err != nil {
-		log.Warn("NormalUser: Failed to get connection. fromSlave: %v, fallbackToMaster: %v, Error: %v", fromSlave, fallbackToMaster, err)
+
+	return pc, err
+}
+
+func (s *Slice) getMonitorConnection(reqCtx *util.RequestContext, localSlaveReadPriority int) (PooledConnect, error) {
+	var (
+		pc  PooledConnect
+		err error
+	)
+	// 统一错误处理
+	defer func() {
+		if err != nil {
+			log.Warn("connection failed, user: %s, fromSlave: %v, fallbackToMaster: %v, error: %v", MonitorUser, reqCtx.GetFromSlave(), s.ShouldFallbackToMasterOnSlaveFail(), err)
+		}
+	}()
+
+	// 选择数据源
+	if reqCtx.GetFromSlave() {
+		pc, err = s.trySlaveThenFallback(reqCtx, MonitorUser, s.MonitorSlave, s.MonitorMaster, localSlaveReadPriority)
+	} else {
+		pc, err = s.GetMasterConn(s.MonitorMaster)
 	}
 	return pc, err
 }
 
-func (s *Slice) getMonitorConnection(reqCtx *util.RequestContext, localSlaveReadPriority int) (pc PooledConnect, err error) {
-	fromSlave := reqCtx.GetFromSlave()
-	var fallbackToMaster bool
-	if fromSlave {
-		// 从监控从库获取连接
-		pc, err = s.GetSlaveConn(s.MonitorSlave, localSlaveReadPriority)
-		if err != nil {
-			// 如果获取从库连接失败，决定是否回退到主库
-			fallbackToMaster = s.ShouldFallbackToMasterOnSlaveFail()
-			if fallbackToMaster {
-				// 记录监控从库切换到主库的监控指标
-				reqCtx.SetSwitchedToMaster(true)
-				log.Warn("MonitorUser: Failed to get slave connection. Error: %v, Trying to get master connection.", err)
-				pc, err = s.GetMonitorMasterConn()
-			}
+func (s *Slice) trySlaveThenFallback(reqCtx *util.RequestContext, userType string, slave *DBInfo, master *DBInfo, priority int) (PooledConnect, error) {
+	var (
+		pc        PooledConnect
+		masterErr error
+		slaveErr  error
+	)
+	defer func() {
+		if slaveErr != nil {
+			log.Warn("try slave conn failed, user: %s, slave error: %v", userType, slaveErr)
 		}
-	} else {
-		// 不从库就直接从主库获取
-		pc, err = s.GetMonitorMasterConn()
+		if masterErr != nil {
+			log.Warn("try slave conn failed, user: %s, master error: %v", userType, masterErr)
+		}
+	}()
+
+	pc, slaveErr = s.GetSlaveConn(slave, priority)
+	if slaveErr == nil {
+		return pc, nil
 	}
-	if err != nil {
-		log.Warn("MonitorUser: Failed to get connection. fromSlave: %v, fallbackToMaster: %v, Error: %v", fromSlave, fallbackToMaster, err)
+
+	if !s.ShouldFallbackToMasterOnSlaveFail() {
+		return nil, slaveErr
 	}
-	return pc, err
+	// 尝试主库连接
+	reqCtx.SetSwitchedToMaster(true)
+	pc, masterErr = s.GetMasterConn(master)
+	return pc, masterErr
 }
 
 func (s *Slice) ShouldFallbackToMasterOnSlaveFail() bool {
@@ -442,39 +495,6 @@ func (s *Slice) IsFuseEnabled() bool {
 
 func (s *Slice) GetDirectConn(addr string) (*DirectConnection, error) {
 	return NewDirectConnection(addr, s.Cfg.UserName, s.Cfg.Password, "", s.charset, s.collationID, s.Cfg.Capability, s.HandshakeTimeout)
-}
-
-// GetMasterConn return a connection in master pool
-func (s *Slice) GetMasterConn() (PooledConnect, error) {
-	node, err := s.Master.GetNode(0)
-	if err != nil {
-		return nil, fmt.Errorf("master node is not available, err: %v", err)
-	}
-
-	if !node.IsStatusUp() {
-		return nil, fmt.Errorf("master: %s is Down", node.Address)
-	}
-
-	// 获取连接
-	ctx := context.TODO()
-	return node.ConnPool.Get(ctx)
-}
-
-// GetMonitorMasterConn return a connection in monitor master pool
-func (s *Slice) GetMonitorMasterConn() (PooledConnect, error) {
-	// 取 Master 节点, ParseMaster 明确确保 s.Master != nil
-	node, err := s.MonitorMaster.GetNode(0)
-	if err != nil {
-		return nil, fmt.Errorf("master node is not available, err: %v", err)
-	}
-
-	if !node.IsStatusUp() {
-		return nil, fmt.Errorf("master: %s is Down", node.Address)
-	}
-
-	// 获取连接
-	ctx := context.TODO()
-	return node.ConnPool.Get(ctx)
 }
 
 // GetMasterStatus return master status
@@ -530,6 +550,38 @@ func (s *Slice) GetSlaveConn(slavesInfo *DBInfo, localSlaveReadPriority int) (Po
 		}
 		return s.getConnFromBalancer(slavesInfo, slavesInfo.GlobalBalancer)
 	}
+}
+
+func (s *Slice) GetMasterConn(masterInfo *DBInfo) (PooledConnect, error) {
+	// 如果整个 `ConnPool` 为空，或者所有节点都宕机，则直接返回错误
+	if masterIsOffline(masterInfo) {
+		return nil, errors.ErrNoMasterDB
+	}
+	return s.getConnFromMaster(masterInfo)
+
+}
+
+func (s *Slice) getConnFromMaster(master *DBInfo) (pc PooledConnect, err error) {
+	node, err := master.GetNode(0)
+	if err != nil {
+		return nil, fmt.Errorf("master node is not available, err: %v", err)
+	}
+
+	if !node.IsStatusUp() {
+		return nil, fmt.Errorf("master: %s is Down", node.Address)
+	}
+
+	// 获取连接
+	ctx := context.TODO()
+	pc, err = node.ConnPool.Get(ctx)
+	if err != nil {
+		return nil, &getConnError{
+			Namespace: s.Namespace,
+			Addr:      node.Address,
+			Err:       err,
+		}
+	}
+	return pc, nil
 }
 
 // CheckStatus check slice instance status
@@ -743,6 +795,22 @@ func allSlaveIsOffline(slavesInfo *DBInfo) bool {
 	return true // 所有 Slave 都 Down，则返回 true
 }
 
+func masterIsOffline(master *DBInfo) bool {
+	if master == nil {
+		// Master 是 Down，则返回 true
+		return true
+	}
+
+	if len(master.Nodes) == 0 {
+		return true
+	}
+
+	if master.Nodes[0].IsStatusUp() {
+		return false // Master 处于 UP 状态，则返回 false
+	}
+	return true // Master 是 Down，则返回 true
+}
+
 func (dbInfo *DBInfo) InitBalancers(proxyDatacenter string) error {
 	if len(dbInfo.Nodes) == 0 {
 		return nil
@@ -777,7 +845,7 @@ func (dbInfo *DBInfo) InitBalancers(proxyDatacenter string) error {
 // getConnFromBalancer 封装从给定 balancer 中依次尝试选取健康连接的逻辑
 func (s *Slice) getConnFromBalancer(slavesInfo *DBInfo, bal *balancer) (PooledConnect, error) {
 	node, err := s.getNodeFromBalancer(slavesInfo, bal)
-	if err != nil {
+	if err != nil || node == nil {
 		return nil, err
 	}
 	return s.getConnWithFuse(node)
@@ -807,12 +875,14 @@ func (s *Slice) getConnWithFuse(node *NodeInfo) (PooledConnect, error) {
 
 	if node.FuseWindow != nil && isConnErr && node.FuseWindow.Trigger(now) {
 		node.SetStatus(StatusDown)
-		log.Warn("[addr:%s] Triggered fuse, node marked as DOWN", node.Address)
+		log.Warn("[ns=%s][addr=%s] Triggered fuse, node marked as DOWN", s.Namespace, node.Address)
 	}
-
 	if err != nil {
-		log.Warn("[addr:%s] Failed to get connection from pool, error: %v", node.Address, err)
-		return nil, err
+		return nil, &getConnError{
+			Namespace: s.Namespace,
+			Addr:      node.Address,
+			Err:       err,
+		}
 	}
 	return pc, nil
 }

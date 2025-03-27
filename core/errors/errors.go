@@ -27,8 +27,12 @@ var (
 	ErrNoDefaultSlice = errors.New("no default slice")
 	// ErrNoMasterDB no master database
 	ErrNoMasterDB = errors.New("no master database")
+	// ErrMasterOffline master is offline
+	ErrMasterOffline = errors.New("master is offline")
 	// ErrNoSlaveDB no slve database
-	ErrNoSlaveDB = errors.New("no slave databases or all slave databases are offline")
+	ErrNoSlaveDB = errors.New("no slave databases")
+	// ErrAllSlaveOffline slaves are offline
+	ErrAllSlaveOffline = errors.New("all slave databases are offline")
 	// ErrNoDatabase no database
 	ErrNoDatabase = errors.New("no database")
 

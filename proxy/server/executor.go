@@ -485,7 +485,7 @@ func (se *SessionExecutor) getTransactionConn(sliceName string) (pc backend.Pool
 	}
 
 	slice := se.GetNamespace().GetSlice(sliceName) // returns nil only when the conf is error (fatal) so panic is correct
-	if pc, err = slice.GetMasterConn(); err != nil {
+	if pc, err = slice.GetMasterConn(slice.Master); err != nil {
 		return
 	}
 	// Synchronize session variables before starting the transaction.

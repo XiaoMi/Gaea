@@ -76,7 +76,7 @@ func (s *MySQLSequence) GetPKName() string {
 }
 
 func (s *MySQLSequence) getSeqFromDB() error {
-	conn, err := s.slice.GetMasterConn()
+	conn, err := s.slice.GetMasterConn(s.slice.Master)
 	if err != nil {
 		return err
 	}
