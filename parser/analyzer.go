@@ -246,19 +246,19 @@ func Tokenize(s string) []string {
 	tokens := strings.FieldsFunc(s, IsSqlSep)
 	// remove first version comment mark
 	// TODO: 处理 mycat hint: /* !mycat:sql=select 1 from order where order_id = 1 */
-	if strings.HasPrefix(s, "/*!") {
+	switch {
+	case strings.HasPrefix(s, "/*!"): // MySQL特殊注释
 		if len(tokens) > 1 {
 			return tokens[1:]
-		} else {
-			return tokens
 		}
-	} else if strings.HasPrefix(s, "/*") {
+		return tokens
+	case strings.HasPrefix(s, "/*"): // 普通块注释
 		masterHint := tokens[0]
-		idx := strings.Index(s, "*/")
-		if idx > 0 {
+		if idx := strings.Index(s, "*/"); idx > 0 {
 			tokens = strings.FieldsFunc(s[idx+2:], IsSqlSep)
 		}
-		if masterHint == "*master*" {
+		// 修改点：使用不区分大小写的比较
+		if strings.EqualFold(masterHint, "*master*") {
 			tokens = append(tokens, masterHint)
 		}
 	}
