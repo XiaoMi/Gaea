@@ -779,7 +779,7 @@ func checkInstanceStatus(name string, cp ConnectionPool, healthCheckSql string) 
 			return nil, fmt.Errorf("ping conn error:%s", err)
 		}
 		// 增加 select 1 探活
-		if _, err = pc.ExecuteWithTimeout("select 1", 0, ExecTimeOut); err != nil {
+		if _, err = pc.ExecuteWithTimeout("select 1", 0, SelectSimpleTimeOut); err != nil {
 			pc.Close()
 			return nil, fmt.Errorf("ping conn error:%s", err)
 		}

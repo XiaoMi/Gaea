@@ -31,6 +31,7 @@ const (
 	GetConnTimeout          = 2 * time.Second
 	pingPeriod              = 4 * time.Second
 	handshakeTimeoutDefault = 500 * time.Millisecond
+	SelectSimpleTimeOut     = 500 * time.Millisecond
 )
 
 const (
