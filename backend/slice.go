@@ -152,7 +152,21 @@ func (n *NodeInfo) IsStatusDown() bool {
 	return n.Status == StatusDown
 }
 
-// SetStatus 使用写锁，保证状态更新的线程安全
+// MustSetStatusUp 无条件，直接设置为Up，不执行任何熔断逻辑。
+func (n *NodeInfo) MustSetStatusUp() {
+	n.Lock()
+	defer n.Unlock()
+	n.Status = StatusUp
+}
+
+// MustSetStatusDown 无条件，直接设置为Down,不执行任何熔断逻辑。
+func (n *NodeInfo) MustSetStatusDown() {
+	n.Lock()
+	defer n.Unlock()
+	n.Status = StatusDown
+}
+
+// SetStatus 有条件的设置状态
 func (n *NodeInfo) SetStatus(status StatusCode) {
 	if status == StatusUp {
 		n.SetStatusUp()
@@ -161,13 +175,7 @@ func (n *NodeInfo) SetStatus(status StatusCode) {
 	}
 }
 
-func (n *NodeInfo) SetMasterStatus(status StatusCode) {
-	n.Lock()
-	defer n.Unlock()
-	n.Status = status
-}
-
-// 置为 up 状态
+// SetStatusUp 有条件的置为 Up 状态
 func (n *NodeInfo) SetStatusUp() {
 	n.Lock()
 	defer n.Unlock()
@@ -176,6 +184,14 @@ func (n *NodeInfo) SetStatusUp() {
 		return
 	}
 	n.Status = StatusUp
+}
+
+// SetStatusDown 有条件的置为 Down 状态
+func (n *NodeInfo) SetStatusDown() {
+	n.Lock()
+	defer n.Unlock()
+	n.checkBadRecovery()
+	n.Status = StatusDown
 }
 
 // 主要处理由 down 变为 up 的情况
@@ -196,14 +212,6 @@ func (n *NodeInfo) checkShouldUp() bool {
 		return false
 	}
 	return true
-}
-
-// 置为 down 状态
-func (n *NodeInfo) SetStatusDown() {
-	n.Lock()
-	defer n.Unlock()
-	n.checkBadRecovery()
-	n.Status = StatusDown
 }
 
 // 主要处理 up 变为 down 的情况
@@ -632,14 +640,14 @@ func (s *Slice) checkBackendMasterStatus(ctx context.Context, downAfterNoAlive i
 			// 2. 判断 Master 是否要下线
 			shouldSetDown, elapsed := node.ShouldDownAfterNoAlive(downAfterNoAlive)
 			if shouldSetDown {
-				node.SetMasterStatus(StatusDown)
+				node.MustSetStatusDown()
 				log.Warn("[ns:%s, %s:%s] check master status, Marked as StatusDown for %ds", s.Namespace, s.Cfg.Name, node.Address, elapsed)
 				continue
 			}
 
 			// 3. 更新 Master 状态
 			if conn != nil && node.IsStatusDown() {
-				node.SetMasterStatus(StatusUp)
+				node.MustSetStatusUp()
 				log.Warn("[ns:%s, %s:%s] check master status, Master recovered from down, now StatusUp", s.Namespace, s.Cfg.Name, node.Address)
 			}
 		}
