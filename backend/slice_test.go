@@ -1641,6 +1641,7 @@ func TestCheckBackendSlaveStatus_All_Passed(t *testing.T) {
 		assert.Nil(t, err)
 
 		mockSlice := &Slice{
+			Namespace:      "test_ns",
 			Slave:          slave,
 			StatisticSlave: slave,
 		}
@@ -1669,7 +1670,7 @@ func TestCheckBackendSlaveStatus_All_Passed(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
 		defer cancel()
 
-		mockSlice.checkBackendSlaveStatus(ctx, slave, "test_ns", 10, 30)
+		mockSlice.checkBackendSlaveStatus(ctx, slave, 10, 30)
 
 		// Expect slave status to remain up even when master is down
 		for _, node := range slave.Nodes {
@@ -1699,6 +1700,7 @@ func TestCheckBackendSlaveStatus_CoonPool_Check_Error(t *testing.T) {
 		assert.Nil(t, err)
 
 		mockSlice := &Slice{
+			Namespace:      "test_ns",
 			Slave:          slave,
 			StatisticSlave: slave,
 		}
@@ -1727,7 +1729,7 @@ func TestCheckBackendSlaveStatus_CoonPool_Check_Error(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
 		defer cancel()
 
-		mockSlice.checkBackendSlaveStatus(ctx, slave, "test_ns", 10, 30)
+		mockSlice.checkBackendSlaveStatus(ctx, slave, 10, 30)
 
 		// Expect slave status to remain up even when master is down
 		for _, node := range slave.Nodes {
@@ -1757,6 +1759,7 @@ func TestCheckBackendSlaveStatus_CoonPool_Check_Nil(t *testing.T) {
 		assert.Nil(t, err)
 
 		mockSlice := &Slice{
+			Namespace:      "test_ns",
 			Slave:          slave,
 			StatisticSlave: slave,
 		}
@@ -1785,7 +1788,7 @@ func TestCheckBackendSlaveStatus_CoonPool_Check_Nil(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
 		defer cancel()
 
-		mockSlice.checkBackendSlaveStatus(ctx, slave, "test_ns", 1, 30)
+		mockSlice.checkBackendSlaveStatus(ctx, slave, 1, 30)
 
 		// Expect slave status to remain up even when master is down
 		for _, node := range slave.Nodes {
@@ -1816,6 +1819,7 @@ func TestCheckBackendSlaveStatus_MasterDown(t *testing.T) {
 		assert.Nil(t, err)
 
 		mockSlice := &Slice{
+			Namespace:      "test_ns",
 			Slave:          slave,
 			StatisticSlave: slave,
 		}
@@ -1844,7 +1848,7 @@ func TestCheckBackendSlaveStatus_MasterDown(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
 		defer cancel()
 
-		mockSlice.checkBackendSlaveStatus(ctx, slave, "test_ns", 10, 30)
+		mockSlice.checkBackendSlaveStatus(ctx, slave, 10, 30)
 
 		// Expect slave status to remain up even when master is down
 		for _, node := range slave.Nodes {
@@ -1875,6 +1879,7 @@ func TestCheckBackendSlaveStatus_MasterError(t *testing.T) {
 		assert.Nil(t, err)
 
 		mockSlice := &Slice{
+			Namespace:      "test_ns",
 			Slave:          slave,
 			StatisticSlave: slave,
 		}
@@ -1898,7 +1903,7 @@ func TestCheckBackendSlaveStatus_MasterError(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
 		defer cancel()
 
-		mockSlice.checkBackendSlaveStatus(ctx, slave, "test_ns", 10, 30)
+		mockSlice.checkBackendSlaveStatus(ctx, slave, 10, 30)
 
 		// Expect slave status to remain up even when master is down
 		for _, node := range slave.Nodes {
@@ -1929,6 +1934,7 @@ func TestCheckBackendSlaveStatus_SlaveSyncDelay(t *testing.T) {
 		assert.Nil(t, err)
 
 		mockSlice := &Slice{
+			Namespace:      "test_ns",
 			Slave:          slave,
 			StatisticSlave: slave,
 		}
@@ -1957,7 +1963,7 @@ func TestCheckBackendSlaveStatus_SlaveSyncDelay(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
 		defer cancel()
 
-		mockSlice.checkBackendSlaveStatus(ctx, slave, "test_ns", 10, 30)
+		mockSlice.checkBackendSlaveStatus(ctx, slave, 10, 30)
 
 		// Expect slave status to be down due to sync delay
 		for _, node := range slave.Nodes {

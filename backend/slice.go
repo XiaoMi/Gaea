@@ -161,6 +161,12 @@ func (n *NodeInfo) SetStatus(status StatusCode) {
 	}
 }
 
+func (n *NodeInfo) SetMasterStatus(status StatusCode) {
+	n.Lock()
+	defer n.Unlock()
+	n.Status = status
+}
+
 // 置为 up 状态
 func (n *NodeInfo) SetStatusUp() {
 	n.Lock()
@@ -312,11 +318,11 @@ type Slice struct {
 	MonitorMaster *DBInfo // 监控用户的主库
 	MonitorSlave  *DBInfo // 监控用户的从库
 
-	ProxyDatacenter             string
-	charset                     string
-	collationID                 mysql.CollationID
-	HealthCheckSql              string
-	MaxSlaveFuseErrorCount      int
+	ProxyDatacenter string
+	charset         string
+	collationID     mysql.CollationID
+	HealthCheckSql  string
+
 	HandshakeTimeout            time.Duration
 	FallbackToMasterOnSlaveFail string // 控制从库获取失败时是否回退到主库
 	FuseEnabled                 string // 控制是否开启熔断
@@ -585,22 +591,22 @@ func (s *Slice) getConnFromMaster(master *DBInfo) (pc PooledConnect, err error) 
 }
 
 // CheckStatus check slice instance status
-func (s *Slice) CheckStatus(ctx context.Context, name string, downAfterNoAlive int, secondsBehindMaster int) {
-	go s.checkBackendMasterStatus(ctx, name, downAfterNoAlive)
-	go s.checkBackendSlaveStatus(ctx, s.Slave, name, downAfterNoAlive, secondsBehindMaster)
-	go s.checkBackendSlaveStatus(ctx, s.StatisticSlave, name, downAfterNoAlive, secondsBehindMaster)
+func (s *Slice) CheckStatus(ctx context.Context, downAfterNoAlive int, secondsBehindMaster int) {
+	go s.checkBackendMasterStatus(ctx, downAfterNoAlive)
+	go s.checkBackendSlaveStatus(ctx, s.Slave, downAfterNoAlive, secondsBehindMaster)
+	go s.checkBackendSlaveStatus(ctx, s.StatisticSlave, downAfterNoAlive, secondsBehindMaster)
 }
 
-func (s *Slice) checkBackendMasterStatus(ctx context.Context, name string, downAfterNoAlive int) {
+func (s *Slice) checkBackendMasterStatus(ctx context.Context, downAfterNoAlive int) {
 	defer func() {
 		if err := recover(); err != nil {
-			log.Warn("[ns:%s, %s] check master status, panic: %v\n%s", name, s.Cfg.Name, err, debug.Stack())
+			log.Warn("[ns:%s, %s] check master status, panic: %v\n%s", s.Namespace, s.Cfg.Name, err, debug.Stack())
 		}
 	}()
 
 	// 确保 Master 节点存在
 	if s.Master == nil || len(s.Master.Nodes) == 0 {
-		log.Warn("[ns:%s, %s] check master status, master node is empty", name, s.Cfg.Name)
+		log.Warn("[ns:%s, %s] check master status, master node is empty", s.Namespace, s.Cfg.Name)
 		return
 	}
 
@@ -610,56 +616,45 @@ func (s *Slice) checkBackendMasterStatus(ctx context.Context, name string, downA
 	for {
 		select {
 		case <-ctx.Done():
-			log.Warn("[ns:%s, %s] check master status, context canceled", name, s.Cfg.Name)
+			log.Warn("[ns:%s, %s] check master status, context canceled", s.Namespace, s.Cfg.Name)
 			return
 		case <-ticker.C:
 			node := s.Master.Nodes[0]
-			log.Debug("[ns:%s, %s:%s] check master status, start", name, s.Cfg.Name, node.Address)
+			log.Debug("[ns:%s, %s:%s] check master status, start", s.Namespace, s.Cfg.Name, node.Address)
 
 			// 1. Master 连接池健康检查
-			conn, err := node.GetPooledConnectWithHealthCheck(name, s.HealthCheckSql)
+			conn, err := node.GetPooledConnectWithHealthCheck(s.Namespace, s.HealthCheckSql)
 			if err != nil {
-				log.Warn("[ns:%s, %s:%s] check master status, Get master conn error: %v, last check time: %s", name, s.Cfg.Name, node.Address, err, time.Unix(node.ConnPool.GetLastChecked(), 0).Format(mysql.TimeFormat))
+				log.Warn("[ns:%s, %s:%s] check master status, Get master conn error: %v, last check time: %s", s.Namespace, s.Cfg.Name, node.Address, err, time.Unix(node.ConnPool.GetLastChecked(), 0).Format(mysql.TimeFormat))
 				// 连接池可能因为网络原因导致Ping失败，这个时候继续向下检查
 			}
 
-			// 2. 重置恢复计数
-			if conn == nil && node.IsStatusDown() {
-				node.RefreshSkipCount()
-				log.Warn("[ns:%s, %s:%s] check master status, Reset recovery count, skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
-			}
-
-			// 3. 判断 Master 是否要下线
+			// 2. 判断 Master 是否要下线
 			shouldSetDown, elapsed := node.ShouldDownAfterNoAlive(downAfterNoAlive)
 			if shouldSetDown {
-				node.SetStatus(StatusDown)
-				log.Warn("[ns:%s, %s:%s] check master status, Marked as StatusDown for %ds", name, s.Cfg.Name, node.Address, elapsed)
+				node.SetMasterStatus(StatusDown)
+				log.Warn("[ns:%s, %s:%s] check master status, Marked as StatusDown for %ds", s.Namespace, s.Cfg.Name, node.Address, elapsed)
 				continue
 			}
 
-			// 4. 更新 Master 状态
+			// 3. 更新 Master 状态
 			if conn != nil && node.IsStatusDown() {
-				node.SetStatus(StatusUp)
-				// 如果仍然为 down 状态，表示存在误恢复的情况
-				if node.IsStatusDown() {
-					log.Warn("[ns:%s, %s:%s] check master status, Master recovered, Marked as StatusUp fail, skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
-				} else {
-					log.Warn("[ns:%s, %s:%s] check master status, Master recovered, Marked as StatusUp success, skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
-				}
+				node.SetMasterStatus(StatusUp)
+				log.Warn("[ns:%s, %s:%s] check master status, Master recovered from down, now StatusUp", s.Namespace, s.Cfg.Name, node.Address)
 			}
 		}
 	}
 }
 
-func (s *Slice) checkBackendSlaveStatus(ctx context.Context, slave *DBInfo, name string, downAfterNoAlive int, secondBehindMaster int) {
+func (s *Slice) checkBackendSlaveStatus(ctx context.Context, slave *DBInfo, downAfterNoAlive int, secondBehindMaster int) {
 	defer func() {
 		if err := recover(); err != nil {
-			log.Warn("[ns:%s, %s] check slave status, panic: %v\n%s", name, s.Cfg.Name, err, debug.Stack())
+			log.Warn("[ns:%s, %s] check slave status, panic: %v\n%s", s.Namespace, s.Cfg.Name, err, debug.Stack())
 		}
 	}()
 	// 先检查 `slave` 是否 `nil` 或者 `slave.Nodes` 是否为空
 	if slave == nil || len(slave.Nodes) == 0 {
-		log.Warn("[ns:%s, %s] check slave status, slave DBInfo is nil or no slave nodes", name, s.Cfg.Name)
+		log.Warn("[ns:%s, %s] check slave status, slave DBInfo is nil or no slave nodes", s.Namespace, s.Cfg.Name)
 		return
 	}
 
@@ -669,44 +664,44 @@ func (s *Slice) checkBackendSlaveStatus(ctx context.Context, slave *DBInfo, name
 	for {
 		select {
 		case <-ctx.Done():
-			log.Warn("[ns:%s, %s] check slave status, context canceled", name, s.Cfg.Name)
+			log.Warn("[ns:%s, %s] check slave status, context canceled", s.Namespace, s.Cfg.Name)
 			return
 		case <-ticker.C:
 			for _, node := range slave.Nodes {
-				log.Debug("[ns:%s, %s:%s] check slave status, start", name, s.Cfg.Name, node.Address)
+				log.Debug("[ns:%s, %s:%s] check slave status, start", s.Namespace, s.Cfg.Name, node.Address)
 
 				// 1. 从库连接池健康检查
-				conn, err := node.GetPooledConnectWithHealthCheck(name, s.HealthCheckSql)
+				conn, err := node.GetPooledConnectWithHealthCheck(s.Namespace, s.HealthCheckSql)
 				if err != nil {
-					log.Warn("[ns:%s, %s:%s] check slave status, Get slave conn error: %v, last check time: %s", name, s.Cfg.Name, node.Address, err, time.Unix(node.ConnPool.GetLastChecked(), 0).Format(mysql.TimeFormat))
+					log.Warn("[ns:%s, %s:%s] check slave status, Get slave conn error: %v, last check time: %s", s.Namespace, s.Cfg.Name, node.Address, err, time.Unix(node.ConnPool.GetLastChecked(), 0).Format(mysql.TimeFormat))
 					// 连接池可能因为网络原因导致Ping失败，这个时候继续向下检查
 				}
 
 				// 2. 重置恢复计数
 				if conn == nil && node.IsStatusDown() {
 					node.RefreshSkipCount()
-					log.Warn("[ns:%s, %s:%s] check slave status, Reset recovery count, skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
+					log.Warn("[ns:%s, %s:%s] check slave status, Reset recovery count, skipCount %d", s.Namespace, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
 				}
 
 				// 3. 判断是否需要下线
 				shouldSetDown, elapsed := node.ShouldDownAfterNoAlive(downAfterNoAlive)
 				if shouldSetDown {
 					node.SetStatus(StatusDown)
-					log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusDown for %ds", name, s.Cfg.Name, node.Address, elapsed)
+					log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusDown for %ds", s.Namespace, s.Cfg.Name, node.Address, elapsed)
 					continue
 				}
 
 				// 4. 获取主库状态
 				masterStatus, err := s.GetMasterStatus()
 				if err != nil || masterStatus == StatusDown {
-					log.Warn("[ns:%s, %s:%s] check slave status, Skipping slave sync check, get master status: %s, get master err: %v", name, s.Cfg.Name, node.Address, masterStatus.String(), err)
+					log.Warn("[ns:%s, %s:%s] check slave status, Skipping slave sync check, get master status: %s, get master err: %v", s.Namespace, s.Cfg.Name, node.Address, masterStatus.String(), err)
 					if node.IsStatusDown() {
 						node.SetStatus(StatusUp)
 						// 如果仍然为 down 状态，表示存在误恢复的情况
 						if node.IsStatusDown() {
-							log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp fail, Slave recovered from down, (case master down), skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
+							log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp fail, Slave recovered from down, (case master down), skipCount %d", s.Namespace, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
 						} else {
-							log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp success, Slave recovered from down, (case master down), skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
+							log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp success, Slave recovered from down, (case master down), skipCount %d", s.Namespace, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
 						}
 					}
 					continue
@@ -717,9 +712,9 @@ func (s *Slice) checkBackendSlaveStatus(ctx context.Context, slave *DBInfo, name
 				if !alive {
 					node.SetStatus(StatusDown)
 					if err != nil {
-						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusDown due to sync thread failure: %v", name, s.Cfg.Name, node.Address, err)
+						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusDown due to sync thread failure: %v", s.Namespace, s.Cfg.Name, node.Address, err)
 					} else {
-						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusDown due to excessive replication delay", name, s.Cfg.Name, node.Address)
+						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusDown due to excessive replication delay", s.Namespace, s.Cfg.Name, node.Address)
 					}
 					continue
 				}
@@ -728,9 +723,9 @@ func (s *Slice) checkBackendSlaveStatus(ctx context.Context, slave *DBInfo, name
 				if conn != nil && node.IsStatusDown() {
 					node.SetStatus(StatusUp)
 					if node.IsStatusDown() {
-						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp fail, Slave recovered from down, (case master up), skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
+						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp fail, Slave recovered from down, (case master up), skipCount %d", s.Namespace, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
 					} else {
-						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp success, Slave recovered from down, (case master up), skipCount %d", name, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
+						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp success, Slave recovered from down, (case master up), skipCount %d", s.Namespace, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
 					}
 				}
 			}

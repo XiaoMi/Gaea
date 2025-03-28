@@ -580,7 +580,7 @@ func (n *Namespace) CheckSliceStatus(ctx context.Context) {
 	}()
 
 	for _, slice := range n.slices {
-		slice.CheckStatus(ctx, n.name, n.downAfterNoAlive, int(n.secondsBehindMaster))
+		slice.CheckStatus(ctx, n.downAfterNoAlive, int(n.secondsBehindMaster))
 	}
 }
 
