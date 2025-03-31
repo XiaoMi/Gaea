@@ -61,9 +61,17 @@ const (
 	LocalSlaveReadForce             = 2 // 强制只用本地
 	CheckRepeat                     = 3
 )
+
 const (
-	NormalUser  = "Normal User"
-	MonitorUser = "Monitor User"
+	NormalUser    = "normal user"
+	MonitorUser   = "monitor user"
+	StatisticUser = "statistic user"
+)
+
+const (
+	DirectMaster        int = 0
+	DirectSlave         int = 1
+	SlaveFallbackMaster int = 2
 )
 
 func (s *StatusCode) String() string {
@@ -397,84 +405,86 @@ func (s *Slice) GetConn(reqCtx *util.RequestContext, userType int, localSlaveRea
 
 // getStatisticConnection get connection from statistic slave, not to get from master, Most of the SQL queries for user statistics are slow queries
 func (s *Slice) getStatisticConnection(localSlaveReadPriority int) (pc PooledConnect, err error) {
-	// 从统计从库获取
-	pc, err = s.GetSlaveConn(s.StatisticSlave, localSlaveReadPriority)
+	return s.handleSlaveStrict(StatisticUser, s.StatisticSlave, localSlaveReadPriority)
+}
+
+func (s *Slice) getNormalConnection(reqCtx *util.RequestContext, localSlaveReadPriority int) (pc PooledConnect, err error) {
+	connectionMode := getconnectionMode(reqCtx.GetFromSlave(), s.ShouldFallbackToMasterOnSlaveFail())
+	switch connectionMode {
+	case DirectMaster:
+		return s.handleDirectMaster(NormalUser, s.Master)
+	case SlaveFallbackMaster:
+		return s.handleSlaveWithFallback(NormalUser, s.Slave, s.Master, localSlaveReadPriority)
+	case DirectSlave:
+		return s.handleSlaveStrict(NormalUser, s.Slave, localSlaveReadPriority)
+	default:
+		return nil, fmt.Errorf("user:%s, invalid connection mode: %d", NormalUser, connectionMode)
+	}
+}
+
+func (s *Slice) getMonitorConnection(reqCtx *util.RequestContext, localSlaveReadPriority int) (pc PooledConnect, err error) {
+	connectionMode := getconnectionMode(reqCtx.GetFromSlave(), s.ShouldFallbackToMasterOnSlaveFail())
+	switch connectionMode {
+	case DirectMaster:
+		return s.handleDirectMaster(MonitorUser, s.MonitorMaster)
+	case SlaveFallbackMaster:
+		return s.handleSlaveWithFallback(MonitorUser, s.MonitorSlave, s.MonitorMaster, localSlaveReadPriority)
+	case DirectSlave:
+		return s.handleSlaveStrict(MonitorUser, s.MonitorSlave, localSlaveReadPriority)
+	default:
+		return nil, fmt.Errorf("user:%s, invalid connection mode: %d", MonitorUser, connectionMode)
+	}
+}
+
+// 处理直接主库连接路径
+func (s *Slice) handleDirectMaster(userType string, master *DBInfo) (pc PooledConnect, err error) {
+	pc, err = s.GetMasterConn(master)
 	if err != nil {
-		log.Warn("StatisticUser: Failed to get connection. Error: %v, Didn't try to get from master", err)
+		log.Warn("[direct→master] try master conn failed, user: %s, master error: %v", userType, err)
+		return nil, err
 	}
-	return pc, err
+	return pc, nil
 }
 
-func (s *Slice) getNormalConnection(reqCtx *util.RequestContext, localSlaveReadPriority int) (PooledConnect, error) {
-	var (
-		pc  PooledConnect
-		err error
-	)
-	// 统一错误处理
-	defer func() {
-		if err != nil {
-			log.Warn("connection failed, user: %s, fromSlave: %v, fallbackToMaster: %v, error: %v", NormalUser, reqCtx.GetFromSlave(), s.ShouldFallbackToMasterOnSlaveFail(), err)
-		}
-	}()
-
-	// 选择数据源
-	if reqCtx.GetFromSlave() {
-		pc, err = s.trySlaveThenFallback(reqCtx, NormalUser, s.Slave, s.Master, localSlaveReadPriority)
-	} else {
-		pc, err = s.GetMasterConn(s.Master)
+// 处理严格从库路径
+func (s *Slice) handleSlaveStrict(userType string, slave *DBInfo, localSlaveReadPriority int) (pc PooledConnect, err error) {
+	pc, err = s.GetSlaveConn(slave, localSlaveReadPriority)
+	if err != nil {
+		log.Warn("[direct→slave] try slave conn failed, no fallback, user: %s, localSlaveReadPriority: %d, slave error: %v", userType, localSlaveReadPriority, err)
+		return nil, err
 	}
-
-	return pc, err
+	return pc, nil
 }
 
-func (s *Slice) getMonitorConnection(reqCtx *util.RequestContext, localSlaveReadPriority int) (PooledConnect, error) {
-	var (
-		pc  PooledConnect
-		err error
-	)
-	// 统一错误处理
-	defer func() {
-		if err != nil {
-			log.Warn("connection failed, user: %s, fromSlave: %v, fallbackToMaster: %v, error: %v", MonitorUser, reqCtx.GetFromSlave(), s.ShouldFallbackToMasterOnSlaveFail(), err)
-		}
-	}()
-
-	// 选择数据源
-	if reqCtx.GetFromSlave() {
-		pc, err = s.trySlaveThenFallback(reqCtx, MonitorUser, s.MonitorSlave, s.MonitorMaster, localSlaveReadPriority)
-	} else {
-		pc, err = s.GetMasterConn(s.MonitorMaster)
-	}
-	return pc, err
-}
-
-func (s *Slice) trySlaveThenFallback(reqCtx *util.RequestContext, userType string, slave *DBInfo, master *DBInfo, priority int) (PooledConnect, error) {
-	var (
-		pc        PooledConnect
-		masterErr error
-		slaveErr  error
-	)
-	defer func() {
-		if slaveErr != nil {
-			log.Warn("try slave conn failed, user: %s, slave error: %v", userType, slaveErr)
-		}
-		if masterErr != nil {
-			log.Warn("try slave conn failed, user: %s, master error: %v", userType, masterErr)
-		}
-	}()
-
-	pc, slaveErr = s.GetSlaveConn(slave, priority)
+// 处理从库可回退路径
+func (s *Slice) handleSlaveWithFallback(userType string, slave *DBInfo, master *DBInfo, localSlaveReadPriority int) (PooledConnect, error) {
+	// 尝试从库连接
+	pc, slaveErr := s.GetSlaveConn(slave, localSlaveReadPriority)
 	if slaveErr == nil {
 		return pc, nil
 	}
-
-	if !s.ShouldFallbackToMasterOnSlaveFail() {
-		return nil, slaveErr
+	// 获取主库连接
+	pc, masterErr := s.GetMasterConn(master)
+	if masterErr == nil {
+		log.Warn("[slave→master] try slave conn failed, fallback to master success, user: %s, localSlaveReadPriority: %d, slave error: %v", userType, localSlaveReadPriority, slaveErr)
+	} else {
+		log.Warn("[slave→master] try slave conn failed, fallback to master failed, user: %s, localSlaveReadPriority: %d, slave error: %v, master error:%v", userType, localSlaveReadPriority, slaveErr, masterErr)
 	}
-	// 尝试主库连接
-	reqCtx.SetSwitchedToMaster(true)
-	pc, masterErr = s.GetMasterConn(master)
 	return pc, masterErr
+}
+
+func getconnectionMode(fromSlave bool, fallbackToMaster bool) (connectionMode int) {
+	switch {
+	case !fromSlave:
+		// 第1判断条件（fromSlave=false时执行）
+		return DirectMaster
+	case fallbackToMaster:
+		// 第2判断条件（fromSlave=true且fallbackToMaster=true）
+		return SlaveFallbackMaster
+	default:
+		// 第3条件（fromSlave=true且fallbackToMaster=false）
+		return DirectSlave
+	}
 }
 
 func (s *Slice) ShouldFallbackToMasterOnSlaveFail() bool {

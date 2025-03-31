@@ -1971,3 +1971,24 @@ func TestCheckBackendSlaveStatus_SlaveSyncDelay(t *testing.T) {
 		}
 	})
 }
+
+func TestGetconnectionMode(t *testing.T) {
+	tests := []struct {
+		fromSlave        bool
+		fallbackToMaster bool
+		want             int
+	}{
+		{false, false, DirectMaster},
+		{false, true, DirectMaster},
+		{true, false, DirectSlave},
+		{true, true, SlaveFallbackMaster},
+	}
+
+	for _, tt := range tests {
+		got := getconnectionMode(tt.fromSlave, tt.fallbackToMaster)
+		if got != tt.want {
+			t.Errorf("fromSlave=%v, fallback=%v => got %d, want %d",
+				tt.fromSlave, tt.fallbackToMaster, got, tt.want)
+		}
+	}
+}
