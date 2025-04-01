@@ -50,7 +50,7 @@ const (
 	MasterRole               = "master"
 	SlaveRole                = "slave"
 	StatisticSlaveRole       = "statistic-slave"
-	SQLExecTimeSize          = 5000
+	SQLExecTimeSize          = 10000
 	DefaultDatacenter        = "default"
 	SQLExecStatusOk          = "OK"
 	SQLExecStatusErr         = "ERROR"
@@ -503,28 +503,57 @@ func (m *Manager) startConnectPoolMetricsTask(interval int) {
 		interval = 10
 	}
 
-	go func() {
+	go func(currentIdx int32) {
 		t := time.NewTicker(time.Duration(interval) * time.Second)
-		tSQLRecordTime := time.NewTicker(time.Duration(backend.PingPeriod) * time.Second)
+		defer t.Stop()
 		for {
 			select {
 			case <-m.GetStatisticManager().closeChan:
 				return
 			case <-t.C:
+				// 处理 t 的任务
 				m.statistics.AddUptimeCount(time.Now().Unix() - m.statistics.startTime)
-
 				// record cpu usage will wait at least 5 seconds
 				m.statistics.CalcCPUBusy(interval - 5)
-
-				current, _, _ := m.switchIndex.Get()
-				for nameSpaceName := range m.namespaces[current].namespaces {
+				for nameSpaceName := range m.namespaces[currentIdx].namespaces {
 					m.recordBackendConnectPoolMetrics(nameSpaceName)
 				}
-			case <-tSQLRecordTime.C:
-				m.statistics.CalcAvgSQLTimes()
 			}
 		}
-	}()
+	}(current)
+
+	go func(currentIdx int32) {
+		tSQL := time.NewTicker(time.Duration(backend.PingPeriod) * time.Second)
+		defer tSQL.Stop()
+		for {
+			select {
+			case <-m.GetStatisticManager().closeChan:
+				return
+			case <-tSQL.C:
+				m.statistics.CalcAvgSQLTimes()
+				for nameSpaceName := range m.namespaces[currentIdx].namespaces {
+					m.statistics.recordSQLTiming(nameSpaceName)
+				}
+
+			}
+		}
+	}(current)
+}
+
+func (s *StatisticManager) recordSQLTiming(ns string) {
+	for addr, val := range s.SQLResponsePercentile[ns].response99Max {
+		s.recordBackendSQLTimingP99Max(ns, addr, val)
+	}
+	for addr, val := range s.SQLResponsePercentile[ns].response95Max {
+		s.recordBackendSQLTimingP95Max(ns, addr, val)
+	}
+	for addr, val := range s.SQLResponsePercentile[ns].response99Avg {
+		s.recordBackendSQLTimingP99Avg(ns, addr, val)
+	}
+	for addr, val := range s.SQLResponsePercentile[ns].response95Avg {
+		s.recordBackendSQLTimingP95Avg(ns, addr, val)
+	}
+
 }
 
 func (m *Manager) recordBackendConnectPoolMetrics(namespace string) {
@@ -533,21 +562,6 @@ func (m *Manager) recordBackendConnectPoolMetrics(namespace string) {
 		log.Warn("record backend connect pool metrics err, namespace: %s", namespace)
 		return
 	}
-	for n, v := range m.statistics.SQLResponsePercentile {
-		for backendAddr, val := range v.response99Max {
-			m.statistics.recordBackendSQLTimingP99Max(n, backendAddr, int64(val))
-		}
-		for backendAddr, val := range v.response99Avg {
-			m.statistics.recordBackendSQLTimingP99Avg(n, backendAddr, int64(val))
-		}
-		for backendAddr, val := range v.response95Max {
-			m.statistics.recordBackendSQLTimingP95Max(n, backendAddr, int64(val))
-		}
-		for backendAddr, val := range v.response95Avg {
-			m.statistics.recordBackendSQLTimingP95Avg(n, backendAddr, int64(val))
-		}
-	}
-
 	for sliceName, slice := range ns.slices {
 		// Master 只有一个节点
 		for _, master := range slice.Master.Nodes {
@@ -866,14 +880,14 @@ type StatisticManager struct {
 
 // SQLResponse record one namespace SQL response like P99/P95
 type SQLResponse struct {
-	ns                      string
-	sqlExecTimeRecordSwitch bool
-	sQLExecTimeChan         chan *SQLExecTimeRecord
-	sQLTimeList             []*SQLExecTimeRecord
-	response99Max           map[string]int64 // map[backendAddr]P99MaxValue
-	response99Avg           map[string]int64 // map[backendAddr]P99AvgValue
-	response95Max           map[string]int64 // map[backendAddr]P95MaxValue
-	response95Avg           map[string]int64 // map[backendAddr]P95AvgValue
+	ns string
+
+	activeSQLTimeChan chan *SQLExecTimeRecord
+	sQLTimeList       []*SQLExecTimeRecord
+	response99Max     map[string]int64
+	response99Avg     map[string]int64
+	response95Max     map[string]int64
+	response95Avg     map[string]int64
 }
 
 // SQLExecTimeRecord record backend sql exec time
@@ -885,17 +899,16 @@ type SQLExecTimeRecord struct {
 
 func NewSQLResponse(name string) *SQLResponse {
 	sQLExecTimeRecord := make([]*SQLExecTimeRecord, 0, SQLExecTimeSize)
-	return &SQLResponse{
-		ns:                      name,
-		sqlExecTimeRecordSwitch: false,
-		sQLExecTimeChan:         make(chan *SQLExecTimeRecord, SQLExecTimeSize),
-		sQLTimeList:             sQLExecTimeRecord,
-		response99Max:           make(map[string]int64),
-		response99Avg:           make(map[string]int64),
-		response95Max:           make(map[string]int64),
-		response95Avg:           make(map[string]int64),
-	}
 
+	return &SQLResponse{
+		ns:                name,
+		activeSQLTimeChan: make(chan *SQLExecTimeRecord, SQLExecTimeSize),
+		sQLTimeList:       sQLExecTimeRecord,
+		response99Max:     map[string]int64{},
+		response99Avg:     map[string]int64{},
+		response95Max:     map[string]int64{},
+		response95Avg:     map[string]int64{},
+	}
 }
 
 // NewStatisticManager return empty StatisticManager
@@ -1123,9 +1136,6 @@ func (s *StatisticManager) recordBackendSQLTiming(namespace string, operation st
 		log.Warn("ns %s not in SQLResponsePercentile", namespace)
 		return
 	}
-	if !s.SQLResponsePercentile[namespace].sqlExecTimeRecordSwitch {
-		return
-	}
 	execTimeMicro := time.Since(startTime).Microseconds()
 	sQLExecTimeRecord := &SQLExecTimeRecord{
 		sliceName:     sliceName,
@@ -1133,9 +1143,8 @@ func (s *StatisticManager) recordBackendSQLTiming(namespace string, operation st
 		execTimeMicro: execTimeMicro,
 	}
 	select {
-	case s.SQLResponsePercentile[namespace].sQLExecTimeChan <- sQLExecTimeRecord:
-	case <-time.After(time.Millisecond):
-		s.SQLResponsePercentile[namespace].sqlExecTimeRecordSwitch = false
+	case s.SQLResponsePercentile[namespace].activeSQLTimeChan <- sQLExecTimeRecord:
+	default:
 	}
 }
 
@@ -1290,54 +1299,89 @@ func (s *StatisticManager) handleCPUBusyError(statsKey []string, context string,
 }
 
 func (s *StatisticManager) CalcAvgSQLTimes() {
-	for ns, sQLResponse := range s.SQLResponsePercentile {
-		sqlTimesMicro := make([]int64, 0)
-		quit := false
-		backendAddr := ""
-		for !quit {
+	for _, sqlResponse := range s.SQLResponsePercentile {
+		allSQLTimesMicro := make([]int64, 0)
+		addrTimeMap := make(map[string][]int64)
+
+		// 阶段1：从通道收集数据
+		collect := false
+		for !collect {
 			select {
-			case tmp := <-sQLResponse.sQLExecTimeChan:
-				if len(sqlTimesMicro) >= SQLExecTimeSize {
-					quit = true
+			case tmp := <-sqlResponse.activeSQLTimeChan:
+				if len(allSQLTimesMicro) >= SQLExecTimeSize {
+					collect = true
 				}
-				backendAddr = tmp.backendAddr
 				etime := tmp.execTimeMicro
-				sqlTimesMicro = append(sqlTimesMicro, etime)
+				allSQLTimesMicro = append(allSQLTimesMicro, etime)
+				addrTimeMap[tmp.backendAddr] = append(addrTimeMap[tmp.backendAddr], tmp.execTimeMicro)
 			case <-time.After(time.Millisecond):
-				quit = true
+				collect = true
 			}
 		}
-		if len(sqlTimesMicro) == 0 {
-			s.SQLResponsePercentile[ns].response99Max[backendAddr] = 0
-			s.SQLResponsePercentile[ns].response95Max[backendAddr] = 0
-			s.SQLResponsePercentile[ns].response99Avg[backendAddr] = 0
-			s.SQLResponsePercentile[ns].response95Avg[backendAddr] = 0
-			s.SQLResponsePercentile[ns].sqlExecTimeRecordSwitch = true
-			continue
-		}
-		sort.Slice(sqlTimesMicro, func(i, j int) bool { return sqlTimesMicro[i] < sqlTimesMicro[j] })
-		sum := int64(0)
-		p99sum := int64(0)
-		p95sum := int64(0)
-		s.SQLResponsePercentile[ns].response99Max[backendAddr] = sqlTimesMicro[(len(sqlTimesMicro)-1)*99/100]
-		s.SQLResponsePercentile[ns].response95Max[backendAddr] = sqlTimesMicro[(len(sqlTimesMicro)-1)*95/100]
-		for k := range sqlTimesMicro {
-			sum += sqlTimesMicro[k]
-			if k < len(sqlTimesMicro)*95/100 {
-				p95sum += sqlTimesMicro[k]
+		// 阶段2：清空各地址的指标
+		resetMaps(sqlResponse)
+
+		// 阶段3：计算各地址的百分位数
+		for addr, times := range addrTimeMap {
+			sort.Slice(times, func(i, j int) bool { return times[i] < times[j] })
+			// 修正索引计算方式
+			n := len(times)
+			p99Index := calculatePercentileIndex(n, 0.99)
+			p95Index := calculatePercentileIndex(n, 0.95)
+
+			// 确保索引不越界
+			if p99Index >= n {
+				p99Index = n - 1
 			}
-			if k < len(sqlTimesMicro)*99/100 {
-				p99sum += sqlTimesMicro[k]
+			if p95Index >= n {
+				p95Index = n - 1
 			}
+
+			sqlResponse.response99Max[addr] = times[p99Index]
+			sqlResponse.response95Max[addr] = times[p95Index]
+
+			sqlResponse.response99Avg[addr] = average(times[:p99Index+1])
+			sqlResponse.response95Avg[addr] = average(times[:p95Index+1])
 		}
-		if len(sqlTimesMicro)*99/100 > 0 {
-			s.SQLResponsePercentile[ns].response99Avg[backendAddr] = p99sum / int64(len(sqlTimesMicro)*99/100)
-		}
-		if len(sqlTimesMicro)*95/100 > 0 {
-			s.SQLResponsePercentile[ns].response95Avg[backendAddr] = p95sum / int64(len(sqlTimesMicro)*95/100)
-		}
-		s.SQLResponsePercentile[ns].sqlExecTimeRecordSwitch = true
 	}
+}
+
+// 辅助函数：计算百分位索引（四舍五入）
+func calculatePercentileIndex(n int, percentile float64) int {
+	if n == 0 {
+		return 0
+	}
+	return int(math.Ceil(float64(n-1) * percentile))
+}
+
+// 辅助函数：清空所有指标
+func resetMaps(resp *SQLResponse) {
+	// 使用Range遍历删除更安全
+	for addr := range resp.response99Max {
+		resp.response99Max[addr] = 0
+	}
+	for addr := range resp.response95Max {
+		resp.response95Max[addr] = 0
+	}
+	for addr := range resp.response95Avg {
+		resp.response95Avg[addr] = 0
+	}
+	for addr := range resp.response99Avg {
+		resp.response99Avg[addr] = 0
+	}
+
+}
+
+// 辅助函数：计算切片平均值
+func average(values []int64) int64 {
+	if len(values) == 0 {
+		return 0
+	}
+	var sum int64
+	for _, v := range values {
+		sum += v
+	}
+	return sum / int64(len(values))
 }
 
 // getStatusDownCounts get status down counts from DBinfo.statusMap

@@ -377,3 +377,19 @@ func createNamespaceUsers(ns string, users []*userinfo) *models.Namespace {
 		Users: userList,
 	}
 }
+
+func TestDoubleBufferingBasic(t *testing.T) {
+	var testNamespace = "ns"
+	// 初始化 SQLResponse
+	resp := NewSQLResponse(testNamespace)
+	processor := &StatisticManager{SQLResponsePercentile: map[string]*SQLResponse{testNamespace: resp}}
+	// 写入数据到 activeChan
+	for i := 0; i < SQLExecTimeSize; i++ {
+		record := &SQLExecTimeRecord{execTimeMicro: int64(i)}
+		resp.activeSQLTimeChan <- record
+	}
+
+	// 执行 CalcAvgSQLTimes 交换通道并处理数据
+	processor.CalcAvgSQLTimes()
+
+}
