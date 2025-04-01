@@ -140,13 +140,28 @@ func HostName(ip string) (hostname string, err error) {
 	return hostName[0], err
 }
 
-// GetLocalDatacenter return local host datacenter
-func GetLocalDatacenter() (string, error) {
+// GetLocalDatacenter returns the local host datacenter with priority given to proxyIdc.
+// If serverIdc(gaea.ini) is not empty, it will be returned immediately without any hostname lookup.
+// Only when serverIdc is empty will the function attempt to determine the datacenter
+// from the local hostname.
+func GetLocalDatacenter(serverIdc string) (string, error) {
+	// Priority 1: Return serverIdc if provided
+	if serverIdc != "" {
+		return serverIdc, nil
+	}
+
+	// Priority 2: Fall back to hostname-based lookup
 	hostname, err := os.Hostname()
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("server_idc config is nil, failed to get hostname: %w", err)
 	}
-	return GetHostDatacenter(hostname)
+
+	dc, err := GetHostDatacenter(hostname)
+	if err != nil {
+		return "", fmt.Errorf("server_idc config is nil, failed to get datacenter for host %s: %w", hostname, err)
+	}
+
+	return dc, nil
 }
 
 // GetInstanceDatacenter return datacenter parsed from host like "c3-mysql01.bj:3306" or "127.0.0.1:3306"

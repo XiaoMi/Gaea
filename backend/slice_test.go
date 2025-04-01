@@ -1972,6 +1972,118 @@ func TestCheckBackendSlaveStatus_SlaveSyncDelay(t *testing.T) {
 	})
 }
 
+func TestParseDBInfo_ProxyDatacenterImpact(t *testing.T) {
+	tests := []struct {
+		name            string
+		dbAddrs         []string
+		proxyDatacenter string
+		expectedLocal   int
+		expectedRemote  int
+		expectedGlobal  int
+		expectedError   bool
+	}{
+
+		{
+			name:            "empty addresses",
+			dbAddrs:         []string{},
+			proxyDatacenter: "dc1",
+			expectedLocal:   0,
+			expectedRemote:  0,
+			expectedGlobal:  0,
+		},
+		{
+			name:            "single node matching proxy dc",
+			dbAddrs:         []string{"host1:3306#dc1"},
+			proxyDatacenter: "dc1",
+			expectedLocal:   1,
+			expectedRemote:  0,
+			expectedGlobal:  1,
+		},
+		{
+			name:            "single node different from proxy dc",
+			dbAddrs:         []string{"host1:3306#dc2"},
+			proxyDatacenter: "dc1",
+			expectedLocal:   0,
+			expectedRemote:  1,
+			expectedGlobal:  1,
+		},
+		{
+			name:            "multiple nodes with mixed dc",
+			dbAddrs:         []string{"host1:3306#dc1", "host2:3306#dc2", "host3:3306#dc1"},
+			proxyDatacenter: "dc1",
+			expectedLocal:   2,
+			expectedRemote:  1,
+			expectedGlobal:  3,
+		},
+
+		{
+			name:            "nodes without explicit dc (fallback to GetInstanceDatacenter)",
+			dbAddrs:         []string{"host1:3306", "host2:3306"},
+			proxyDatacenter: "dc1",
+			expectedLocal:   2,
+			expectedRemote:  0,
+			expectedGlobal:  2,
+		},
+
+		{
+			name:            "nodes with invalid weight format",
+			dbAddrs:         []string{"host1:3306@invalid#dc1", "host2:3306@-5#dc2"},
+			proxyDatacenter: "dc1",
+			expectedLocal:   1, // weight=invalid should set default 1
+			expectedRemote:  1, // weight=-5 should set default 1
+			expectedGlobal:  2,
+		},
+
+		{
+			name:            "nodes with zero weight",
+			dbAddrs:         []string{"host1:3306@0#dc1", "host2:3306@1#dc2"},
+			proxyDatacenter: "dc1",
+			expectedLocal:   0, // zero-weight nodes should be ignored
+			expectedRemote:  1,
+			expectedGlobal:  1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Setup
+			s := &Slice{
+				ProxyDatacenter: tt.proxyDatacenter,
+			}
+
+			dbInfo, err := s.parseDBInfo(tt.dbAddrs, false)
+			assert.NotNil(t, dbInfo)
+			assert.NoError(t, err)
+
+			// 初始化 `Balancer`
+			err = dbInfo.InitBalancers(s.ProxyDatacenter)
+			assert.NoError(t, err)
+
+			// Check balancer counts
+			if tt.expectedLocal > 0 {
+				assert.NotNil(t, dbInfo.LocalBalancer)
+				assert.Equal(t, tt.expectedLocal, len(dbInfo.LocalBalancer.poolIndices))
+			} else {
+				assert.Nil(t, dbInfo.LocalBalancer)
+			}
+
+			if tt.expectedRemote > 0 {
+				assert.NotNil(t, dbInfo.RemoteBalancer)
+				assert.Equal(t, tt.expectedRemote, len(dbInfo.RemoteBalancer.poolIndices))
+			} else {
+				assert.Nil(t, dbInfo.RemoteBalancer)
+			}
+
+			if tt.expectedGlobal > 0 {
+				assert.NotNil(t, dbInfo.GlobalBalancer)
+				assert.Equal(t, tt.expectedGlobal, len(dbInfo.GlobalBalancer.poolIndices))
+			} else {
+				assert.Nil(t, dbInfo.GlobalBalancer)
+			}
+		})
+	}
+}
+
 func TestGetconnectionMode(t *testing.T) {
 	tests := []struct {
 		fromSlave        bool

@@ -229,7 +229,7 @@ func CreateManager(cfg *models.Proxy, namespaceConfigs map[string]*models.Namesp
 	current, _, _ := m.switchIndex.Get()
 
 	// init namespace
-	m.namespaces[current] = CreateNamespaceManager(namespaceConfigs)
+	m.namespaces[current] = CreateNamespaceManager(cfg.ServerIdc, namespaceConfigs)
 
 	// init user
 	user, err := CreateUserManager(namespaceConfigs)
@@ -583,6 +583,7 @@ func (m *Manager) recordBackendConnectPoolMetrics(namespace string) {
 // NamespaceManager is the manager that holds all namespaces
 type NamespaceManager struct {
 	namespaces map[string]*Namespace
+	serverIDC  string
 }
 
 // NewNamespaceManager constructor of NamespaceManager
@@ -593,21 +594,23 @@ func NewNamespaceManager() *NamespaceManager {
 }
 
 // CreateNamespaceManager create NamespaceManager
-func CreateNamespaceManager(namespaceConfigs map[string]*models.Namespace) *NamespaceManager {
+func CreateNamespaceManager(proxyDatacenter string, namespaceConfigs map[string]*models.Namespace) *NamespaceManager {
+	var err error
+	var proxyIDC string
 	nsMgr := NewNamespaceManager()
-	proxyDatacenter, err := util.GetLocalDatacenter()
+	proxyIDC, err = util.GetLocalDatacenter(proxyDatacenter)
 	if err != nil {
-		log.Fatal("get proxy datacenter err,will use default datacenter,err:%s", err)
-		proxyDatacenter = DefaultDatacenter
+		log.Fatal("get proxy datacenter err, will use default datacenter, err: %s", err)
+		proxyIDC = DefaultDatacenter
 	}
-
 	for _, config := range namespaceConfigs {
-		namespace, err := NewNamespace(config, proxyDatacenter)
+		namespace, err := NewNamespace(config, proxyIDC)
 		if err != nil {
 			log.Warn("create namespace %s failed, err: %v", config.Name, err)
 			continue
 		}
 		nsMgr.namespaces[namespace.name] = namespace
+		nsMgr.serverIDC = proxyIDC
 	}
 	return nsMgr
 }
@@ -618,16 +621,17 @@ func ShallowCopyNamespaceManager(nsMgr *NamespaceManager) *NamespaceManager {
 	for k, v := range nsMgr.namespaces {
 		newNsMgr.namespaces[k] = v
 	}
+	newNsMgr.serverIDC = nsMgr.serverIDC
 	return newNsMgr
 }
 
 // RebuildNamespace rebuild namespace
 func (n *NamespaceManager) RebuildNamespace(config *models.Namespace) error {
-	proxyDatacenter, err := util.GetLocalDatacenter()
+	proxyIDC, err := util.GetLocalDatacenter(n.serverIDC)
 	if err != nil {
 		log.Fatal("get local proxy datacenter err:%s", err)
 	}
-	namespace, err := NewNamespace(config, proxyDatacenter)
+	namespace, err := NewNamespace(config, proxyIDC)
 	if err != nil {
 		log.Warn("create namespace %s failed, err: %v", config.Name, err)
 		return err

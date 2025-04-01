@@ -292,6 +292,9 @@ stats_enabled=true
 
 ;encrypt key
 encrypt_key=1234abcd5678efg*
+
+;server_idc
+server_idc=c3
 `
 
 	nsCfg := `
@@ -406,7 +409,7 @@ encrypt_key=1234abcd5678efg*
 	// init namespace
 	current, _, _ := m.switchIndex.Get()
 	namespaceConfigs := map[string]*models.Namespace{namespaceName: namespaceConfig}
-	m.namespaces[current] = CreateNamespaceManager(namespaceConfigs)
+	m.namespaces[current] = CreateNamespaceManager(proxy.ServerIdc, namespaceConfigs)
 	user, err := CreateUserManager(namespaceConfigs)
 	if err != nil {
 		return nil, err

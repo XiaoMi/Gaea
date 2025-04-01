@@ -72,6 +72,7 @@ type Proxy struct {
 
 	EncryptKey string `ini:"encrypt_key"`
 
+	ServerIdc      string `ini:"server_idc"` // 容器环境下，优先读本地从库功能
 	ServerVersion  string `ini:"server_version"`
 	AuthPlugin     string `ini:"auth_plugin"`
 	NumCPU         int    `ini:"num_cpu"`

@@ -1093,7 +1093,7 @@ func (s *Slice) parseDBInfo(dbAddrs []string, isMonitorUser bool) (*DBInfo, erro
 		if dc == "" {
 			dc, err = util.GetInstanceDatacenter(addrAndWeight[0])
 			if err != nil {
-				log.Warn("get datacenter failed for %s: %s, using default proxy datacenter.", addrAndWeight[0], err)
+				log.Warn("get datacenter failed for %s: %s, using default gaea proxy datacenter: %s", addrAndWeight[0], err, s.ProxyDatacenter)
 				dc = s.ProxyDatacenter
 			}
 		}
