@@ -59,10 +59,12 @@ type Namespace struct {
 	ClientQPSLimit              uint32            `json:"client_qps_limit"`                 // Namespace 级别的 qps 限制，默认为 0，即不开启
 	SupportLimitTransaction     bool              `json:"support_limit_transaction"`        // 是否支持限制事务
 	AllowedSessionVariables     map[string]string `json:"allowed_session_variables"`        // 允许设置的会话变量
-	FuseWindowSize              int               `json:"fuse_window_size"`                 // fuse窗口,即禁用
-	FuseMinErrorCount           int64             `json:"fuse_min_error_count"`             // fuse的窗口内触发熔断的总的错误数
 	FallbackToMasterOnSlaveFail string            `json:"fallback_to_master_on_slave_fail"` // 当从库连接失败时，是否回退到主库
-	FuseEnabled                 string            `json:"fuse_enabled"`                     // 是否开启熔断
+
+	FuseEnabled        string `json:"fuse_enabled"`          // 是否开启熔断
+	FuseWindowSize     int64  `json:"fuse_window_size"`      // fuse窗口,即禁用
+	FuseMinErrorCount  int64  `json:"fuse_min_error_count"`  // fuse的窗口内触发熔断的总的错误数
+	FuseCoolDownPeriod int64  `json:"fuse_cool_down_period"` // 熔断的硬冷却期窗口
 }
 
 // Encode encode json

@@ -82,9 +82,3 @@ func (sw *SlidingWindow) slide(newStartSec int64) {
 	}
 	sw.startSec = newStartSec
 }
-
-func (sw *SlidingWindow) IsEnabled() bool {
-	sw.mu.Lock()
-	defer sw.mu.Unlock()
-	return sw.enabled
-}

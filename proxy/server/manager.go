@@ -1386,7 +1386,7 @@ func average(values []int64) int64 {
 
 // getStatusDownCounts get status down counts from DBinfo.statusMap
 func getStatusDownCounts(node *backend.NodeInfo) int64 {
-	if node.Status != backend.StatusUp {
+	if node.IsStatusDown() {
 		return 1
 	}
 	return 0

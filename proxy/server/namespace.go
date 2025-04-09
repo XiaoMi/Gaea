@@ -52,6 +52,7 @@ const (
 	defaultMaxClientConnections = 100000000 //Big enough
 	defaultFuseWindowSize       = 4         // 熔断窗口是4s
 	defaultFuseMinErrorCount    = 6         // 至少6个请求
+	defaultFuseCoolDownPeriod   = 60        // 硬冷却期观察时间 60s 默认1min
 )
 
 // UserProperty means runtime user properties
@@ -99,10 +100,11 @@ type Namespace struct {
 	namespaceChangeIndex    uint32
 	allowedSessionVariables map[string]string
 
-	fuseWindowSize              int
-	fuseMinErrorCount           int64
 	fallbackToMasterOnSlaveFail string
 	fuseEnabled                 string
+	fuseWindowSize              int64
+	fuseMinErrorCount           int64
+	fuseCoolDownPeriod          int64
 }
 
 // DumpToJSON  means easy encode json
@@ -225,6 +227,12 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 		namespace.fuseMinErrorCount = namespaceConfig.FuseMinErrorCount
 	}
 
+	if namespaceConfig.FuseCoolDownPeriod <= 0 {
+		namespace.fuseCoolDownPeriod = defaultFuseCoolDownPeriod
+	} else {
+		namespace.fuseCoolDownPeriod = namespaceConfig.FuseCoolDownPeriod
+	}
+
 	namespace.downAfterNoAlive = namespaceConfig.DownAfterNoAlive
 	if namespace.downAfterNoAlive < 0 {
 		return nil, fmt.Errorf("downAfterNoAlive should be greater than 0")
@@ -247,7 +255,7 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 	}
 
 	// init backend slices
-	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID, proxyDatacenter, namespace.fuseWindowSize, namespace.fuseMinErrorCount, namespace.fallbackToMasterOnSlaveFail, namespace.fuseEnabled, namespaceConfig.Name)
+	namespace.slices, err = parseSlices(namespaceConfig.Slices, namespace.defaultCharset, namespace.defaultCollationID, proxyDatacenter, namespace.fuseEnabled, namespace.fuseWindowSize, namespace.fuseMinErrorCount, namespace.fuseCoolDownPeriod, namespace.fallbackToMasterOnSlaveFail, namespaceConfig.Name)
 	if err != nil {
 		return nil, fmt.Errorf("init slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
 	}
@@ -624,7 +632,7 @@ func parseSlice(cfg *models.Slice, charset string, collationID mysql.CollationID
 	return s, nil
 }
 
-func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.CollationID, dc string, fuseSize int, fuseMinErrorCount int64, fallbackToMasterOnSlaveFail string, fuseEnabled string, namespace string) (map[string]*backend.Slice, error) {
+func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.CollationID, dc string, fuseEnabled string, fuseSize int64, fuseMinErrorCount int64, fuseCooldownPeriod int64, fallbackToMasterOnSlaveFail string, namespace string) (map[string]*backend.Slice, error) {
 	slices := make(map[string]*backend.Slice, len(cfgSlices))
 	for _, v := range cfgSlices {
 		v.Name = strings.TrimSpace(v.Name) // modify origin slice name, trim space
@@ -641,16 +649,17 @@ func parseSlices(cfgSlices []*models.Slice, charset string, collationID mysql.Co
 		s.FuseEnabled = fuseEnabled
 		s.FuseWindowSize = fuseSize
 		s.FuseMinErrorCount = fuseMinErrorCount
+		s.FuseCooldownPeriod = fuseCooldownPeriod
 		s.Namespace = namespace
 
 		if s.IsFuseEnabled() {
-			if err = s.InitFuseSlideWindow(s.Slave); err != nil {
+			if err = s.InitFuseRecoveryPolicy(s.Slave); err != nil {
 				return nil, fmt.Errorf("failed to initialize slave fuse slide window: %w", err)
 			}
-			if err = s.InitFuseSlideWindow(s.StatisticSlave); err != nil {
+			if err = s.InitFuseRecoveryPolicy(s.StatisticSlave); err != nil {
 				return nil, fmt.Errorf("failed to initialize statistic slave fuse slide window: %w", err)
 			}
-			if err = s.InitFuseSlideWindow(s.MonitorSlave); err != nil {
+			if err = s.InitFuseRecoveryPolicy(s.MonitorSlave); err != nil {
 				return nil, fmt.Errorf("failed to initialize monitor slave fuse slide window: %w", err)
 			}
 		}

@@ -91,7 +91,7 @@ type DBInfo struct {
 	GlobalBalancer *balancer   // 包含所有节点
 }
 
-func (dbInfo *DBInfo) InitFuseSlideWindow(fuseWindowSize int, fuseMinErrorCount int64) error {
+func (dbInfo *DBInfo) InitFuseRecoveryPolicy(fuseWindowSize int64, fuseMinErrorCount int64, fuseCooldownPeriod int64) error {
 	// 参数校验
 	if fuseWindowSize < 0 {
 		return fmt.Errorf("invalid fuse window size: %d (must > 0)", fuseWindowSize)
@@ -103,16 +103,16 @@ func (dbInfo *DBInfo) InitFuseSlideWindow(fuseWindowSize int, fuseMinErrorCount 
 			continue // 跳过空节点
 		}
 
-		// 创建滑动窗口实例（参数不合法时会返回 disabled 状态）
-		node.FuseWindow = NewSlidingWindow(
-			int64(fuseWindowSize),
-			fuseMinErrorCount,
-		)
+		// 创建默认的熔断策略（滑动窗口熔断）（参数不合法时会返回 disabled 状态）
+		node.FuseStrategy = NewSlidingWindow(int64(fuseWindowSize), fuseMinErrorCount)
 
-		// 若窗口参数非法则强制禁用熔断
-		if !node.FuseWindow.IsEnabled() {
-			log.Warn("Disable fuse for node %s due to invalid params (size=%d minfuseErrorCount=%d)",
-				node.Address, fuseWindowSize, fuseMinErrorCount)
+		// 不禁用熔断必须要使用恢复策略
+		if fuseCooldownPeriod > 0 {
+			// 使用硬熔断冷却期恢复
+			node.RecoveryStrategy = NewHardCoolDown(fuseCooldownPeriod)
+		} else {
+			// 采用默认的渐进式恢复策略
+			node.RecoveryStrategy = NewGradualRecovery()
 		}
 	}
 	return nil
@@ -124,164 +124,6 @@ func (d *DBInfo) GetNode(index int) (*NodeInfo, error) {
 		return nil, fmt.Errorf("index %d out of range", index)
 	}
 	return d.Nodes[index], nil
-}
-
-// 更新 `NodeInfo` 结构
-type NodeInfo struct {
-	sync.RWMutex                           // 保护 `Status`
-	Address                 string         // 节点地址
-	Datacenter              string         // 节点所属的数据中心
-	Weight                  int            // 该节点的负载均衡权重
-	ConnPool                ConnectionPool // 该节点的连接池
-	Status                  StatusCode     // 该节点状态`status` 只能通过`GetStatus` 和 `SetStatus` 访问
-	FuseWindow              *SlidingWindow
-	RecoveryTime            int64 // 最近一次恢复时间
-	RecoveryShouldSkipCount int64 // 这个是一个动态值
-	ErrorRecoveryCount      int64 // 这个是一个累计值
-}
-
-// GetStatus 使用读锁，允许并发读取，提高性能
-func (n *NodeInfo) GetStatus() StatusCode {
-	n.RLock()
-	defer n.RUnlock()
-	return n.Status
-}
-
-// IsStatusUp 直接判断该节点是否为 UP
-func (n *NodeInfo) IsStatusUp() bool {
-	n.RLock()
-	defer n.RUnlock()
-	return n.Status == StatusUp
-}
-
-func (n *NodeInfo) IsStatusDown() bool {
-	n.RLock()
-	defer n.RUnlock()
-	return n.Status == StatusDown
-}
-
-// MustSetStatusUp 无条件，直接设置为Up，不执行任何熔断逻辑。
-func (n *NodeInfo) MustSetStatusUp() {
-	n.Lock()
-	defer n.Unlock()
-	n.Status = StatusUp
-}
-
-// MustSetStatusDown 无条件，直接设置为Down,不执行任何熔断逻辑。
-func (n *NodeInfo) MustSetStatusDown() {
-	n.Lock()
-	defer n.Unlock()
-	n.Status = StatusDown
-}
-
-// SetStatus 有条件的设置状态
-func (n *NodeInfo) SetStatus(status StatusCode) {
-	if status == StatusUp {
-		n.SetStatusUp()
-	} else {
-		n.SetStatusDown()
-	}
-}
-
-// SetStatusUp 有条件的置为 Up 状态
-func (n *NodeInfo) SetStatusUp() {
-	n.Lock()
-	defer n.Unlock()
-	// 由 down 变为 up 时，触发，误恢复次数越多，越难以真正设置为 up 状态
-	if !n.checkShouldUp() {
-		return
-	}
-	n.Status = StatusUp
-}
-
-// SetStatusDown 有条件的置为 Down 状态
-func (n *NodeInfo) SetStatusDown() {
-	n.Lock()
-	defer n.Unlock()
-	n.checkBadRecovery()
-	n.Status = StatusDown
-}
-
-// 主要处理由 down 变为 up 的情况
-func (n *NodeInfo) checkShouldUp() bool {
-	// 已经为 up 状态，不处理
-	if n.Status == StatusUp {
-		return false
-	}
-	// 未开启熔断状态，需要设为 up
-	if n.FuseWindow == nil || !n.FuseWindow.IsEnabled() {
-		return true
-	}
-	// 记录恢复时间
-	n.RecoveryTime = time.Now().Unix()
-	// 计数器越多，越难以恢复
-	if n.RecoveryShouldSkipCount > 0 {
-		n.RecoveryShouldSkipCount -= 1
-		return false
-	}
-	return true
-}
-
-// 主要处理 up 变为 down 的情况
-func (n *NodeInfo) checkBadRecovery() {
-	// 已经为 down 状态不处理
-	if n.Status == StatusDown {
-		return
-	}
-	// 未开启熔断状态不处理
-	if n.FuseWindow == nil || !n.FuseWindow.IsEnabled() {
-		return
-	}
-	nowTime := time.Now().Unix()
-	// 如果恢复间隔时间小于等于2倍窗口时间，则表示误恢复
-	if nowTime-n.RecoveryTime <= n.FuseWindow.windowSizeSec*2 {
-		// 误恢复数计数 +1
-		n.ErrorRecoveryCount += 1
-		// 1+2+3+ ... +n
-		n.RecoveryShouldSkipCount = (1 + n.ErrorRecoveryCount) * n.ErrorRecoveryCount / 2
-		// 每 4 秒检测一次，恢复间隔时间最多为 10分钟， 4*150=600
-		if n.RecoveryShouldSkipCount > 150 {
-			n.RecoveryShouldSkipCount = 150
-		}
-	} else {
-		// 正常恢复的情况
-		n.ErrorRecoveryCount = 0
-		n.RecoveryShouldSkipCount = 0
-	}
-}
-
-// 强制计数，如果不是连续探测成功，则恢复计数， 这边不能直接被 checkBadRecovery 调用不然会死锁
-func (n *NodeInfo) RefreshSkipCount() {
-	n.Lock()
-	defer n.Unlock()
-	// 未开启熔断状态不处理
-	if n.FuseWindow == nil || !n.FuseWindow.IsEnabled() {
-		return
-	}
-	n.RecoveryShouldSkipCount = (1 + n.ErrorRecoveryCount) * n.ErrorRecoveryCount / 2
-	// 每 4 秒检测一次，恢复间隔时间最多为 10分钟， 4*150=600
-	if n.RecoveryShouldSkipCount > 150 {
-		n.RecoveryShouldSkipCount = 150
-	}
-}
-
-// NodeInfo 封装获取 PooledConnect 的方法
-func (n *NodeInfo) GetPooledConnectWithHealthCheck(name string, healthCheckSql string) (PooledConnect, error) {
-	pc, err := checkInstanceStatus(name, n.ConnPool, healthCheckSql)
-	if err != nil {
-		return nil, err
-	}
-	if pc == nil {
-		return nil, fmt.Errorf("get nil check conn")
-	}
-	return pc, nil
-}
-
-// 检查是否超过下线阈值
-// bool 表示是否需要将节点设为 StatusDown, int64 表示自 LastChecked 以来经过的时间，以便在外部直接用于日志记录
-func (n *NodeInfo) ShouldDownAfterNoAlive(downAfterNoAlive int) (bool, int64) {
-	elapsed := time.Now().Unix() - n.ConnPool.GetLastChecked()
-	return elapsed >= int64(downAfterNoAlive), elapsed
 }
 
 type IndexWeightList struct {
@@ -341,9 +183,12 @@ type Slice struct {
 
 	HandshakeTimeout            time.Duration
 	FallbackToMasterOnSlaveFail string // 控制从库获取失败时是否回退到主库
-	FuseEnabled                 string // 控制是否开启熔断
-	FuseWindowSize              int
-	FuseMinErrorCount           int64
+
+	// 熔断基础参数
+	FuseEnabled        string // "ON"|"OFF" 熔断总开关
+	FuseWindowSize     int64  // 滑动窗口时长（秒），建议 10-60
+	FuseMinErrorCount  int64
+	FuseCooldownPeriod int64 // 硬冷却的持续时间
 }
 
 type getConnError struct {
@@ -379,11 +224,11 @@ func (s *Slice) GetSliceName() string {
 	return s.Cfg.Name
 }
 
-// InitFuseSlideWindow init fuse slide window
-func (s *Slice) InitFuseSlideWindow(dbInfo *DBInfo) error {
-	// 初始化 `FuseSlideWindow`
-	if err := dbInfo.InitFuseSlideWindow(s.FuseWindowSize, s.FuseMinErrorCount); err != nil {
-		return fmt.Errorf("failed to initialize fuse slide window: %w", err)
+// InitFuseRecoveryPolicy init fuse slide window
+func (s *Slice) InitFuseRecoveryPolicy(dbInfo *DBInfo) error {
+	// 初始化 `FuseRecoveryPolicy`
+	if err := dbInfo.InitFuseRecoveryPolicy(s.FuseWindowSize, s.FuseMinErrorCount, s.FuseCooldownPeriod); err != nil {
+		return fmt.Errorf("failed to initialize fuse and recovery strategy: %w", err)
 	}
 	return nil
 }
@@ -650,14 +495,14 @@ func (s *Slice) checkBackendMasterStatus(ctx context.Context, downAfterNoAlive i
 			// 2. 判断 Master 是否要下线
 			shouldSetDown, elapsed := node.ShouldDownAfterNoAlive(downAfterNoAlive)
 			if shouldSetDown {
-				node.MustSetStatusDown()
+				node.SetStatusDown()
 				log.Warn("[ns:%s, %s:%s] check master status, Marked as StatusDown for %ds", s.Namespace, s.Cfg.Name, node.Address, elapsed)
 				continue
 			}
 
 			// 3. 更新 Master 状态
 			if conn != nil && node.IsStatusDown() {
-				node.MustSetStatusUp()
+				node.SetStatusUp()
 				log.Warn("[ns:%s, %s:%s] check master status, Master recovered from down, now StatusUp", s.Namespace, s.Cfg.Name, node.Address)
 			}
 		}
@@ -686,67 +531,190 @@ func (s *Slice) checkBackendSlaveStatus(ctx context.Context, slave *DBInfo, down
 			return
 		case <-ticker.C:
 			for _, node := range slave.Nodes {
-				log.Debug("[ns:%s, %s:%s] check slave status, start", s.Namespace, s.Cfg.Name, node.Address)
-
-				// 1. 从库连接池健康检查
-				conn, err := node.GetPooledConnectWithHealthCheck(s.Namespace, s.HealthCheckSql)
-				if err != nil {
-					log.Warn("[ns:%s, %s:%s] check slave status, Get slave conn error: %v, last check time: %s", s.Namespace, s.Cfg.Name, node.Address, err, time.Unix(node.ConnPool.GetLastChecked(), 0).Format(mysql.TimeFormat))
-					// 连接池可能因为网络原因导致Ping失败，这个时候继续向下检查
-				}
-
-				// 2. 重置恢复计数
-				if conn == nil && node.IsStatusDown() {
-					node.RefreshSkipCount()
-					log.Warn("[ns:%s, %s:%s] check slave status, Reset recovery count, skipCount %d", s.Namespace, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
-				}
-
-				// 3. 判断是否需要下线
-				shouldSetDown, elapsed := node.ShouldDownAfterNoAlive(downAfterNoAlive)
-				if shouldSetDown {
-					node.SetStatus(StatusDown)
-					log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusDown for %ds", s.Namespace, s.Cfg.Name, node.Address, elapsed)
-					continue
-				}
-
-				// 4. 获取主库状态
-				masterStatus, err := s.GetMasterStatus()
-				if err != nil || masterStatus == StatusDown {
-					log.Warn("[ns:%s, %s:%s] check slave status, Skipping slave sync check, get master status: %s, get master err: %v", s.Namespace, s.Cfg.Name, node.Address, masterStatus.String(), err)
-					if node.IsStatusDown() {
-						node.SetStatus(StatusUp)
-						// 如果仍然为 down 状态，表示存在误恢复的情况
-						if node.IsStatusDown() {
-							log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp fail, Slave recovered from down, (case master down), skipCount %d", s.Namespace, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
-						} else {
-							log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp success, Slave recovered from down, (case master down), skipCount %d", s.Namespace, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
-						}
-					}
-					continue
-				}
-
-				// 5. 检查从库同步状态
-				alive, err := checkSlaveSyncStatus(conn, secondBehindMaster)
-				if !alive {
-					node.SetStatus(StatusDown)
-					if err != nil {
-						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusDown due to sync thread failure: %v", s.Namespace, s.Cfg.Name, node.Address, err)
-					} else {
-						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusDown due to excessive replication delay", s.Namespace, s.Cfg.Name, node.Address)
-					}
-					continue
-				}
-
-				// 6. 所有检查通过，最终确认 `StatusUp`,如果 pc == nil,说明连接池可能因为网络原因断开，这个时候保持原状态, 直到通过 ShouldDownAfterNoAlive 超过阈值下线
-				if conn != nil && node.IsStatusDown() {
-					node.SetStatus(StatusUp)
-					if node.IsStatusDown() {
-						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp fail, Slave recovered from down, (case master up), skipCount %d", s.Namespace, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
-					} else {
-						log.Warn("[ns:%s, %s:%s] check slave status, Marked as StatusUp success, Slave recovered from down, (case master up), skipCount %d", s.Namespace, s.Cfg.Name, node.Address, node.RecoveryShouldSkipCount)
-					}
+				if err := s.TryRecover(node, downAfterNoAlive, secondBehindMaster); err != nil {
+					log.Warn("[ns:%s, %s:%s] check slave status, error: %v", s.Namespace, s.Cfg.Name, node.Address, err)
 				}
 			}
+		}
+	}
+}
+
+func (s *Slice) TryRecover(node *NodeInfo, downAfterNoAlive int, secondBehindMaster int) error {
+	if node.FuseStrategy == nil || node.RecoveryStrategy == nil {
+		s.checkWithNoRecovery(node, downAfterNoAlive, secondBehindMaster)
+		return nil
+	}
+
+	// 根据策略类型动态分支
+	switch strategy := node.RecoveryStrategy.(type) {
+	case *HardCoolDownStrategy: // 硬恢复策略
+		s.checkWithHardRecovery(node, downAfterNoAlive, secondBehindMaster, strategy)
+		return nil
+	case *GradualRecoveryStrategy: // 渐进式恢复策略
+		s.checkWithGradualRecovery(node, downAfterNoAlive, secondBehindMaster, strategy)
+		return nil
+	default:
+		return fmt.Errorf("unsupported recovery strategy: %T", strategy)
+	}
+}
+
+func (s *Slice) checkWithNoRecovery(node *NodeInfo, downAfterNoAlive int, secondBehindMaster int) {
+	start := time.Now()
+	log.Debug("[ns:%s, %s:%s] check slave status with no strategy, start", s.Namespace, s.Cfg.Name, node.Address)
+
+	// 1. 从库连接池健康检查
+	conn, err := node.GetPooledConnectWithHealthCheck(s.Namespace, s.HealthCheckSql)
+	if err != nil {
+		log.Warn("[ns:%s, %s:%s] check slave status with no strategy, Get slave conn error: %v, last check time: %s, duration: %v", s.Namespace, s.Cfg.Name, node.Address, err, time.Unix(node.ConnPool.GetLastChecked(), 0).Format(mysql.TimeFormat), time.Since(start))
+		// 连接池可能因为网络原因导致Ping失败，这个时候继续向下检查
+	}
+
+	// 2. 判断是否需要下线
+	shouldSetDown, elapsed := node.ShouldDownAfterNoAlive(downAfterNoAlive)
+	if shouldSetDown {
+		node.SetStatusDown()
+		log.Warn("[ns:%s, %s:%s] check slave status with no strategy, Marked as StatusDown for %ds, duration: %v", s.Namespace, s.Cfg.Name, node.Address, elapsed, time.Since(start))
+		return
+	}
+
+	// 3. 获取主库状态
+	masterStatus, err := s.GetMasterStatus()
+	if err != nil || masterStatus == StatusDown {
+		log.Warn("[ns:%s, %s:%s] check slave status with no strategy, Get master status: %s, get master err: %v, duration: %v", s.Namespace, s.Cfg.Name, node.Address, masterStatus.String(), err, time.Since(start))
+		if node.IsStatusDown() {
+			node.SetStatusUp()
+			log.Warn("[ns:%s, %s:%s] check slave status with no strategy, Marked as StatusUp success, Slave recovered from down, (case master down), duration: %v", s.Namespace, s.Cfg.Name, node.Address, time.Since(start))
+		}
+		return
+	}
+
+	// 4. 检查从库同步状态
+	alive, err := checkSlaveSyncStatus(conn, secondBehindMaster)
+	if !alive {
+		node.SetStatusDown()
+		if err != nil {
+			log.Warn("[ns:%s, %s:%s] check slave status with no strategy, Marked as StatusDown due to sync thread failure: %v, duration: %v", s.Namespace, s.Cfg.Name, node.Address, err, time.Since(start))
+		} else {
+			log.Warn("[ns:%s, %s:%s] check slave status with no strategy, Marked as StatusDown due to excessive replication delay, duration: %v", s.Namespace, s.Cfg.Name, node.Address, time.Since(start))
+		}
+		return
+	}
+
+	// 5. 所有检查通过，最终确认 `StatusUp`,如果 pc == nil,说明连接池可能因为网络原因断开，这个时候保持原状态, 直到通过 ShouldDownAfterNoAlive 超过阈值下线
+	if conn != nil && node.IsStatusDown() {
+		node.SetStatusUp()
+		log.Warn("[ns:%s, %s:%s] check slave status with no strategy, Marked as StatusUp success, Slave recovered from down, (case master up), duration: %v", s.Namespace, s.Cfg.Name, node.Address, time.Since(start))
+	}
+}
+
+func (s *Slice) checkWithHardRecovery(node *NodeInfo, downAfterNoAlive int, secondBehindMaster int, strategy *HardCoolDownStrategy) {
+	log.Debug("[ns:%s, %s:%s] check slave status with hard strategy, start", s.Namespace, s.Cfg.Name, node.Address)
+	start := time.Now()
+	// 1. 从库连接池健康检查
+	conn, err := node.GetPooledConnectWithHealthCheck(s.Namespace, s.HealthCheckSql)
+	if err != nil {
+		log.Warn("[ns:%s, %s:%s] check slave status with hard strategy, Get slave conn error: %v, last check time: %s, duration: %v", s.Namespace, s.Cfg.Name, node.Address, err, time.Unix(node.ConnPool.GetLastChecked(), 0).Format(mysql.TimeFormat), time.Since(start))
+		// 连接池可能因为网络原因导致Ping失败，这个时候继续向下检查
+	}
+
+	// 2. 判断是否需要下线
+	shouldSetDown, elapsed := node.ShouldDownAfterNoAlive(downAfterNoAlive)
+	if shouldSetDown {
+		node.SetStatusDown()
+		log.Warn("[ns:%s, %s:%s] check slave status with hard strategy, Marked as StatusDown for %ds, duration: %v", s.Namespace, s.Cfg.Name, node.Address, elapsed, time.Since(start))
+		return
+	}
+
+	// 3. 获取主库状态
+	masterStatus, err := s.GetMasterStatus()
+	if err != nil || masterStatus == StatusDown {
+		log.Warn("[ns:%s, %s:%s] check slave status with hard strategy, Get master status: %s, get master err: %v, duration: %v", s.Namespace, s.Cfg.Name, node.Address, masterStatus.String(), err, time.Since(start))
+		if node.IsStatusDown() {
+			node.SetStatusUp()
+			log.Warn("[ns:%s, %s:%s] check slave status with hard strategy, Marked as StatusUp success, Slave recovered from down, (case master down), duration: %v", s.Namespace, s.Cfg.Name, node.Address, time.Since(start))
+		}
+		return
+	}
+
+	// 4. 检查从库同步状态
+	alive, err := checkSlaveSyncStatus(conn, secondBehindMaster)
+	if !alive {
+		node.SetStatusDown()
+		if err != nil {
+			log.Warn("[ns:%s, %s:%s] check slave status with hard strategy, Marked as StatusDown due to sync thread failure: %v, duration: %v", s.Namespace, s.Cfg.Name, node.Address, err, time.Since(start))
+		} else {
+			log.Warn("[ns:%s, %s:%s] check slave status with hard strategy, Marked as StatusDown due to excessive replication delay, duration: %v", s.Namespace, s.Cfg.Name, node.Address, time.Since(start))
+		}
+		return
+	}
+
+	// 5. 所有检查通过，设置状态为 UP
+	if conn != nil && node.IsStatusDown() {
+		// 5.1. 检查硬恢复策略是否允许恢复
+		if !strategy.AllowRecovery() {
+			log.Warn("[ns:%s, %s:%s] check slave status with hard strategy, still StatusDown in cooldown period, duration: %v", s.Namespace, s.Cfg.Name, node.Address, time.Since(start))
+			return
+		} else {
+			node.SetStatusUp()
+			log.Warn("[ns:%s, %s:%s] check slave status with hard strategy, Marked as StatusUp success, duration: %v", s.Namespace, s.Cfg.Name, node.Address, time.Since(start))
+		}
+	}
+}
+
+func (s *Slice) checkWithGradualRecovery(node *NodeInfo, downAfterNoAlive int, secondBehindMaster int, strategy *GradualRecoveryStrategy) {
+	log.Debug("[ns:%s, %s:%s] check slave status with gradual strategy, start", s.Namespace, s.Cfg.Name, node.Address)
+	start := time.Now()
+
+	// 1. 从库连接池健康检查
+	conn, err := node.GetPooledConnectWithHealthCheck(s.Namespace, s.HealthCheckSql)
+	if err != nil {
+		log.Warn("[ns:%s, %s:%s] check slave status with gradual strategy, Get slave conn error: %v, duration: %v", s.Namespace, s.Cfg.Name, node.Address, err, time.Since(start))
+
+	}
+
+	// 探活失败，则刷新计数
+	if conn == nil && node.IsStatusDown() {
+		strategy.RefreshCoolDownCount()
+	}
+
+	// 2. 判断是否需要下线
+	shouldSetDown, elapsed := node.ShouldDownAfterNoAlive(downAfterNoAlive)
+	if shouldSetDown {
+		node.SetStatusDown()
+		log.Warn("[ns:%s, %s:%s] check slave status with gradual strategy, Marked as StatusDown for %ds, duration: %v", s.Namespace, s.Cfg.Name, node.Address, elapsed, time.Since(start))
+		return
+	}
+
+	// 3. 获取主库状态
+	masterStatus, err := s.GetMasterStatus()
+	if err != nil || masterStatus == StatusDown {
+		log.Warn("[ns:%s, %s:%s] check slave status with gradual strategy, Skipping slave sync check, master status: %s, duration: %v", s.Namespace, s.Cfg.Name, node.Address, masterStatus.String(), time.Since(start))
+		return
+	}
+
+	// 4. 检查从库同步状态
+	alive, err := checkSlaveSyncStatus(conn, secondBehindMaster)
+	if !alive {
+		node.SetStatusDown()
+		if err != nil {
+			log.Warn("[ns:%s, %s:%s] check slave status with gradual strategy, Marked as StatusDown due to sync thread failure: %v, duration: %v", s.Namespace, s.Cfg.Name, node.Address, err, time.Since(start))
+		} else {
+			log.Warn("[ns:%s, %s:%s] check slave status with gradual strategy, Marked as StatusDown due to excessive replication delay, duration: %v", s.Namespace, s.Cfg.Name, node.Address, time.Since(start))
+		}
+		return
+	}
+
+	// 5. 所有检查通过，处理恢复逻辑
+	if conn != nil && node.IsStatusDown() {
+		// 5.1. 检查惩罚恢复策略是否允许恢复
+		// UP -> DOWN 记录一次误恢复
+		if strategy.AllowRecovery() {
+			strategy.UpdateLastRecoveryTime()
+			node.SetStatusUp()
+			log.Warn("[ns:%s, %s:%s] check slave status with gradual strategy, Marked as StatusUp success, from bad recovery: %d, duration: %v", s.Namespace, s.Cfg.Name, node.Address, strategy.errorRecoveryCount.Get(), time.Since(start))
+		} else {
+			log.Warn("[ns:%s, %s:%s] check slave status with gradual strategy, still StatusDown in cooldown period, remain skip: %d, duration: %v", s.Namespace, s.Cfg.Name, node.Address, strategy.consecutiveSuccessCheckCount.Get(), time.Since(start))
+			return
 		}
 	}
 }
@@ -882,14 +850,9 @@ func (s *Slice) getNodeFromBalancer(slavesInfo *DBInfo, bal *balancer) (*NodeInf
 
 // getConnWithFuse 封装从连接池获取连接并处理熔断的逻辑
 func (s *Slice) getConnWithFuse(node *NodeInfo) (PooledConnect, error) {
-	now := time.Now().Unix()
 	pc, err := node.ConnPool.Get(context.TODO())
-	isConnErr := mysql.IsConnectionTimeoutError(err)
-
-	if node.FuseWindow != nil && isConnErr && node.FuseWindow.Trigger(now) {
-		node.SetStatus(StatusDown)
-		log.Warn("[ns=%s][addr=%s] Triggered fuse, node marked as DOWN", s.Namespace, node.Address)
-	}
+	// 熔断埋点
+	s.TryFuse(node, err)
 	if err != nil {
 		return nil, &getConnError{
 			Namespace: s.Namespace,
@@ -898,6 +861,48 @@ func (s *Slice) getConnWithFuse(node *NodeInfo) (PooledConnect, error) {
 		}
 	}
 	return pc, nil
+}
+
+// tryFuse 处理熔断触发及策略相关副作用
+func (s *Slice) TryFuse(node *NodeInfo, err error) {
+	if node.FuseStrategy == nil || node.RecoveryStrategy == nil {
+		return
+	}
+
+	if !mysql.IsConnectionTimeoutError(err) {
+		return
+	}
+
+	now := time.Now()
+	if !node.FuseStrategy.Trigger(now.Unix()) {
+		return
+	}
+	// 熔断后下线节点
+	changed := node.SetStatusDown()
+	log.Warn("[ns=%s][addr=%s] Triggered fuse, node marked as DOWN at %s", s.Namespace, node.Address, now.Format(mysql.TimeFormat))
+
+	// 根据恢复策略类型执行不同处理
+	switch strategy := node.RecoveryStrategy.(type) {
+	case *GradualRecoveryStrategy:
+		if !changed {
+			return
+		}
+		// 渐进式恢复策略需要更新熔断时间、误恢复次数
+		strategy.UpdateFuseTime(now.Unix())
+		isBad := strategy.IsBadRecovery(now.Unix())
+		if isBad {
+			strategy.UpdateCoolDownCount()
+		} else {
+			strategy.ResetBadRecovery(now.Unix())
+		}
+	case *HardCoolDownStrategy:
+		// 硬熔断策略需要更新熔断时间
+		strategy.UpdateFuseTime(now.Unix())
+	case nil:
+		// 无恢复策略的默认处理
+	default:
+		log.Warn("Unhandled recovery strategy type: %T", strategy)
+	}
 }
 
 // Close close the pool in slice
