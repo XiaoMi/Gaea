@@ -1355,11 +1355,17 @@ func (se *SessionExecutor) rollback() (err error) {
 	defer se.txLock.Unlock()
 	se.status &= ^mysql.ServerStatusInTrans
 	for _, pc := range se.txConns {
+		if pc.IsClosed() {
+			continue
+		}
 		err = pc.Rollback()
 		pc.Recycle()
 	}
 
 	for _, pc := range se.ksConns {
+		if pc.IsClosed() {
+			continue
+		}
 		err = pc.Rollback()
 	}
 	se.txConns = make(map[string]backend.PooledConnect)

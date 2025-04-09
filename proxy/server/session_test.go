@@ -2,16 +2,17 @@ package server
 
 import (
 	"fmt"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util"
 	"github.com/bytedance/mockey"
 	"github.com/stretchr/testify/assert"
-	"sync"
-	"sync/atomic"
-	"testing"
-	"time"
 )
 
 // 检测 namespace changed 时， ks conn 是否被清除
@@ -53,6 +54,7 @@ func TestSessionRunNamespaceChangedWithMock(t *testing.T) {
 		mockey.Mock((*backend.MockPooledConnect).Recycle).Return().Build()
 		mockey.Mock((*backend.MockPooledConnect).Rollback).Return(nil).Build()
 		mockey.Mock((*backend.MockPooledConnect).Close).Return().Build()
+		mockey.Mock((*backend.MockPooledConnect).IsClosed).Return(false).Build()
 		mockey.Mock(util.GetHostDatacenter).Return("", nil).Build()
 
 		sessionCount := 100
@@ -157,6 +159,7 @@ func TestSessionRunInTxNamespaceChangedWithMock(t *testing.T) {
 		mockey.Mock((*backend.MockPooledConnect).Recycle).Return().Build()
 		mockey.Mock((*backend.MockPooledConnect).Rollback).Return(nil).Build()
 		mockey.Mock((*backend.MockPooledConnect).Close).Return().Build()
+		mockey.Mock((*backend.MockPooledConnect).IsClosed).Return(false).Build()
 		mockey.Mock(util.GetHostDatacenter).Return("", nil).Build()
 
 		sessionCount := 100
