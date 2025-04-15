@@ -75,7 +75,7 @@ func (p *User) verify() error {
 		return fmt.Errorf("invalid RWSplit, user: %s, rwsplit: %d", p.UserName, p.RWSplit)
 	}
 
-	if p.OtherProperty != StatisticUser && p.OtherProperty != 0 {
+	if p.OtherProperty != StatisticUser && p.OtherProperty != 0 && p.OtherProperty != MonitorUser {
 		return fmt.Errorf("invalid other property, user: %s, %d", p.UserName, p.OtherProperty)
 	}
 
