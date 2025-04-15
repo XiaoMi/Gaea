@@ -306,6 +306,7 @@ func (m *Manager) ReloadNamespaceCommit(name string) error {
 
 	currentNamespace := m.namespaces[current].GetNamespace(name)
 	if currentNamespace != nil {
+		m.clearBackendConnectPoolMetrics(name)
 		go currentNamespace.Close(true)
 	}
 
@@ -590,6 +591,44 @@ func (m *Manager) recordBackendConnectPoolMetrics(namespace string) {
 			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, statisticSlave.Address, statisticSlave.ConnPool.WaitCount(), StatisticSlaveRole)
 			m.statistics.recordConnectPoolActiveCount(namespace, sliceName, statisticSlave.Address, statisticSlave.ConnPool.Active(), StatisticSlaveRole)
 			m.statistics.recordConnectPoolCount(namespace, sliceName, statisticSlave.Address, statisticSlave.ConnPool.Capacity(), StatisticSlaveRole)
+		}
+	}
+}
+
+func (m *Manager) clearBackendConnectPoolMetrics(namespace string) {
+	ns := m.GetNamespace(namespace)
+	if ns == nil {
+		log.Warn("record backend connect pool metrics err, namespace: %s", namespace)
+		return
+	}
+	for sliceName, slice := range ns.slices {
+		// Master 只有一个节点
+		for _, master := range slice.Master.Nodes {
+			m.statistics.recordInstanceDownCount(namespace, sliceName, master.Address, 0, MasterRole)
+			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, master.Address, 0, MasterRole)
+			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, master.Address, 0, MasterRole)
+			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, master.Address, 0, MasterRole)
+			m.statistics.recordConnectPoolActiveCount(namespace, sliceName, master.Address, 0, MasterRole)
+			m.statistics.recordConnectPoolCount(namespace, sliceName, master.Address, 0, MasterRole)
+		}
+
+		// Slave
+		for _, slave := range slice.Slave.Nodes {
+			m.statistics.recordInstanceDownCount(namespace, sliceName, slave.Address, 0, SlaveRole)
+			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, slave.Address, 0, SlaveRole)
+			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, slave.Address, 0, SlaveRole)
+			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, slave.Address, 0, SlaveRole)
+			m.statistics.recordConnectPoolActiveCount(namespace, sliceName, slave.Address, 0, SlaveRole)
+			m.statistics.recordConnectPoolCount(namespace, sliceName, slave.Address, 0, SlaveRole)
+		}
+		// StatisticSlave
+		for _, statisticSlave := range slice.StatisticSlave.Nodes {
+			m.statistics.recordInstanceDownCount(namespace, sliceName, statisticSlave.Address, 0, StatisticSlaveRole)
+			m.statistics.recordConnectPoolInuseCount(namespace, sliceName, statisticSlave.Address, 0, StatisticSlaveRole)
+			m.statistics.recordConnectPoolIdleCount(namespace, sliceName, statisticSlave.Address, 0, StatisticSlaveRole)
+			m.statistics.recordConnectPoolWaitCount(namespace, sliceName, statisticSlave.Address, 0, StatisticSlaveRole)
+			m.statistics.recordConnectPoolActiveCount(namespace, sliceName, statisticSlave.Address, 0, StatisticSlaveRole)
+			m.statistics.recordConnectPoolCount(namespace, sliceName, statisticSlave.Address, 0, StatisticSlaveRole)
 		}
 	}
 }
