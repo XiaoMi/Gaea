@@ -869,7 +869,7 @@ func (s *Slice) TryFuse(node *NodeInfo, err error) {
 		return
 	}
 
-	if !mysql.IsConnectionTimeoutError(err) {
+	if !mysql.AsConnError(err) {
 		return
 	}
 

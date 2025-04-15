@@ -170,10 +170,8 @@ func (dc *DirectConnection) connect() error {
 			stags[StageEstablishConnection] = append(stags[StageEstablishConnection], "partially established netConn closed")
 		}
 		recordErrlog(stags)
-		return &mysql.ConnectionError{
-			Addr: dc.addr,
-			Msg:  fmt.Sprintf("failed to dial to within timeout %v, err: %v", dc.handshakeTimeout, err),
-		}
+		return mysql.NewConnTypeError(dc.addr, fmt.Sprintf("failed to dial to within timeout %v, err: %v", dc.handshakeTimeout, err))
+
 	}
 	stags[StageEstablishConnection] = append(stags[StageEstablishConnection], fmt.Sprintf("dial to within timeout %v successfully", dc.handshakeTimeout))
 
@@ -196,10 +194,8 @@ func (dc *DirectConnection) connect() error {
 		stags[StageSetDeadlines] = append(stags[StageSetDeadlines], fmt.Sprintf("fail to set read and write timeout: %v, err: %v", dc.handshakeTimeout, err))
 		dc.conn.Close()
 		recordErrlog(stags)
-		return &mysql.ConnectionError{
-			Addr: dc.addr,
-			Msg:  fmt.Sprintf("fail to set read and write timeout: %v, err: %v", dc.handshakeTimeout, err),
-		}
+		return mysql.NewConnTypeError(dc.addr, fmt.Sprintf("fail to set read and write timeout: %v, err: %v", dc.handshakeTimeout, err))
+
 	}
 	stags[StageSetDeadlines] = append(stags[StageSetDeadlines], "set read and write timeout successfully")
 
@@ -209,10 +205,8 @@ func (dc *DirectConnection) connect() error {
 		stags[StageHandshake] = append(stags[StageHandshake], fmt.Sprintf("failed to read initial handshake (timeout: %v), err: %v", dc.handshakeTimeout, err))
 		dc.conn.Close()
 		recordErrlog(stags)
-		return &mysql.ConnectionError{
-			Addr: dc.addr,
-			Msg:  fmt.Sprintf("failed to read initial handshake (timeout: %v), err: %v", dc.handshakeTimeout, err),
-		}
+		return mysql.NewConnTypeError(dc.addr, fmt.Sprintf("failed to read initial handshake (timeout: %v), err: %v", dc.handshakeTimeout, err))
+
 	}
 	stags[StageHandshake] = append(stags[StageHandshake], "initial handshake read successfully")
 
@@ -221,10 +215,7 @@ func (dc *DirectConnection) connect() error {
 		stags[StageHandshake] = append(stags[StageHandshake], fmt.Sprintf("failed to write handshake response, err: %v", err))
 		dc.conn.Close()
 		recordErrlog(stags)
-		return &mysql.ConnectionError{
-			Addr: dc.addr,
-			Msg:  fmt.Sprintf("failed to write handshake response, err: %v", err),
-		}
+		return mysql.NewConnTypeError(dc.addr, fmt.Sprintf("failed to write handshake response, err: %v", err))
 	}
 	stags[StageHandshake] = append(stags[StageHandshake], "handshake response written successfully")
 
@@ -236,10 +227,7 @@ func (dc *DirectConnection) connect() error {
 		stags[StageHandshake] = append(stags[StageHandshake], fmt.Sprintf("failed to read authentication information, err: %v", err))
 		dc.conn.Close()
 		recordErrlog(stags)
-		return &mysql.ConnectionError{
-			Addr: dc.addr,
-			Msg:  fmt.Sprintf("failed to read authentication information, err: %v", err),
-		}
+		return mysql.NewConnTypeError(dc.addr, fmt.Sprintf("failed to read authentication information, err: %v", err))
 	}
 	stags[StageHandshake] = append(stags[StageHandshake], "authentication information read successfully")
 
@@ -248,10 +236,7 @@ func (dc *DirectConnection) connect() error {
 		stags[StageHandshake] = append(stags[StageHandshake], fmt.Sprintf("failed to send authentication response, err: %v", err))
 		dc.conn.Close()
 		recordErrlog(stags)
-		return &mysql.ConnectionError{
-			Addr: dc.addr,
-			Msg:  fmt.Sprintf("failed to send authentication response, err: %v", err),
-		}
+		return mysql.NewConnTypeError(dc.addr, fmt.Sprintf("failed to send authentication response, err: %v", err))
 	}
 	stags[StageHandshake] = append(stags[StageHandshake], "authentication response sent successfully")
 
@@ -260,10 +245,7 @@ func (dc *DirectConnection) connect() error {
 		stags[StageResetSession] = append(stags[StageResetSession], fmt.Sprintf("failed to reset read/write deadlines: %v", err))
 		dc.conn.Close()
 		recordErrlog(stags)
-		return &mysql.ConnectionError{
-			Addr: dc.addr,
-			Msg:  fmt.Sprintf("failed to reset read/write deadlines: %v", err),
-		}
+		return mysql.NewConnTypeError(dc.addr, fmt.Sprintf("failed to reset read/write deadlines: %v", err))
 	}
 	stags[StageResetSession] = append(stags[StageResetSession], "read and write deadlines reset successfully")
 
@@ -273,10 +255,7 @@ func (dc *DirectConnection) connect() error {
 			stags[StageAutoCommit] = append(stags[StageAutoCommit], fmt.Sprintf("failed to set autocommit = 1: %v", err))
 			dc.conn.Close()
 			recordErrlog(stags)
-			return &mysql.ConnectionError{
-				Addr: dc.addr,
-				Msg:  fmt.Sprintf("failed to set autocommit = 1: %v", err),
-			}
+			return mysql.NewConnTypeError(dc.addr, fmt.Sprintf("failed to set autocommit = 1: %v", err))
 		}
 	}
 	// Connection successful

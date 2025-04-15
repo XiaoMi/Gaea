@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+
 	"sync"
 	"testing"
 	"time"
@@ -699,8 +700,8 @@ func TestTimeout(t *testing.T) {
 	newctx, cancel := context.WithTimeout(ctx, 1*time.Millisecond)
 	_, err = p.Get(newctx)
 	cancel()
-	want := "resource pool timed out"
-	if err == nil || err.Error() != want {
+	want := ErrTimeout
+	if err == nil || err != ErrTimeout {
 		t.Errorf("got %v, want %s", err, want)
 	}
 	p.Put(r)
@@ -718,8 +719,8 @@ func TestExpired(t *testing.T) {
 		p.Put(r)
 	}
 	cancel()
-	want := "resource pool timed out"
-	if err == nil || err.Error() != want {
+	want := ErrTimeout
+	if err == nil || err != want {
 		t.Errorf("got %v, want %s", err, want)
 	}
 }
@@ -732,13 +733,14 @@ func TestScaleOutResource(t *testing.T) {
 	p, _ := NewResourcePool(factory, 1, 1000, time.Second*3600)
 	var wg sync.WaitGroup
 	wg.Add(1000)
+	want := ErrTimeout
 	var errTimeoutCount sync2.AtomicInt64
 	for i := 0; i < 1000; i++ {
 		go func() {
 			defer wg.Done()
 			ctx, _ := context.WithTimeout(context.Background(), 2*time.Second)
 			_, err := p.Get(ctx)
-			if err != nil && err.Error() == "resource pool timed out" {
+			if err != nil && err == want {
 				errTimeoutCount.Add(1)
 			}
 		}()

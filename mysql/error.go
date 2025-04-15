@@ -161,18 +161,27 @@ func (e *SessionCloseRespError) HasResponse() bool {
 	return true
 }
 
-// Custom connection timeout error type
-type ConnectionError struct {
+type ConnTypeError struct {
 	Addr string
 	Msg  string
 }
 
-func (e *ConnectionError) Error() string {
+func NewConnTypeError(addr string, msg string) ConnTypeError {
+	return ConnTypeError{
+		Addr: addr,
+		Msg:  msg,
+	}
+}
+
+func (e ConnTypeError) Error() string {
 	return fmt.Sprintf("connection to %s err: %s", e.Addr, e.Msg)
 }
 
-// Tool function: used to determine whether the error is a connection timeout error in the upper logic
-func IsConnectionTimeoutError(err error) bool {
-	var e *ConnectionError
-	return errors.As(err, &e)
+func IsConnError(err error, target error) bool {
+	return err == target
+}
+
+func AsConnError(err error) bool {
+	_, ok := err.(ConnTypeError)
+	return ok
 }

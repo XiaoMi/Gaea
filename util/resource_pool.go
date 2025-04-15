@@ -26,6 +26,7 @@ import (
 	"time"
 
 	log "github.com/XiaoMi/Gaea/log"
+	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/util/sync2"
 	"github.com/XiaoMi/Gaea/util/timer"
 	"github.com/google/uuid"
@@ -36,7 +37,7 @@ var (
 	ErrClosed = errors.New("resource pool is closed")
 
 	// ErrTimeout is returned if a resource get times out.
-	ErrTimeout = errors.New("resource pool timed out")
+	ErrTimeout error = mysql.NewConnTypeError("", "resource pool timed out")
 )
 
 // Factory is a function that can be used to create a resource.
@@ -271,7 +272,7 @@ func (rp *ResourcePool) createResourceWithRetry(ctx context.Context) (Resource, 
 		case <-ctx.Done():
 			rp.recordWait(startTime)
 			log.Warn("create resource failed. UUID: %s, Retry: %d, Error: %v", connectionUUID.String(), retryCount, ctx.Err())
-			return nil, fmt.Errorf("new connection timeout: %s", ctx.Err())
+			return nil, mysql.NewConnTypeError("", fmt.Sprintf("create resource failed. UUID: %s, Retry: %d, Error: %v, duration: %v", connectionUUID.String(), retryCount, ctx.Err(), time.Since(startTime)))
 		case result := <-resultChan:
 			resource = result.resource
 			err = result.err
@@ -283,7 +284,7 @@ func (rp *ResourcePool) createResourceWithRetry(ctx context.Context) (Resource, 
 		}
 		// If the first attempt fails, start the wait timer
 		// Log the error with UUID and retry count
-		log.Warn("create resource failed. UUID: %s, Retry: %d, Error: %v", connectionUUID.String(), retryCount, err)
+		log.Warn("create resource failed. UUID: %s, Retry: %d, Error: %v, duration: %v", connectionUUID.String(), retryCount, err, time.Since(startTime))
 	}
 
 	// If we needed to wait (first attempt failed), record the wait time once
