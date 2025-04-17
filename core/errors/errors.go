@@ -105,3 +105,9 @@ var (
 	ErrRowsLimitExceeded = errors.New("sql result set size exceeded")
 	ErrInvalidPacket     = errors.New("invalid packet format")
 )
+
+// 定义探活类型常量
+var (
+	ErrPingFailure    = errors.New("ping failure")
+	ErrSelect1Failure = errors.New("select 1 failure")
+)

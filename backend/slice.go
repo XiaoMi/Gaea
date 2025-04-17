@@ -754,12 +754,13 @@ func checkInstanceStatus(name string, cp ConnectionPool, healthCheckSql string) 
 		}
 		if err = pc.PingWithTimeout(GetConnTimeout); err != nil {
 			pc.Close()
-			return nil, fmt.Errorf("ping conn error:%s", err)
+
+			return nil, fmt.Errorf("check instance status: %w, error: %v", errors.ErrPingFailure, err)
 		}
 		// 增加 select 1 探活
 		if _, err = pc.ExecuteWithTimeout("select 1", 0, SelectSimpleTimeOut); err != nil {
 			pc.Close()
-			return nil, fmt.Errorf("ping conn error:%s", err)
+			return nil, fmt.Errorf("check instance status: %w, error: %v", errors.ErrSelect1Failure, err)
 		}
 	}
 
