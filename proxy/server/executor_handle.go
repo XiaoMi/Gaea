@@ -521,8 +521,7 @@ func (se *SessionExecutor) handleSetVariable(reqCtx *util.RequestContext, sql st
 		// unsupported variables will be ignored and logged to avoid user confusion
 		// TODO: refactor sql exec time log
 		se.manager.statistics.generalLogger.Warn("%s - %dms - ns=%s, %s@%s->%s/%s, connect_id=%d, mysql_connect_id=%d, prepare=%t, transaction=%t|%v. err:%s",
-			SQLExecStatusIgnore, 0, se.namespace, se.user, se.clientAddr, "", se.db, se.session.c.GetConnectionID(), reqCtx.IsPrepareSQL(), se.isInTransaction(),
-			sql, fmt.Sprintf("variable(%s) not supported", name))
+			SQLExecStatusIgnore, 0, se.namespace, se.user, se.clientAddr, "", se.db, se.session.c.GetConnectionID(), 0, reqCtx.IsPrepareSQL(), se.isInTransaction(), sql, fmt.Sprintf("variable(%s) not supported", name))
 		return nil
 	}
 }
