@@ -152,6 +152,7 @@ type GaeaCluster struct {
 	ReadWriteUser *models.User
 	ReadUser      *models.User
 	WriteUser     *models.User
+	AdminUser     *models.User
 	LogDirectory  string
 	readWriteConn *sql.DB
 	readConn      *sql.DB

@@ -35,10 +35,16 @@ const (
 	NoReadWriteSplit = 0
 	// ReadWriteSplit 读写分离
 	ReadWriteSplit = 1
+)
+
+// 用户其他属性标识
+const (
 	// StatisticUser 统计用户
 	StatisticUser = 1
 	// MonitorUser 监控
 	MonitorUser = 2
+	// AdminUser 透传用户
+	AdminUser = 3
 )
 
 // User meand user struct
@@ -75,7 +81,7 @@ func (p *User) verify() error {
 		return fmt.Errorf("invalid RWSplit, user: %s, rwsplit: %d", p.UserName, p.RWSplit)
 	}
 
-	if p.OtherProperty != StatisticUser && p.OtherProperty != 0 && p.OtherProperty != MonitorUser {
+	if p.OtherProperty != StatisticUser && p.OtherProperty != 0 && p.OtherProperty != MonitorUser && p.OtherProperty != AdminUser {
 		return fmt.Errorf("invalid other property, user: %s, %d", p.UserName, p.OtherProperty)
 	}
 

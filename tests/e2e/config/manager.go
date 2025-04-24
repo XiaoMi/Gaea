@@ -59,6 +59,8 @@ const (
 	SliceSingleSlave = "slice-single-slave"
 	// SliceDualSlave 表示测试的主从 MySQL 集群 3319 3329 3339
 	SliceDualSlave = "slice-dual-slave"
+	// SliceAdminDualSlave 表示测试的具有全部权限的主从 MySQL 集群 3319 3329 3339
+	SliceAdminDualSlave = "slice-dual-slave-admin"
 	// LogExpression 标识 Gaea SQL Log 的格式
 	LogExpression = `\[(.*?)\] \[INFO\] \[(\d+)\] OK - (\d+\.\d+)ms - ns=(.*?), (.*?)@(.*?)->(.*?)/(.*?), connect_id=(\d+), mysql_connect_id=(\d+), prepare=(\w+), transaction=(\w+)\|(.*?)$`
 )
@@ -131,6 +133,13 @@ func NewE2eManager() *E2eManager {
 			RWFlag:   2,
 			RWSplit:  0,
 		},
+		{
+			UserName:      defaultGaeaUser + "_t",
+			Password:      defaultGaeaPass + "_t",
+			RWFlag:        2,
+			RWSplit:       1,
+			OtherProperty: models.AdminUser,
+		},
 	}
 
 	// 3379
@@ -180,6 +189,25 @@ func NewE2eManager() *E2eManager {
 				Name:            "slice-0",
 				UserName:        defaultGaeaBackendUser,
 				Password:        defaultGaeaBackendPass,
+				Master:          fmt.Sprintf("%s:%d", defaultHost, 3319),
+				Slaves:          []string{fmt.Sprintf("%s:%d", defaultHost, 3329), fmt.Sprintf("%s:%d", defaultHost, 3339)},
+				StatisticSlaves: nil,
+				Capacity:        12,
+				HealthCheckSql:  "",
+				MaxCapacity:     24,
+				IdleTimeout:     60,
+			},
+		},
+		GaeaUsers: GaeaUsers,
+	}
+
+	sliceAdminMasterSlaves := &NsSlice{
+		Name: SliceAdminDualSlave,
+		Slices: []*models.Slice{
+			{
+				Name:            "slice-0",
+				UserName:        defaultMysqlAdminUser,
+				Password:        defaultMysqlAdminPasswd,
 				Master:          fmt.Sprintf("%s:%d", defaultHost, 3319),
 				Slaves:          []string{fmt.Sprintf("%s:%d", defaultHost, 3329), fmt.Sprintf("%s:%d", defaultHost, 3339)},
 				StatisticSlaves: nil,
@@ -254,6 +282,8 @@ func NewE2eManager() *E2eManager {
 		sliceMultiMasters.Name: sliceMultiMasters,
 		//3319 3329
 		sliceMasterSingleSlave.Name: sliceMasterSingleSlave,
+		//3319 3329 3339 admin后端用户
+		sliceAdminMasterSlaves.Name: sliceAdminMasterSlaves,
 	}
 	E2eMgr = &E2eManager{
 		NsManager: NewNamespaceRegisterManger(),
@@ -263,6 +293,7 @@ func NewE2eManager() *E2eManager {
 			ReadWriteUser: GaeaUsers[0],
 			ReadUser:      GaeaUsers[1],
 			WriteUser:     GaeaUsers[2],
+			AdminUser:     GaeaUsers[3],
 			LogDirectory:  filepath.Join(basePath, logDirectory),
 		},
 		NsSlices:  nsSlices,
@@ -321,6 +352,24 @@ func (e *E2eManager) GetWriteGaeaUserConn() (*sql.DB, error) {
 
 func (e *E2eManager) GetWriteGaeaUserDBConn(db string) (*sql.DB, error) {
 	conn, err := InitConn(e.GCluster.WriteUser.UserName, e.GCluster.WriteUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), db)
+	if err != nil {
+		return nil, err
+	}
+	e.openConnections = append(e.openConnections, conn) // 添加到追踪列表
+	return conn, err
+}
+
+func (e *E2eManager) GetAdminGaeaUserConn() (*sql.DB, error) {
+	conn, err := InitConn(e.GCluster.AdminUser.UserName, e.GCluster.AdminUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), "")
+	if err != nil {
+		return nil, err
+	}
+	e.openConnections = append(e.openConnections, conn) // 添加到追踪列表
+	return conn, err
+}
+
+func (e *E2eManager) GetAdminGaeaUserDBConn(db string) (*sql.DB, error) {
+	conn, err := InitConn(e.GCluster.AdminUser.UserName, e.GCluster.AdminUser.Password, fmt.Sprintf("%s:%d", e.GCluster.Host, e.GCluster.Port), db)
 	if err != nil {
 		return nil, err
 	}

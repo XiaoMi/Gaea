@@ -142,6 +142,7 @@ func (s *Server) onConn(c net.Conn) {
 
 	// set user privileges flag
 	cc.executor.userPriv = cc.getNamespace().userProperties[cc.executor.user].RWFlag
+	cc.executor.userType = cc.getNamespace().userProperties[cc.executor.user].OtherProperty
 
 	// added into time wheel
 	s.tw.Add(s.sessionTimeout, cc, cc.Close)

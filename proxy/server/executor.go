@@ -29,6 +29,7 @@ import (
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/core/errors"
 	"github.com/XiaoMi/Gaea/log"
+	"github.com/XiaoMi/Gaea/models"
 	"github.com/XiaoMi/Gaea/mysql"
 	"github.com/XiaoMi/Gaea/parser"
 	"github.com/XiaoMi/Gaea/parser/ast"
@@ -82,9 +83,9 @@ type SessionExecutor struct {
 	charset          string
 	sessionVariables *mysql.SessionVariables
 
-	keepSession bool
-	userPriv    int
-
+	keepSession      bool
+	userPriv         int
+	userType         int
 	txConns          map[string]backend.PooledConnect
 	ksConns          map[string]backend.PooledConnect // keep session connections
 	nsChangeIndexOld uint32
@@ -201,6 +202,24 @@ func newSessionExecutor(manager *Manager) *SessionExecutor {
 // GetNamespace return namespace in session
 func (se *SessionExecutor) GetNamespace() *Namespace {
 	return se.contextNamespace
+}
+
+// GetDefaultPhyDB returns the physical database name for the given logical name.
+// Admin users get the logical name directly, others get mapped via namespace config.
+func (se *SessionExecutor) GetDefaultPhyDB(dbname string) (string, error) {
+	if se.isAdminUser() {
+		return dbname, nil
+	}
+	return se.GetNamespace().GetDefaultPhyDB(dbname)
+}
+
+// IsAllowedDB checks access permission for the specified logical database.
+// Admin always has access, others are validated against allowed_dbs patterns.
+func (se *SessionExecutor) IsAllowedDB(dbname string) bool {
+	if se.isAdminUser() {
+		return true
+	}
+	return se.GetNamespace().IsAllowedDB(dbname)
 }
 
 // GetNamespace return namespace in session
@@ -437,6 +456,9 @@ func (se *SessionExecutor) getBackendConn(reqCtx *util.RequestContext, sliceName
 func (se *SessionExecutor) getBackendNoKsConn(reqCtx *util.RequestContext, sliceName string) (pc backend.PooledConnect, err error) {
 	if !se.isInTransaction() {
 		slice := se.GetNamespace().GetSlice(sliceName)
+		if slice == nil {
+			return nil, fmt.Errorf("get backend no ks conn error: slice == nil")
+		}
 		return slice.GetConn(reqCtx, se.GetNamespace().GetUserProperty(se.user), se.GetNamespace().localSlaveReadPriority)
 	}
 	return se.getTransactionConn(sliceName)
@@ -1261,8 +1283,15 @@ func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string) (
 
 	// handle show databases;
 	if len(tokens) == 2 && strings.ToLower(tokens[1]) == "databases" {
-		dbs := se.GetNamespace().GetAllowedDBs()
-		return createShowDatabaseResult(dbs), nil
+		if se.isAdminUser() {
+			// 透传模式：直接执行到后端数据库
+			slice := se.GetNamespace().GetDefaultSlice()
+			return se.executeDirectToBackend(reqCtx, slice)
+
+		} else {
+			dbs := se.GetNamespace().GetAllowedDBs()
+			return createShowDatabaseResult(dbs), nil
+		}
 	}
 	// readonly && readwrite user send to slave
 	if !se.GetNamespace().IsAllowWrite(se.user) || se.GetNamespace().IsRWSplit(se.user) {
@@ -1279,6 +1308,21 @@ func (se *SessionExecutor) handleShow(reqCtx *util.RequestContext, sql string) (
 
 	modifyResultStatus(r, se)
 	return r, nil
+}
+
+func (se *SessionExecutor) executeDirectToBackend(reqCtx *util.RequestContext, slice string) (*mysql.Result, error) {
+	pc, err := se.getBackendConn(reqCtx, slice)
+	defer se.recycleBackendConn(pc)
+	if err != nil {
+		log.Warn("execute transparent sql failed, get backend conn: %v", err)
+		return nil, err
+	}
+	return se.executeSingleSQLInSlice(pc, slice, "", "show databases")
+}
+
+// isAdminUser 透传 show databases 到默认的分片，按照allowed_dbs中的匹配模式模式，匹配到对应的db
+func (se *SessionExecutor) isAdminUser() bool {
+	return se.userType == models.AdminUser
 }
 
 func (se *SessionExecutor) handleKill(reqCtx *util.RequestContext, sql string) (*mysql.Result, error) {
@@ -1436,8 +1480,9 @@ func (se *SessionExecutor) handleKsQuit() {
 }
 
 // ExecuteSQL execute sql
-func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sql string) (*mysql.Result, error) {
-	phyDB, err := se.GetNamespace().GetDefaultPhyDB(db)
+func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sql string) (rs *mysql.Result, err error) {
+	var phyDB string
+	phyDB, err = se.GetDefaultPhyDB(db)
 	if err != nil {
 		return nil, err
 	}
@@ -1453,7 +1498,7 @@ func (se *SessionExecutor) ExecuteSQL(reqCtx *util.RequestContext, slice, db, sq
 	se.backendAddr = pc.GetAddr()
 	se.backendConnectionId = pc.GetConnectionID()
 
-	rs, err := se.executeUnshardSQLInSlice(reqCtx, pc, phyDB, sql)
+	rs, err = se.executeUnshardSQLInSlice(reqCtx, pc, phyDB, sql)
 	if err != nil {
 		return nil, err
 	}

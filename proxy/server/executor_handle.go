@@ -255,7 +255,7 @@ func (se *SessionExecutor) handleUseDB(dbName string) error {
 		dbName = informationSchemaDB
 	}
 
-	if se.GetNamespace().IsAllowedDB(dbName) {
+	if se.IsAllowedDB(dbName) {
 		se.db = dbName
 		return nil
 	}
@@ -616,7 +616,7 @@ func (se *SessionExecutor) handleFieldList(reqCtx *util.RequestContext, data []b
 	}
 	defer se.recycleBackendConn(pc)
 
-	phyDB, err := se.GetNamespace().GetDefaultPhyDB(se.GetDatabase())
+	phyDB, err := se.GetDefaultPhyDB(se.GetDatabase())
 	if err != nil {
 		return nil, err
 	}
