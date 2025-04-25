@@ -17,8 +17,9 @@ package function
 import (
 	"context"
 	"fmt"
-	"github.com/onsi/gomega"
 	"time"
+
+	"github.com/onsi/gomega"
 
 	"github.com/XiaoMi/Gaea/tests/e2e/config"
 	"github.com/XiaoMi/Gaea/tests/e2e/util"

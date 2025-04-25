@@ -471,6 +471,7 @@ func (se *SessionExecutor) getBackendKsConn(reqCtx *util.RequestContext, sliceNa
 	}
 
 	slice := se.GetNamespace().GetSlice(sliceName)
+	reqCtx.SetFromSlave(se.userPriv == models.ReadOnly)
 	pc, err = slice.GetConn(reqCtx, se.GetNamespace().GetUserProperty(se.user), se.GetNamespace().localSlaveReadPriority)
 	if err != nil {
 		log.Warn("get connection from backend failed, error: %s", err.Error())

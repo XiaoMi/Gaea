@@ -166,7 +166,7 @@ func (se *SessionExecutor) doQuery(reqCtx *util.RequestContext, sql string) (*my
 	}
 
 	// 防止多语句执行的时候被复用
-	if checkExecuteFromSlave(reqCtx, se, sql) || se.userPriv == models.ReadOnly {
+	if checkExecuteFromSlave(reqCtx, se, sql) {
 		reqCtx.SetFromSlave(true)
 	} else {
 		reqCtx.SetFromSlave(false)
