@@ -152,7 +152,7 @@ var _ = ginkgo.Describe("KeepSession Routing Test Suite", func() {
 					util.ExpectNoError(err, fmt.Sprintf("Test:%s, Search SQL Faid: %v, SQL: %s", sqlCase.Name, err, sqlCase.GaeaSQL))
 
 					// 检查日志数量
-					gomega.Expect(res).Should(gomega.HaveLen(1), "Test:%s, Log length is not 1, SQL: %s", sqlCase.GaeaSQL)
+					gomega.Expect(res).Should(gomega.HaveLen(1), "Test:%s, Log length is not 1, SQL: %s", sqlCase.Name, sqlCase.GaeaSQL)
 
 					// 检查后端地址
 					if len(sqlCase.ExpectBackendAddr) == 1 {
