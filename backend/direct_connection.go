@@ -30,6 +30,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/XiaoMi/Gaea/parser/types"
 	"github.com/XiaoMi/Gaea/util"
 
 	sqlerr "github.com/XiaoMi/Gaea/core/errors"
@@ -1217,6 +1218,9 @@ func appendSetVariable(buf *bytes.Buffer, key string, value interface{}) {
 			buf.WriteString(v)
 			buf.WriteString("'")
 		}
+	case types.UserVariablesType:
+		// 用户会话变量类型直接写入
+		buf.WriteString(string(v))
 	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
 		buf.WriteString(fmt.Sprintf("%d", v))
 	default:
@@ -1231,6 +1235,13 @@ func appendSetVariableToDefault(buf *bytes.Buffer, key string) {
 		buf.WriteString(",")
 	} else {
 		buf.WriteString("SET ")
+	}
+	// 代表是用户变量
+	if strings.HasPrefix(key, "@") {
+		buf.WriteString(key)
+		buf.WriteString(" = ")
+		buf.WriteString("NULL")
+		return
 	}
 	buf.WriteString(key)
 	buf.WriteString(" = ")

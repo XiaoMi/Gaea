@@ -16,6 +16,7 @@ package server
 
 import (
 	"context"
+
 	"fmt"
 	"net"
 	"runtime/debug"
@@ -34,6 +35,7 @@ import (
 	"github.com/XiaoMi/Gaea/parser"
 	"github.com/XiaoMi/Gaea/parser/ast"
 	"github.com/XiaoMi/Gaea/parser/format"
+	"github.com/XiaoMi/Gaea/parser/types"
 	"github.com/XiaoMi/Gaea/proxy/plan"
 	"github.com/XiaoMi/Gaea/util"
 	"github.com/XiaoMi/Gaea/util/hack"
@@ -259,6 +261,19 @@ func (se *SessionExecutor) setStringSessionVariable(name string, valueStr string
 	}
 
 	return se.sessionVariables.Set(name, valueStr)
+}
+
+func (se *SessionExecutor) setUserSessionVariable(name string, valueStr interface{}) error {
+	// 用户变量强制添加@前缀
+	name = "@" + name
+	if newValueStr, ok := valueStr.(string); ok {
+		if strings.ToLower(newValueStr) == mysql.KeywordNULL {
+			se.sessionVariables.Delete(name)
+			return nil
+		}
+	}
+	se.sessionVariables.Set(name, valueStr)
+	return nil
 }
 
 func (se *SessionExecutor) setGeneralLogVariable(valueStr string) error {
@@ -1052,6 +1067,7 @@ func canHandleWithoutPlan(stmtType int) bool {
 
 const variableRestoreFlag = format.RestoreKeyWordLowercase | format.RestoreNameLowercase
 const sqlModeRestoreFlag = format.RestoreStringSingleQuotes
+const userVariableRestoreFlag = format.RestoreStringSingleQuotes
 
 // 获取SET语句中变量的字符串值, 去掉各种引号并转换为小写
 func getVariableExprResult(v ast.ExprNode) string {
@@ -1059,6 +1075,22 @@ func getVariableExprResult(v ast.ExprNode) string {
 	ctx := format.NewRestoreCtx(variableRestoreFlag, s)
 	v.Restore(ctx)
 	return strings.ToLower(s.String())
+}
+
+// getUserVariableExprResult 将表达式节点还原为 SQL 字符串表示，并包装为 UserVariablesType 类型
+//
+// 功能:
+//   - 保留字符串字面量的单引号 (例如 `'123'` 还原为 `'123'`，而非 `123`)
+//   - 确保用户变量的表达式 (如 `@var`) 的语法正确性
+//
+// 注意:
+//   - userVariableRestoreFlag 确保字符串引号保留
+//   - 返回的 UserVariablesType 类型用于标记该值已包含 `Set User Session Variable` SQL 语法要求的结构 (如引号)，调用方无需额外处理
+func getUserVariableExprResult(v ast.ExprNode) types.UserVariablesType {
+	s := &strings.Builder{}
+	ctx := format.NewRestoreCtx(userVariableRestoreFlag, s)
+	v.Restore(ctx)
+	return types.UserVariablesType(s.String())
 }
 
 // 获取 SET 语句中变量的字符串值, 保留引号，不转换大小写

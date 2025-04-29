@@ -14,13 +14,16 @@
 package ast_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/XiaoMi/Gaea/parser"
+	"github.com/XiaoMi/Gaea/parser/ast"
 	. "github.com/XiaoMi/Gaea/parser/ast"
 	"github.com/XiaoMi/Gaea/parser/auth"
+	"github.com/XiaoMi/Gaea/parser/format"
 )
 
 type visitor struct{}
@@ -200,4 +203,141 @@ func TestTableOptimizerHintRestore(t *testing.T) {
 		return node.(*SelectStmt).TableHints[0]
 	}
 	runNodeRestoreTest(t, testCases, "select /*+ %s */ * from t1 join t2", extractNodeFunc)
+}
+
+// 测试用户变量 @my_var
+func TestRestoreUserVariable(t *testing.T) {
+	// 构造用户变量赋值
+	va := &ast.VariableAssignment{
+		Name:     "my_var",
+		Value:    ast.NewValueExpr("hello"),
+		IsSystem: false, // 明确标记为用户变量
+	}
+
+	// 执行 Restore 方法
+	sb := &strings.Builder{}
+	ctx := format.NewRestoreCtx(format.DefaultRestoreFlags, sb)
+	err := va.Restore(ctx)
+	if err != nil {
+		t.Fatalf("Restore failed: %v", err)
+	}
+
+	// 验证结果
+	expected := "@`my_var`='hello'"
+	actual := sb.String()
+	if actual != expected {
+		t.Fatalf("Expected: %s\nActual: %s", expected, actual)
+	}
+}
+
+// 测试全局系统变量 @@GLOBAL.autocommit
+func TestRestoreGlobalSystemVariable(t *testing.T) {
+	va := &ast.VariableAssignment{
+		Name:     "autocommit",
+		Value:    ast.NewValueExpr(1),
+		IsSystem: true,
+		IsGlobal: true, // 标记为全局系统变量
+	}
+
+	sb := &strings.Builder{}
+	ctx := format.NewRestoreCtx(format.DefaultRestoreFlags, sb)
+	err := va.Restore(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := "@@GLOBAL.`autocommit`=1"
+	actual := sb.String()
+	if actual != expected {
+		t.Fatalf("Expected: %s\nActual: %s", expected, actual)
+	}
+}
+
+// 测试会话系统变量 @@SESSION.autocommit
+func TestRestoreSessionSystemVariable(t *testing.T) {
+	va := &ast.VariableAssignment{
+		Name:     "autocommit",
+		Value:    ast.NewValueExpr(0),
+		IsSystem: true,
+		IsGlobal: false, // 默认会话作用域
+	}
+
+	sb := &strings.Builder{}
+	ctx := format.NewRestoreCtx(format.DefaultRestoreFlags, sb)
+	err := va.Restore(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := "@@SESSION.`autocommit`=0"
+	actual := sb.String()
+	if actual != expected {
+		t.Fatalf("Expected: %s\nActual: %s", expected, actual)
+	}
+}
+
+// 测试 SET NAMES utf8mb4
+func TestRestoreSetNames(t *testing.T) {
+	va := &ast.VariableAssignment{
+		Name:  ast.SetNames, // 特殊标记
+		Value: ast.NewValueExpr("utf8mb4"),
+	}
+
+	sb := &strings.Builder{}
+	ctx := format.NewRestoreCtx(format.DefaultRestoreFlags, sb)
+	err := va.Restore(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := "NAMES 'utf8mb4'"
+	actual := sb.String()
+	if actual != expected {
+		t.Fatalf("Expected: %s\nActual: %s", expected, actual)
+	}
+}
+
+// 测试带 COLLATE 的 SET NAMES
+func TestRestoreSetNamesWithCollate(t *testing.T) {
+	va := &ast.VariableAssignment{
+		Name:        ast.SetNames,
+		Value:       ast.NewValueExpr("utf8mb4"),
+		ExtendValue: ast.NewValueExpr("utf8mb4_bin"),
+	}
+
+	sb := &strings.Builder{}
+	ctx := format.NewRestoreCtx(format.DefaultRestoreFlags, sb)
+	err := va.Restore(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := "NAMES 'utf8mb4' COLLATE 'utf8mb4_bin'"
+	actual := sb.String()
+	if actual != expected {
+		t.Fatalf("Expected: %s\nActual: %s", expected, actual)
+	}
+}
+
+// 测试隐式作用域系统变量
+func TestRestoreImplicitScopeSystemVariable(t *testing.T) {
+	va := &ast.VariableAssignment{
+		Name:     "autocommit",
+		Value:    ast.NewValueExpr(1),
+		IsSystem: true,
+		IsGlobal: false, // 默认会话作用域但不显式写 SESSION
+	}
+
+	sb := &strings.Builder{}
+	ctx := format.NewRestoreCtx(format.DefaultRestoreFlags, sb)
+	err := va.Restore(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expected := "@@SESSION.`autocommit`=1"
+	actual := sb.String()
+	if actual != expected {
+		t.Fatalf("Expected: %s\nActual: %s", expected, actual)
+	}
 }

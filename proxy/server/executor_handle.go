@@ -494,6 +494,16 @@ func (se *SessionExecutor) handleSetVariable(reqCtx *util.RequestContext, sql st
 		}
 		return se.setGeneralLogVariable(onOffValue)
 	default:
+		if !v.IsSystem && !v.IsGlobal {
+			// 1. 获取用户自定义值
+			value := getUserVariableExprResult(v.Value)
+
+			// 2. 设置用户自定义变量
+			if err := se.setUserSessionVariable(name, value); err != nil {
+				return err
+			}
+			return nil
+		}
 		// 从命名空间获取允许用户配置的会话变量
 		allowedVariables := se.GetNamespace().GetAllowedSessionVariables()
 		// 如果变量名在命名空间中，则进行类型检查

@@ -896,6 +896,7 @@ var CollationNameToCharset = map[string]string{
 const (
 	// KeywordDefault means default
 	KeywordDefault = "default"
+	KeywordNULL    = "NULL"
 
 	UTF8Charset    = "utf8"
 	UTF8MB4Charset = "utf8mb4"

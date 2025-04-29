@@ -786,6 +786,51 @@ func TestDBAStmt(t *testing.T) {
 	RunTest(t, table, false)
 }
 
+func TestSetVariable(t *testing.T) {
+	tests := []struct {
+		Input    string
+		Name     string
+		IsGlobal bool
+		IsSystem bool
+	}{
+		// Set system variable xx.xx, although xx.xx isn't a system variable, the parser should accept it.
+		{"set xx.xx = 666", "xx.xx", false, true},
+		// Set session system variable xx.xx
+		{"set session xx.xx = 666", "xx.xx", false, true},
+		{"set global xx.xx = 666", "xx.xx", true, true},
+
+		{"set @@xx.xx = 666", "xx.xx", false, true},
+		{"set @@session.xx.xx = 666", "xx.xx", false, true},
+		{"set @@global.xx.xx = 666", "xx.xx", true, true},
+
+		// Set user defined variable xx.xx
+		{"set @xx.xx = 666", "xx.xx", false, false},
+
+		{"set @xx = 666", "xx", false, false},
+		// 其他测试用例...
+	}
+
+	parser := parser.New()
+
+	for _, tt := range tests {
+		stmt, err := parser.ParseOneStmt(tt.Input, "", "")
+		require.NoError(t, err, "Unexpected parsing error")
+		// 类型断言
+		setStmt, ok := stmt.(*ast.SetStmt)
+		require.True(t, ok, "Expected *ast.SetStmt, got %T", stmt)
+		// 变量数量检查
+		require.Len(t, setStmt.Variables, 1, "Should have exactly one variable")
+
+		v := setStmt.Variables[0]
+
+		// 字段验证
+		require.Equal(t, tt.Name, v.Name, "Variable name mismatch")
+		require.Equal(t, tt.IsGlobal, v.IsGlobal, "IsGlobal flag mismatch")
+		require.Equal(t, tt.IsSystem, v.IsSystem, "IsSystem flag mismatch")
+
+	}
+}
+
 func TestFlushTable(t *testing.T) {
 	parser := parser.New()
 	stmt, _, err := parser.Parse("flush local tables tbl1,tbl2 with read lock", "", "")
