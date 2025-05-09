@@ -48,7 +48,7 @@ var _ = ginkgo.Describe("Admin User Database Passthrough", func() {
 		err = e2eMgr.ModifyNamespace(initNs)
 		util.ExpectNoError(err)
 		// Wait for configuration propagation
-		time.Sleep(3 * time.Millisecond)
+		time.Sleep(300 * time.Millisecond)
 	})
 
 	ginkgo.Context("When performing database operations", func() {

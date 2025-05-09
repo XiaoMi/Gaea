@@ -59,6 +59,12 @@ func CreateLogManager(config map[string]string) (*ZapLoggerManager, error) {
 	if value, ok := config["log_keep_counts"]; ok {
 		logKeepCounts, _ = strconv.Atoi(value)
 	}
+	logDiscard := false
+	if value, ok := config["log_strategy"]; ok {
+		if getLogStrategyFromStr(value) == LogDiscardStrategy {
+			logDiscard = true
+		}
+	}
 
 	encoder := &ZapEncoder{}
 
@@ -73,8 +79,8 @@ func CreateLogManager(config map[string]string) (*ZapLoggerManager, error) {
 	logFile := path.Join(logDir, filename+".log")
 
 	// 获取 info、warn日志文件的 io.WriteCloser 抽象 getWriter() 在下方实现
-	infoWriter := NewAsyncWriter(getInfoWriter(logFile, logKeepDays, logKeepCounts))
-	warnWriter := NewAsyncWriter(getWarnWriter(logFile, logKeepDays, logKeepCounts))
+	infoWriter := NewAsyncWriter(getInfoWriter(logFile, logKeepDays, logKeepCounts), WithDiscardWhenFull(logDiscard))
+	warnWriter := NewAsyncWriter(getWarnWriter(logFile, logKeepDays, logKeepCounts), WithDiscardWhenFull(logDiscard))
 
 	// 最后创建具体的Logger
 	core := zapcore.NewTee(

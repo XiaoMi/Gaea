@@ -1004,6 +1004,7 @@ func initGeneralLogger(cfg *models.Proxy) (log.Logger, error) {
 	if cfg.LogKeepCounts != 0 {
 		c["log_keep_counts"] = strconv.Itoa(cfg.LogKeepCounts)
 	}
+	c["log_strategy"] = cfg.LogStrategy
 
 	return zap.CreateLogManager(c)
 }

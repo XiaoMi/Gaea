@@ -34,6 +34,11 @@ log_output=file
 log_keep_days=3
 ; 日志保留数量，默认为 72 个（所有归档的日志)），与 log_keep_days 取最小值
 log_keep_counts=72
+; 日志处理策略
+; 默认为空 - 阻塞等待（默认生产环境建议）
+; block - 阻塞等待（默认生产环境建议）
+; discard - 非阻塞等待（容器环境推荐）
+log_strategy=block
 
 ;管理地址
 admin_addr=0.0.0.0:13307

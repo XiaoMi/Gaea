@@ -59,7 +59,7 @@ func CompareTimeStrings(currentTime string, time2 string) (int, error) {
 }
 
 func ParseLogEntries(file *os.File, re *regexp.Regexp, currentTime time.Time, searchString string) ([]LogEntry, error) {
-	startTime := currentTime.Format("2006-01-02 15:04:05.999")
+	startTime := currentTime.Format("2006-01-02 15:04:05")
 
 	scanner := bufio.NewScanner(file)
 

@@ -57,6 +57,7 @@ type Proxy struct {
 	LogOutput     string `ini:"log_output"`
 	LogKeepDays   int    `ini:"log_keep_days"`
 	LogKeepCounts int    `ini:"log_keep_counts"`
+	LogStrategy   string `ini:"log_strategy"`
 
 	ProtoType      string `ini:"proto_type"`
 	ProxyAddr      string `ini:"proxy_addr"`
@@ -170,22 +171,23 @@ func (p *ProxyInfo) Encode() []byte {
 	return JSONEncode(p)
 }
 
-func InitXLog(output, path, filename, level, service string, logKeepDays int, logKeepCounts int) error {
+func InitXLog(config *Proxy) error {
 	cfg := make(map[string]string)
-	cfg["path"] = path
-	cfg["filename"] = filename
-	cfg["level"] = level
-	cfg["service"] = service
+	cfg["path"] = config.LogPath
+	cfg["filename"] = config.LogFileName
+	cfg["level"] = config.LogLevel
+	cfg["service"] = config.Service
 	cfg["skip"] = "5" // 设置xlog打印方法堆栈需要跳过的层数, 5目前为调用log.Debug()等方法的方法名, 比xlog默认值多一层.
 	cfg["log_keep_days"] = strconv.Itoa(log.DefaultLogKeepDays)
-	if logKeepDays != 0 {
-		cfg["log_keep_days"] = strconv.Itoa(logKeepDays)
+	if config.LogKeepDays != 0 {
+		cfg["log_keep_days"] = strconv.Itoa(config.LogKeepDays)
 	}
 
 	cfg["log_keep_counts"] = strconv.Itoa(log.DefaultLogKeepCounts)
-	if logKeepCounts != 0 {
-		cfg["log_keep_counts"] = strconv.Itoa(logKeepCounts)
+	if config.LogKeepCounts != 0 {
+		cfg["log_keep_counts"] = strconv.Itoa(config.LogKeepCounts)
 	}
+	cfg["log_strategy"] = config.LogStrategy
 	logger, err := zap.CreateLogManager(cfg)
 	if err != nil {
 		return err

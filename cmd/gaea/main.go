@@ -71,7 +71,7 @@ func main() {
 	runtime.GOMAXPROCS(finalMaxProcs)
 	fmt.Printf("Final GOMAXPROCS set to: %d\n", finalMaxProcs)
 
-	if err = models.InitXLog(cfg.LogOutput, cfg.LogPath, cfg.LogFileName, cfg.LogLevel, cfg.Service, cfg.LogKeepDays, cfg.LogKeepCounts); err != nil {
+	if err = models.InitXLog(cfg); err != nil {
 		fmt.Printf("init xlog error: %v\n", err.Error())
 		return
 	}
