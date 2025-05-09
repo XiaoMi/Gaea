@@ -19,7 +19,6 @@ import (
 	"os"
 	"runtime"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -271,18 +270,15 @@ func benchmarkQPSLevel(b *testing.B, qps int, parallelism int) {
 	b.ResetTimer()
 
 	// 7. 压力测试执行
-	var ops int64
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
 			if limiter.Allow() {
 				logger.Info(logMsg)
-				atomic.AddInt64(&ops, 1)
 			}
 		}
 	})
 
 	// 8. 结果验证
-	// 报告关键指标
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 	b.ReportMetric(float64(memStats.Mallocs)/float64(b.N), "mallocs/op")
@@ -290,5 +286,4 @@ func benchmarkQPSLevel(b *testing.B, qps int, parallelism int) {
 	drops := asyncWriter.Dropped()
 	b.ReportMetric(float64(drops)/float64(b.N), "drops/op")
 	b.ReportAllocs()
-
 }
