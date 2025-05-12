@@ -90,6 +90,10 @@ func (ml *MockLogger) Close() {
 	// No-op for now
 }
 
+func (ml *MockLogger) Dropped(i int) uint64 {
+	// No-op for now
+	return 0
+}
 func TestSetGlobalLogger(t *testing.T) {
 	assert := assert.New(t)
 

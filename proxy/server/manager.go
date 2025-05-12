@@ -496,6 +496,9 @@ func (m *Manager) RecordBackendSQLMetrics(reqCtx *util.RequestContext, se *Sessi
 
 func (m *Manager) startConnectPoolMetricsTask(interval int) {
 	current, _, _ := m.switchIndex.Get()
+	currentIdx := current // 创建闭包使用的固定值
+
+	// 初始化逻辑保持不变
 	for _, ns := range m.namespaces[current].namespaces {
 		m.statistics.SQLResponsePercentile[ns.name] = NewSQLResponse(ns.name)
 	}
@@ -504,41 +507,44 @@ func (m *Manager) startConnectPoolMetricsTask(interval int) {
 		interval = 10
 	}
 
-	go func(currentIdx int32) {
-		t := time.NewTicker(time.Duration(interval) * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-m.GetStatisticManager().closeChan:
-				return
-			case <-t.C:
-				// 处理 t 的任务
-				m.statistics.AddUptimeCount(time.Now().Unix() - m.statistics.startTime)
-				// record cpu usage will wait at least 5 seconds
-				m.statistics.CalcCPUBusy(interval - 5)
-				for nameSpaceName := range m.namespaces[currentIdx].namespaces {
-					m.recordBackendConnectPoolMetrics(nameSpaceName)
+	// 封装定时任务启动逻辑
+	startTask := func(interval time.Duration, task func()) {
+		go func() {
+			t := time.NewTicker(interval)
+			defer t.Stop()
+			for {
+				select {
+				case <-m.GetStatisticManager().closeChan:
+					return
+				case <-t.C:
+					task()
 				}
 			}
-		}
-	}(current)
+		}()
+	}
 
-	go func(currentIdx int32) {
-		tSQL := time.NewTicker(time.Duration(backend.PingPeriod) * time.Second)
-		defer tSQL.Stop()
-		for {
-			select {
-			case <-m.GetStatisticManager().closeChan:
-				return
-			case <-tSQL.C:
-				m.statistics.CalcAvgSQLTimes()
-				for nameSpaceName := range m.namespaces[currentIdx].namespaces {
-					m.statistics.recordSQLTiming(nameSpaceName)
-				}
-
-			}
+	// 任务1: 连接池指标
+	startTask(time.Duration(interval)*time.Second, func() {
+		m.statistics.AddUptimeCount(time.Now().Unix() - m.statistics.startTime)
+		m.statistics.CalcCPUBusy(interval - 5)
+		for ns := range m.namespaces[currentIdx].namespaces {
+			m.recordBackendConnectPoolMetrics(ns)
 		}
-	}(current)
+	})
+
+	// 任务2: SQL耗时统计
+	startTask(time.Duration(backend.PingPeriod)*time.Second, func() {
+		m.statistics.CalcAvgSQLTimes()
+		for ns := range m.namespaces[currentIdx].namespaces {
+			m.statistics.recordSQLTiming(ns)
+		}
+	})
+
+	// 任务3: 日志丢弃统计
+	startTask(time.Duration(backend.PingPeriod)*time.Second, func() {
+		m.statistics.recordLogDroped("INFO", int64(m.statistics.generalLogger.Dropped(0)))
+		m.statistics.recordLogDroped("WARN", int64(m.statistics.generalLogger.Dropped(1)))
+	})
 }
 
 func (s *StatisticManager) recordSQLTiming(ns string) {
@@ -871,7 +877,8 @@ const (
 	statsLabelFlowDirection = "Flowdirection"
 	statsLabelSlice         = "Slice"
 	statsLabelIPAddr        = "IPAddr"
-	statsLabelRole          = "role"
+	statsLabelRole          = "Role"
+	statsLabelLogLevel      = "LogLevel"
 )
 
 // StatisticManager statistics manager
@@ -883,6 +890,8 @@ type StatisticManager struct {
 	statsType     string // 监控后端类型
 	handlers      map[string]http.Handler
 	generalLogger log.Logger
+
+	logDroppedCounts *stats.GaugesWithMultiLabels
 
 	sqlTimings                   *stats.MultiTimings            // SQL耗时统计
 	sqlFingerprintSlowCounts     *stats.CountersWithMultiLabels // 慢SQL指纹数量统计
@@ -1088,6 +1097,8 @@ func (s *StatisticManager) Init(cfg *models.Proxy) error {
 	s.backendSQLSwitchMasterCounts = stats.NewCountersWithMultiLabels("backendSQLSwitchMasterCounts",
 		"gaea proxy backend sql switch master counts", []string{statsLabelNamespace, statsLabelSlice, statsLabelIPAddr})
 
+	s.logDroppedCounts = stats.NewGaugesWithMultiLabels("logDroppedCounts",
+		"gaea genera log drop counts ", []string{statsLabelCluster, statsLabelLogLevel})
 	s.clientConnecions = sync.Map{}
 	s.startClearTask()
 	return nil
@@ -1277,6 +1288,11 @@ func (s *StatisticManager) recordConnectPoolCount(namespace string, slice string
 func (s *StatisticManager) recordInstanceDownCount(namespace string, slice string, addr string, count int64, role string) {
 	statsKey := []string{s.clusterName, namespace, slice, addr, role}
 	s.backendInstanceDownCounts.Set(statsKey, count)
+}
+
+func (s *StatisticManager) recordLogDroped(logLeval string, count int64) {
+	statsKey := []string{s.clusterName, logLeval}
+	s.logDroppedCounts.Set(statsKey, count)
 }
 
 // record wait queue length

@@ -61,7 +61,7 @@ func TestSetLevel(t *testing.T) {
 func TestLoggerClose(t *testing.T) {
 	loggerManager := &ZapLoggerManager{
 		logger: zap.NewExample(),
-		writers: []io.WriteCloser{
+		writers: []AsyncWriterCloser{
 			&mockWriter{},
 			&mockWriter{},
 		},
@@ -77,6 +77,7 @@ type mockWriter struct{}
 
 func (mw *mockWriter) Write(_ []byte) (n int, err error) { return }
 func (mw *mockWriter) Close() error                      { return nil }
+func (mw *mockWriter) Dropped() uint64                   { return 0 }
 
 func TestMain(m *testing.M) {
 	// 初始化一些全局资源，例如临时目录等

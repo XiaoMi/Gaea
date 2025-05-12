@@ -33,7 +33,12 @@ const (
 
 type ZapLoggerManager struct {
 	logger  *zap.Logger
-	writers []io.WriteCloser
+	writers []AsyncWriterCloser
+}
+
+type AsyncWriterCloser interface {
+	io.WriteCloser
+	Dropped() uint64
 }
 
 // CreateLogManager create log manager from configs.
@@ -90,7 +95,7 @@ func CreateLogManager(config map[string]string) (*ZapLoggerManager, error) {
 	l := zap.New(core)
 	return &ZapLoggerManager{
 		logger:  l,
-		writers: []io.WriteCloser{infoWriter, warnWriter},
+		writers: []AsyncWriterCloser{infoWriter, warnWriter},
 	}, nil
 }
 
@@ -252,4 +257,8 @@ func (l *ZapLoggerManager) Close() {
 		writer.Close()
 	}
 	l.logger = nil
+}
+
+func (l *ZapLoggerManager) Dropped(i int) uint64 {
+	return l.writers[i].Dropped()
 }

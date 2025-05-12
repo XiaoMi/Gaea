@@ -16,6 +16,7 @@ package log
 
 import (
 	"fmt"
+
 	"github.com/XiaoMi/Gaea/log/xlog"
 )
 
@@ -43,6 +44,7 @@ type Logger interface {
 	Fatalx(logID, format string, a ...interface{}) (err error)
 
 	Close()
+	Dropped(i int) uint64
 }
 
 func init() {

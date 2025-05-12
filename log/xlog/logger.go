@@ -415,3 +415,7 @@ func (l *LogManager) Close() {
 
 	return
 }
+
+func (l *LogManager) Dropped(i int) uint64 {
+	return 0
+}
