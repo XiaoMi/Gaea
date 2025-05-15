@@ -16,6 +16,7 @@ package server
 
 import (
 	"fmt"
+
 	"github.com/XiaoMi/Gaea/backend"
 	"github.com/XiaoMi/Gaea/log"
 	"github.com/XiaoMi/Gaea/mysql"
@@ -280,6 +281,11 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 			Fields: globalFields,
 		}
 		if err = continueConn.FetchMoreRows(result, maxRows); err != nil {
+			mysql.ResultPool.Put(result)
+			// 如果是SQL错误，发送ERR_Packet
+			if sqlErr, ok := err.(*mysql.SQLError); ok {
+				return cc.writeErrorPacket(sqlErr)
+			}
 			return err
 		}
 		if isBinary {
@@ -295,6 +301,11 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 	for continueConn.MoreResultsExist() {
 		rs, err = continueConn.ReadMoreResult(maxRows)
 		if err != nil {
+			mysql.ResultPool.Put(rs)
+			// 如果是SQL错误，发送ERR_Packet
+			if sqlErr, ok := err.(*mysql.SQLError); ok {
+				return cc.writeErrorPacket(sqlErr)
+			}
 			return fmt.Errorf("readMoreresult error: %v", err)
 		}
 

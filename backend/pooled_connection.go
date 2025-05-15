@@ -118,6 +118,11 @@ func (pc *pooledConnectImpl) ReadMoreResult(maxRows int) (*mysql.Result, error) 
 	pc.moreResultsExist = false
 	rs, err := pc.directConnection.readResult(false, maxRows)
 	if err != nil {
+		// 处理可能的ERR_Packet（由SQL错误触发）
+		if mysqlErr, ok := err.(*mysql.SQLError); ok {
+			// 标记为需要返回ERR_Packet的语义错误
+			return &mysql.Result{Status: mysqlErr.Code}, err
+		}
 		return nil, err
 	}
 	if rs != nil && rs.Status&mysql.ServerMoreResultsExists > 0 {
