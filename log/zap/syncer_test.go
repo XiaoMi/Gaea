@@ -38,7 +38,8 @@ func newBufferCloser() *bufferCloser {
 func TestAsyncWriter_ConcurrentStress(t *testing.T) {
 	bc := newBufferCloser()
 	// 扩大队列容量避免丢弃
-	writer := NewAsyncWriter(bc,
+	writer := NewAsyncWriter(
+		bc,
 		WithShardQueueSize(1000),
 		WithShardCount(5),
 	)
@@ -257,6 +258,7 @@ func (w *errorWriter) Write(p []byte) (int, error) {
 func (w *errorWriter) Close() error {
 	return nil
 }
+
 func TestAsyncWriter_ErrorHandling(t *testing.T) {
 	ew := &errorWriter{}
 	writer := NewAsyncWriter(ew)
@@ -272,6 +274,38 @@ func TestAsyncWriter_ErrorHandling(t *testing.T) {
 	if err := writer.Sync(); err != nil {
 		t.Log("Sync returned expected error:", err)
 	}
+}
+
+type errorCloseWriter struct{}
+
+func (w *errorCloseWriter) Write(p []byte) (int, error) {
+	return 0, nil
+}
+
+func (w *errorCloseWriter) Close() error {
+	return fmt.Errorf("Close error")
+}
+
+func newErrorCloseWriter() *errorCloseWriter {
+	return &errorCloseWriter{}
+}
+func TestAsyncWriter_ErrorClose(t *testing.T) {
+	ew := newErrorCloseWriter()
+	writer := NewAsyncWriter(ew)
+
+	// 多次写入触发错误
+	for i := 0; i < 10; i++ {
+		if _, err := writer.Write([]byte("test")); err != nil {
+			// t.Fatal("Unexpected write error:", err)
+		}
+	}
+
+	writer.Sync()
+
+	if err := writer.Close(); err == nil {
+		t.Fatal("Expected close error:", err)
+	}
+
 }
 
 // 测试正常写入不丢弃
@@ -296,12 +330,13 @@ func TestAsyncWriter_NormalWrite(t *testing.T) {
 }
 
 // 测试队列满时丢弃日志
-func TestAsyncWriter_DiscardWhenFull(t *testing.T) {
+func TestAsyncWriter_Discard(t *testing.T) {
 	bc := newBufferCloser()
 
 	// 使用极小的队列容量快速触发丢弃
-	writer := NewAsyncWriter(bc,
-		WithDiscardWhenFull(true),
+	writer := NewAsyncWriter(
+		bc,
+		WithStrategy(strategyDiscard),
 		WithShardQueueSize(1), // 每个分片队列容量1
 		WithShardCount(1),     // 单分片简化测试
 		WithBufferFlushInterval(time.Millisecond),
@@ -334,6 +369,90 @@ func TestAsyncWriter_DiscardWhenFull(t *testing.T) {
 		t.Fatalf("Expected written(%d) + dropped(%d*%d) = %d, got %d", written, dropped, payloadSize, expectedTotal, actualTotal)
 	}
 
+}
+
+func TestAsyncWriter_DiscardWithDowngrade(t *testing.T) {
+	mbc := newBufferCloser()
+	dbc := newBufferCloser()
+
+	// 使用极小的队列容量快速触发丢弃
+	writer := NewAsyncWriter(
+		mbc,
+		WithStrategy(strategyDiscardWithDowngrade),
+		WithDefaultDowngradeWriter(dbc, defaultBufferSize, defaultBufferFlushIntvl),
+		WithShardQueueSize(1), // 每个分片队列容量1
+		WithShardCount(1),     // 单分片简化测试
+		WithBufferFlushInterval(time.Millisecond),
+	)
+
+	const (
+		totalWrites  = 1000            // 总写入次数
+		payloadSize  = 1024            // 每次写入大小
+		expectedDrop = totalWrites - 1 // 队列容量1，最多保留1条
+	)
+
+	// 快速写入数据（不等待处理）
+	for i := 0; i < totalWrites; i++ {
+		_, _ = writer.Write(make([]byte, payloadSize))
+	}
+
+	// 等待处理完成
+	writer.Sync()
+	writer.Close()
+
+	// 验证丢弃数量
+	// dropped := writer.Dropped()
+
+	// 验证实际写入量
+	mwritten := mbc.Len()
+	dwritten := dbc.Len()
+	// 修改后的断言逻辑
+	expectedTotal := totalWrites * payloadSize
+	actualTotal := mwritten + dwritten
+	if actualTotal != expectedTotal {
+		t.Fatalf("Expected Total written(%d), Actual Total written(%d), master written:(%d),  downgradeWriter written:(%d)", expectedTotal, actualTotal, mwritten, dwritten)
+	}
+}
+
+func TestAsyncWriter_DiscardWithDowngradeWithNil(t *testing.T) {
+	mbc := newBufferCloser()
+	// 使用极小的队列容量快速触发丢弃
+	writer := NewAsyncWriter(
+		mbc,
+		WithDefaultDowngradeWriter(nil, defaultBufferSize, defaultBufferFlushIntvl),
+		WithStrategy(strategyDiscardWithDowngrade),
+		WithShardQueueSize(1), // 每个分片队列容量1
+		WithShardCount(1),     // 单分片简化测试
+		WithBufferFlushInterval(time.Millisecond),
+	)
+
+	const (
+		totalWrites  = 1000            // 总写入次数
+		payloadSize  = 1024            // 每次写入大小
+		expectedDrop = totalWrites - 1 // 队列容量1，最多保留1条
+	)
+
+	// 快速写入数据（不等待处理）
+	for i := 0; i < totalWrites; i++ {
+		_, _ = writer.Write(make([]byte, payloadSize))
+	}
+
+	// 等待处理完成
+	writer.Sync()
+	writer.Close()
+
+	// 验证丢弃数量
+	dropped := writer.Dropped()
+
+	// 验证实际写入量
+	written := mbc.Len()
+
+	// 修改后的断言逻辑
+	expectedTotal := totalWrites * payloadSize
+	actualTotal := written + int(dropped)*payloadSize
+	if actualTotal != expectedTotal {
+		t.Fatalf("Expected written(%d) + dropped(%d*%d) = %d, got %d", written, dropped, payloadSize, expectedTotal, actualTotal)
+	}
 }
 
 type slowWriter struct {
@@ -498,7 +617,8 @@ func TestBufferCloserSpeed(t *testing.T) {
 // 情况1：测试阻塞模式下的行为
 func TestAsyncWriter_SlowWriterBackPressure(t *testing.T) {
 	bc := newSlowWriterCloser(100 * time.Microsecond)
-	writer := NewAsyncWriter(bc,
+	writer := NewAsyncWriter(
+		bc,
 		WithShardQueueSize(10),
 		WithShardCount(1),
 		WithBufferSize(0), // 禁用缓冲
@@ -517,8 +637,9 @@ func TestAsyncWriter_SlowWriterBackPressure(t *testing.T) {
 // 情况2：测试丢弃模式下的背压
 func TestAsyncWriter_DiscardUnderPressure(t *testing.T) {
 	slowWriter := &slowWriter{delay: 100 * time.Millisecond}
-	writer := NewAsyncWriter(slowWriter,
-		WithDiscardWhenFull(true),
+	writer := NewAsyncWriter(
+		slowWriter,
+		WithStrategy(strategyDiscard),
 		WithShardQueueSize(10),
 		WithShardCount(1),
 	)

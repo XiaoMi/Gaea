@@ -16,20 +16,17 @@ package zap
 
 import "strings"
 
-const (
-	LogBlockStrategy   = iota // 阻塞等待
-	LogDiscardStrategy        // 不阻塞等待
-)
-
-// LevelFromStr get log level from level string
-func getLogStrategyFromStr(s string) int {
+// parseStrategy get log strategy from config
+func parseStrategy(s string) strategyType {
 	strategyLower := strings.ToLower(s)
 	switch strategyLower {
-	case "block":
-		return LogBlockStrategy
-	case "discard":
-		return LogDiscardStrategy
+	case "sync":
+		return strategyBlocking
+	case "async":
+		return strategyDiscard
+	case "multi":
+		return strategyDiscardWithDowngrade
 	default:
-		return LogBlockStrategy
+		return strategyBlocking
 	}
 }

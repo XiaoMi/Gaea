@@ -27,7 +27,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-func BenchmarkSyncLoggerWriter(b *testing.B) {
+func BenchmarkSyncLoggerWriterWithSyncWaitGroup(b *testing.B) {
 	f, _ := os.OpenFile("/dev/null", os.O_RDWR|os.O_CREATE, 0666)
 	encoder := &ZapEncoder{}
 	core := zapcore.NewTee(
@@ -48,7 +48,7 @@ func BenchmarkSyncLoggerWriter(b *testing.B) {
 	l.Sync()
 }
 
-func BenchmarkAsyncLoggerWriter(b *testing.B) {
+func BenchmarkAsyncLoggerWriterWithSyncWaitGroup(b *testing.B) {
 	f, _ := os.OpenFile("/dev/null", os.O_RDWR|os.O_CREATE, 0666)
 	encoder := &ZapEncoder{}
 	core := zapcore.NewTee(
@@ -69,7 +69,7 @@ func BenchmarkAsyncLoggerWriter(b *testing.B) {
 	l.Sync()
 }
 
-func BenchmarkSyncLoggerWriter_temp(b *testing.B) {
+func BenchmarkSyncLoggerWriter(b *testing.B) {
 	f, _ := os.OpenFile("/dev/null", os.O_RDWR|os.O_CREATE, 0666)
 	defer f.Close()
 
@@ -94,7 +94,7 @@ func BenchmarkSyncLoggerWriter_temp(b *testing.B) {
 	b.ReportAllocs() // 必须放在测试逻辑之后
 }
 
-func BenchmarkAsyncLoggerWriter_temp(b *testing.B) {
+func BenchmarkAsyncLoggerWriter(b *testing.B) {
 	f, _ := os.OpenFile("/dev/null", os.O_RDWR|os.O_CREATE, 0666)
 	defer f.Close()
 
@@ -127,14 +127,55 @@ func BenchmarkAsyncLoggerWriter_temp(b *testing.B) {
 	b.ReportAllocs()
 }
 
-func BenchmarkDiscardAsyncLoggerWriter_temp(b *testing.B) {
+func BenchmarkAsyncLoggerWriterDiscard(b *testing.B) {
 	f, _ := os.OpenFile("/dev/null", os.O_RDWR|os.O_CREATE, 0666)
 	defer f.Close()
 
 	// 创建带缓冲的异步写入器
 	asyncWriter := NewAsyncWriter(
 		f,
-		WithDiscardWhenFull(true),
+		WithStrategy(strategyDiscard),
+	)
+	defer asyncWriter.Close()
+
+	encoder := &ZapEncoder{}
+	core := zapcore.NewCore(
+		encoder,
+		asyncWriter,
+		zap.LevelEnablerFunc(func(zapcore.Level) bool { return true }),
+	)
+	logger := zap.New(core)
+	defer logger.Sync()
+
+	// 设置并行度参数
+	b.SetParallelism(16) // 设置每个CPU核心的并发因子
+	logMsg := "ns=test_namespace_1, root@127.0.0.1:61855->10.38.164.125:3308/, mysql_connect_id=1637760|select sleep(3)"
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.Info(logMsg)
+		}
+	})
+
+	// 报告关键指标
+	drops := asyncWriter.Dropped()
+	b.ReportMetric(float64(drops)/float64(b.N), "drops/op")
+	b.ReportAllocs()
+}
+
+func BenchmarkAsyncLoggerWriterDiscardDowngrade(b *testing.B) {
+	f1, _ := os.OpenFile("/dev/null", os.O_RDWR|os.O_CREATE, 0666)
+	defer f1.Close()
+
+	f2, _ := os.OpenFile("/dev/null", os.O_RDWR|os.O_CREATE, 0666)
+	defer f2.Close()
+
+	// 创建带缓冲的异步写入器
+	asyncWriter := NewAsyncWriter(
+		f1,
+		WithDefaultDowngradeWriter(f2, defaultBufferSize, defaultBufferFlushIntvl),
+		WithStrategy(strategyDiscardWithDowngrade),
 	)
 	defer asyncWriter.Close()
 
@@ -248,7 +289,7 @@ func benchmarkQPSLevel(b *testing.B, qps int, parallelism int) {
 	// 3. 异步写入器（带容量监控）
 	asyncWriter := NewAsyncWriter(
 		f,
-		WithDiscardWhenFull(true),
+		WithStrategy(strategyDiscard),
 	)
 	defer asyncWriter.Close()
 

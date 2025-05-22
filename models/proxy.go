@@ -52,6 +52,7 @@ type Proxy struct {
 	LocalNamespaceStoragePath string `ini:"local_namespace_storage_path"`
 
 	LogPath       string `ini:"log_path"`
+	LogLocalPath  string `ini:"log_local_path"`
 	LogLevel      string `ini:"log_level"`
 	LogFileName   string `ini:"log_filename"`
 	LogOutput     string `ini:"log_output"`
@@ -174,6 +175,7 @@ func (p *ProxyInfo) Encode() []byte {
 func InitXLog(config *Proxy) error {
 	cfg := make(map[string]string)
 	cfg["path"] = config.LogPath
+	cfg["log_local_path"] = config.LogLocalPath
 	cfg["filename"] = config.LogFileName
 	cfg["level"] = config.LogLevel
 	cfg["service"] = config.Service

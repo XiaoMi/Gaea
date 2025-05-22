@@ -47,6 +47,7 @@ func CreateLogManager(config map[string]string) (*ZapLoggerManager, error) {
 	if !ok {
 		return nil, fmt.Errorf("init XFileLog failed, not found path")
 	}
+
 	filename, ok := config["filename"]
 	if !ok {
 		return nil, fmt.Errorf("init XFileLog failed, not found filename")
@@ -56,20 +57,19 @@ func CreateLogManager(config map[string]string) (*ZapLoggerManager, error) {
 	if !ok {
 		return nil, fmt.Errorf("init XFileLog failed, not found level")
 	}
+
 	logKeepDays := 0
 	if value, ok := config["log_keep_days"]; ok {
 		logKeepDays, _ = strconv.Atoi(value)
 	}
+
 	logKeepCounts := 0
 	if value, ok := config["log_keep_counts"]; ok {
 		logKeepCounts, _ = strconv.Atoi(value)
 	}
-	logDiscard := false
-	if value, ok := config["log_strategy"]; ok {
-		if getLogStrategyFromStr(value) == LogDiscardStrategy {
-			logDiscard = true
-		}
-	}
+
+	logstrategy := parseStrategy(config["log_strategy"])
+	logLocalDir := config["log_local_path"]
 
 	encoder := &ZapEncoder{}
 
@@ -81,11 +81,23 @@ func CreateLogManager(config map[string]string) (*ZapLoggerManager, error) {
 	warnLevel := zap.LevelEnablerFunc(func(lvl zapcore.Level) bool {
 		return lvl >= zapcore.WarnLevel && lvl >= getZapLevelFromStr(level)
 	})
-	logFile := path.Join(logDir, filename+".log")
 
-	// 获取 info、warn日志文件的 io.WriteCloser 抽象 getWriter() 在下方实现
-	infoWriter := NewAsyncWriter(getInfoWriter(logFile, logKeepDays, logKeepCounts), WithDiscardWhenFull(logDiscard))
-	warnWriter := NewAsyncWriter(getWarnWriter(logFile, logKeepDays, logKeepCounts), WithDiscardWhenFull(logDiscard))
+	logFile := path.Join(logDir, filename+".log")
+	masterInfoW := getInfoWriter(logFile, logKeepDays, logKeepCounts)
+	masterWarnW := getWarnWriter(logFile, logKeepDays, logKeepCounts)
+
+	var (
+		infoWriter *AsyncWriter
+		warnWriter *AsyncWriter
+	)
+	if len(logLocalDir) > 0 {
+		logLocalFile := path.Join(logLocalDir, filename+".log")
+		infoWriter = NewAsyncWriter(masterInfoW, WithStrategy(logstrategy), WithDefaultDowngradeWriter(getInfoWriter(logLocalFile, logKeepDays, logKeepCounts), defaultBufferSize, defaultBufferFlushIntvl))
+		warnWriter = NewAsyncWriter(masterWarnW, WithStrategy(logstrategy), WithDefaultDowngradeWriter(getWarnWriter(logLocalFile, logKeepDays, logKeepCounts), defaultBufferSize, defaultBufferFlushIntvl))
+	} else {
+		infoWriter = NewAsyncWriter(masterInfoW, WithStrategy(logstrategy))
+		warnWriter = NewAsyncWriter(masterWarnW, WithStrategy(logstrategy))
+	}
 
 	// 最后创建具体的Logger
 	core := zapcore.NewTee(

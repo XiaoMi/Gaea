@@ -990,6 +990,7 @@ type proxyStatsConfig struct {
 func initGeneralLogger(cfg *models.Proxy) (log.Logger, error) {
 	c := make(map[string]string, 5)
 	c["path"] = cfg.LogPath
+	c["log_local_path"] = cfg.LogLocalPath
 	c["filename"] = cfg.LogFileName + "_sql"
 	c["level"] = cfg.LogLevel
 	c["service"] = cfg.Service
