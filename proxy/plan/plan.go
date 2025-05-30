@@ -274,8 +274,15 @@ func (s *StmtInfo) GetRouteResult() *RouteResult {
 }
 
 func (s *StmtInfo) checkAndGetDB(db string) (string, error) {
-	if db != "" && db != s.db {
-		return "", fmt.Errorf("db not match")
+	if db != "" {
+		if ok := s.router.ValidDBInRules(db); !ok {
+			return "", fmt.Errorf("db %s not found in router", db)
+		}
+		return db, nil
+	}
+	// 未指定数据库时使用会话的数据库
+	if s.db == "" {
+		return "", fmt.Errorf("no database selected and no database specified")
 	}
 	return s.db, nil
 }

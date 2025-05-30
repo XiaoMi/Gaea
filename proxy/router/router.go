@@ -134,3 +134,8 @@ func (r *Router) GetAllRules() map[string]map[string]Rule {
 func (r *Router) GetDefaultRule() Rule {
 	return r.defaultRule
 }
+
+func (r *Router) ValidDBInRules(db string) bool {
+	_, ok := r.rules[db]
+	return ok
+}
