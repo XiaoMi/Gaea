@@ -273,6 +273,10 @@ func (m *Manager) ReloadNamespacePrepare(namespaceConfig *models.Namespace) erro
 
 	newNamespaceManager := ShallowCopyNamespaceManager(currentNamespaceManager)
 	if err := newNamespaceManager.RebuildNamespace(namespaceConfig); err != nil {
+		// 重建失败，需要将新建的Namespace关闭（同步关闭）
+		if ns := newNamespaceManager.GetNamespace(namespaceConfig.Name); ns != nil {
+			ns.Close(false) // 同步关闭，因为此时还没有启动探活，但可能已经创建了连接池等资源
+		}
 		log.Warn("prepare config of namespace: %s failed, err: %v", name, err)
 		return err
 	}
@@ -312,6 +316,9 @@ func (m *Manager) ReloadNamespaceCommit(name string) error {
 
 	m.switchIndex.Set(!index)
 
+	// 获取新命名空间并启动探活
+	newNamespace := m.GetNamespace(name)
+	newNamespace.Init()
 	return nil
 }
 
@@ -668,6 +675,7 @@ func CreateNamespaceManager(proxyDatacenter string, namespaceConfigs map[string]
 			log.Warn("create namespace %s failed, err: %v", config.Name, err)
 			continue
 		}
+		namespace.Init() // 初始化命名空间，启动探活等
 		nsMgr.namespaces[namespace.name] = namespace
 		nsMgr.serverIDC = proxyIDC
 	}

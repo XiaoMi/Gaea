@@ -96,6 +96,7 @@ type Namespace struct {
 	backendErrorSQLCache    *cache.LRUCache
 	planCache               *cache.LRUCache
 	CloseCancel             context.CancelFunc
+	CloseCancelCtx          context.Context
 	limiter                 *rate.Limiter
 	namespaceChangeIndex    uint32
 	allowedSessionVariables map[string]string
@@ -136,8 +137,7 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 			namespace.Close(false)
 		}
 	}()
-	var ctx context.Context
-	ctx, namespace.CloseCancel = context.WithCancel(context.TODO())
+	namespace.CloseCancelCtx, namespace.CloseCancel = context.WithCancel(context.TODO())
 
 	// init SupportMultiQuery default true
 	namespace.supportMultiQuery = false
@@ -260,11 +260,6 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 		return nil, fmt.Errorf("init slices of namespace: %s failed, err: %v", namespaceConfig.Name, err)
 	}
 
-	//Check slice master and slave status and mark them as unavailable when detect down
-	if namespace.downAfterNoAlive > 0 {
-		namespace.CheckSliceStatus(ctx)
-	}
-
 	// init router
 	namespace.router, err = router.NewRouter(namespaceConfig)
 	if err != nil {
@@ -296,6 +291,20 @@ func NewNamespace(namespaceConfig *models.Namespace, proxyDatacenter string) (*N
 	}
 
 	return namespace, nil
+}
+
+// Init initializes the namespace after creation. This should be called only when the namespace is committed.
+func (n *Namespace) Init() {
+	// 多个初始化步骤
+	n.startHealthCheck() // 启动探活
+}
+
+// startHealthCheck starts the health check goroutines for all slices
+func (n *Namespace) startHealthCheck() {
+	// 确保只启动一次
+	if n.downAfterNoAlive > 0 {
+		n.CheckSliceStatus(n.CloseCancelCtx)
+	}
 }
 
 // GetName return namespace of namespace

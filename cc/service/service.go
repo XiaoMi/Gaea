@@ -17,6 +17,7 @@ package service
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/XiaoMi/Gaea/cc/proxy"
 	"github.com/XiaoMi/Gaea/log"
@@ -27,6 +28,7 @@ import (
 const (
 	PREPARE_RETRY_TIMES = 3
 	COMMIT_RETRY_TIMES  = 1
+	RETRY_DELAY         = 1 * time.Second
 )
 
 func getCoordinatorRoot(cluster string) string {

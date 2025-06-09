@@ -205,7 +205,8 @@ func (s *Server) ReloadNamespacePrepare(name string, client models.Client) error
 		return err
 	}
 
-	if err = s.manager.ReloadNamespacePrepare(namespaceConfig); err != nil {
+	err = s.manager.ReloadNamespacePrepare(namespaceConfig)
+	if err != nil {
 		log.Warn("Manager ReloadNamespacePrepare error: %v", err)
 		return err
 	}

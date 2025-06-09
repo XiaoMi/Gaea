@@ -461,6 +461,8 @@ func (s *Slice) CheckStatus(ctx context.Context, downAfterNoAlive int, secondsBe
 }
 
 func (s *Slice) checkBackendMasterStatus(ctx context.Context, downAfterNoAlive int) {
+	defer log.Debug("[ns:%s, %s] check master status, exit", s.Namespace, s.Cfg.Name)
+
 	defer func() {
 		if err := recover(); err != nil {
 			log.Warn("[ns:%s, %s] check master status, panic: %v\n%s", s.Namespace, s.Cfg.Name, err, debug.Stack())
@@ -510,6 +512,8 @@ func (s *Slice) checkBackendMasterStatus(ctx context.Context, downAfterNoAlive i
 }
 
 func (s *Slice) checkBackendSlaveStatus(ctx context.Context, slave *DBInfo, downAfterNoAlive int, secondBehindMaster int) {
+	defer log.Debug("[ns:%s, %s] check slave status, exit", s.Namespace, s.Cfg.Name)
+
 	defer func() {
 		if err := recover(); err != nil {
 			log.Warn("[ns:%s, %s] check slave status, panic: %v\n%s", s.Namespace, s.Cfg.Name, err, debug.Stack())
@@ -531,6 +535,7 @@ func (s *Slice) checkBackendSlaveStatus(ctx context.Context, slave *DBInfo, down
 			return
 		case <-ticker.C:
 			for _, node := range slave.Nodes {
+				log.Debug("[ns:%s, %s:%s] check slave status, start", s.Namespace, s.Cfg.Name, node.Address)
 				if err := s.TryRecover(node, downAfterNoAlive, secondBehindMaster); err != nil {
 					log.Warn("[ns:%s, %s:%s] check slave status, error: %v", s.Namespace, s.Cfg.Name, node.Address, err)
 				}
