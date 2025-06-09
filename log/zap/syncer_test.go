@@ -126,7 +126,6 @@ func TestAsyncWriter_ConcurrentDataIntegrity(t *testing.T) {
 	wg.Wait()
 
 	// 强制同步并关闭
-	writer.Sync()
 	writer.Close()
 
 	// 结果校验
@@ -300,8 +299,6 @@ func TestAsyncWriter_ErrorClose(t *testing.T) {
 		}
 	}
 
-	writer.Sync()
-
 	if err := writer.Close(); err == nil {
 		t.Fatal("Expected close error:", err)
 	}
@@ -318,7 +315,6 @@ func TestAsyncWriter_NormalWrite(t *testing.T) {
 		t.Fatal("Write failed:", err)
 	}
 
-	writer.Sync()
 	writer.Close()
 
 	if !strings.Contains(bc.String(), string(testData)) {
@@ -354,7 +350,6 @@ func TestAsyncWriter_Discard(t *testing.T) {
 	}
 
 	// 等待处理完成
-	writer.Sync()
 	writer.Close()
 
 	// 验证丢弃数量
@@ -397,7 +392,6 @@ func TestAsyncWriter_DiscardWithDowngrade(t *testing.T) {
 	}
 
 	// 等待处理完成
-	writer.Sync()
 	writer.Close()
 
 	// 验证丢弃数量
@@ -438,7 +432,6 @@ func TestAsyncWriter_DiscardWithDowngradeWithNil(t *testing.T) {
 	}
 
 	// 等待处理完成
-	writer.Sync()
 	writer.Close()
 
 	// 验证丢弃数量
@@ -522,7 +515,6 @@ func TestAsyncWriterSlow_Block_ConcurrentDataIntegrity(t *testing.T) {
 	// 等待所有写入完成
 	wg.Wait()
 	// 强制同步并关闭
-	writer.Sync()
 	writer.Close()
 	// 结果校验
 	result := bc.String()
@@ -585,7 +577,6 @@ func TestAsyncWriterNotSlow_Block_ConcurrentDataIntegrity(t *testing.T) {
 	// 等待所有写入完成
 	wg.Wait()
 	// 强制同步并关闭
-	writer.Sync()
 	writer.Close()
 	// 结果校验
 	result := bc.String()

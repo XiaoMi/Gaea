@@ -27,7 +27,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-func BenchmarkSyncLoggerWriterWithSyncWaitGroup(b *testing.B) {
+func BenchmarkSyncLoggerWriterWithWaitGroup(b *testing.B) {
 	f, _ := os.OpenFile("/dev/null", os.O_RDWR|os.O_CREATE, 0666)
 	encoder := &ZapEncoder{}
 	core := zapcore.NewTee(
@@ -48,7 +48,7 @@ func BenchmarkSyncLoggerWriterWithSyncWaitGroup(b *testing.B) {
 	l.Sync()
 }
 
-func BenchmarkAsyncLoggerWriterWithSyncWaitGroup(b *testing.B) {
+func BenchmarkAsyncLoggerWriterWithWaitGroup(b *testing.B) {
 	f, _ := os.OpenFile("/dev/null", os.O_RDWR|os.O_CREATE, 0666)
 	encoder := &ZapEncoder{}
 	core := zapcore.NewTee(
