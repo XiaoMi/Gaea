@@ -15,6 +15,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"runtime"
@@ -350,11 +351,38 @@ func (cc *Session) Run() {
 	}
 }
 
+func (cc *Session) handleResponseError(err interface{}) error {
+	// 根据类型处理
+	switch terr := err.(type) {
+	case *mysql.SessionCloseRespError:
+		// 需要发送错误包再关闭连接
+		cc.c.writeErrorPacket(terr)
+		return terr
+	case *mysql.SessionCloseNoRespError:
+		// 直接关闭不响应
+		return terr
+	case error:
+		// 普通错误：尝试发送错误包
+		return cc.c.writeErrorPacket(terr)
+	case nil:
+		return nil
+	default:
+		// 尝试转换为error，如果不行则创建一个新的错误
+		if e, ok := terr.(error); ok {
+			return cc.c.writeErrorPacket(e)
+		}
+		// 非error类型，创建一个新的错误
+		errMsg := fmt.Sprintf("unexpected error type: %T", terr)
+		return cc.c.writeErrorPacket(errors.New(errMsg))
+	}
+}
+
 func (cc *Session) writeResponse(r Response) error {
 	defer func() {
 		cc.executor.recycleContinueConn(cc.continueConn)
 		cc.continueConn = nil
 	}()
+
 	switch r.RespType {
 	case RespEOF:
 		return cc.c.writeEOFPacket(r.Status)
@@ -363,9 +391,10 @@ func (cc *Session) writeResponse(r Response) error {
 		if rs == nil {
 			return cc.c.writeOK(r.Status)
 		}
+		// 流式处理
 		if cc.continueConn != nil {
-			return cc.c.writeOKResultStream(r.Status, r.Data.(*mysql.Result), cc.continueConn,
-				cc.manager.GetNamespace(cc.namespace).GetMaxResultSize(), r.IsBinary)
+			err := cc.c.writeOKResultStream(r.Status, rs, cc.continueConn, cc.manager.GetNamespace(cc.namespace).GetMaxResultSize(), r.IsBinary)
+			return cc.handleResponseError(err)
 		}
 		if r.IsBinary {
 			if err := rs.BuildBinaryResultSet(); err != nil {
@@ -390,16 +419,8 @@ func (cc *Session) writeResponse(r Response) error {
 		if rs == nil {
 			return cc.c.writeOK(r.Status)
 		}
-		switch rs.(type) {
-		case *mysql.SessionCloseRespError:
-			cc.c.writeErrorPacket(rs.(*mysql.SessionCloseRespError))
-			return rs.(*mysql.SessionCloseRespError)
-		case *mysql.SessionCloseNoRespError:
-			return rs.(*mysql.SessionCloseNoRespError)
-		case error:
-			return cc.c.writeErrorPacket(rs.(error))
-		}
-		return nil
+
+		return cc.handleResponseError(rs)
 	case RespOK:
 		return cc.c.writeOK(r.Status)
 	case RespNoop:

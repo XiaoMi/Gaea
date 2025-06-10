@@ -262,6 +262,7 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 	}
 	if isBinary {
 		if err := rs.BuildBinaryResultSet(); err != nil {
+			log.Warn("write result stream, build binary result set error: %v", err)
 			return err
 		}
 	}
@@ -272,6 +273,7 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 	}
 	err := cc.writeOKResult(status, continueConn.MoreRowsExist(), rs)
 	if err != nil {
+		log.Warn("write result stream, write ok result error: %v", err)
 		return err
 	}
 
@@ -281,42 +283,39 @@ func (cc *ClientConn) writeOKResultStream(status uint16, rs *mysql.Result, conti
 			Fields: globalFields,
 		}
 		if err = continueConn.FetchMoreRows(result, maxRows); err != nil {
-			mysql.ResultPool.Put(result)
-			// 如果是SQL错误，发送ERR_Packet
-			if sqlErr, ok := err.(*mysql.SQLError); ok {
-				return cc.writeErrorPacket(sqlErr)
-			}
+			log.Warn("write result stream, more rows exist, fetch more rows error: %v", err)
 			return err
 		}
 		if isBinary {
 			if err = result.BuildBinaryResultSet(); err != nil {
+				log.Warn("write result stream, more rows exist, build binary result set error: %v", err)
 				return err
 			}
 		}
 		if err = cc.writeRowsWithEOF(result, continueConn.MoreRowsExist(), status); err != nil {
+			log.Warn("write result stream, more rows exist, write rows with EOF error: %v", err)
 			return err
 		}
 	}
+
 	// handle multi rs
 	for continueConn.MoreResultsExist() {
 		rs, err = continueConn.ReadMoreResult(maxRows)
 		if err != nil {
-			mysql.ResultPool.Put(rs)
-			// 如果是SQL错误，发送ERR_Packet
-			if sqlErr, ok := err.(*mysql.SQLError); ok {
-				return cc.writeErrorPacket(sqlErr)
-			}
-			return fmt.Errorf("readMoreresult error: %v", err)
+			log.Warn("write result stream, more results exist, read more result error: %v", err)
+			return err
 		}
 
 		if isBinary {
 			if err = rs.BuildBinaryResultSet(); err != nil {
+				log.Warn("write result stream, more results exist, build binary result set error: %v", err)
 				return err
 			}
 		}
 		// TODO: multi statement may have large result
 		err = cc.writeOKResult(rs.Status, false, rs)
 		if err != nil {
+			log.Warn("write result stream, more results exist, write ok result error: %v", err)
 			return err
 		}
 	}
