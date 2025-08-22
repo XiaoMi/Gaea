@@ -160,7 +160,7 @@ func (rp *ResourcePool) closeIdleResources() {
 			return
 		}
 
-		if wrapper.resource != nil && idleTimeout > 0 && wrapper.timeUsed.Add(idleTimeout).Sub(time.Now()) < 0 {
+		if wrapper.resource != nil && idleTimeout > 0 && time.Until(wrapper.timeUsed.Add(idleTimeout)) < 0 {
 			wrapper.resource.Close()
 			wrapper.resource = nil
 			rp.idleClosed.Add(1)
@@ -418,7 +418,7 @@ func (rp *ResourcePool) scaleInResources() {
 
 func (rp *ResourcePool) recordWait(start time.Time) {
 	rp.waitCount.Add(1)
-	rp.waitTime.Add(time.Now().Sub(start))
+	rp.waitTime.Add(time.Since(start))
 }
 
 // SetIdleTimeout sets the idle timeout. It can only be used if there was an
