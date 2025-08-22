@@ -195,9 +195,7 @@ func verifyDateDayRuleSliceInfos(dateRange []string, slices []string) error {
 		if len(subTableIndexs) > 0 && dayNumbers[0] <= subTableIndexs[len(subTableIndexs)-1] {
 			return errors.ErrDateRangeOverlap
 		}
-		for _, v := range dayNumbers {
-			subTableIndexs = append(subTableIndexs, v)
-		}
+		subTableIndexs = append(subTableIndexs, dayNumbers...)
 	}
 	return nil
 }
@@ -215,9 +213,7 @@ func verifyDateMonthRuleSliceInfos(dateRange []string, slices []string) error {
 		if len(subTableIndexs) > 0 && monthNumbers[0] <= subTableIndexs[len(subTableIndexs)-1] {
 			return errors.ErrDateRangeOverlap
 		}
-		for _, v := range monthNumbers {
-			subTableIndexs = append(subTableIndexs, v)
-		}
+		subTableIndexs = append(subTableIndexs, monthNumbers...)
 	}
 	return nil
 }
@@ -235,9 +231,7 @@ func verifyDateYearRuleSliceInfos(dateRange []string, slices []string) error {
 		if len(subTableIndexs) > 0 && yearNumbers[0] <= subTableIndexs[len(subTableIndexs)-1] {
 			return errors.ErrDateRangeOverlap
 		}
-		for _, v := range yearNumbers {
-			subTableIndexs = append(subTableIndexs, v)
-		}
+		subTableIndexs = append(subTableIndexs, yearNumbers...)
 	}
 	return nil
 }
