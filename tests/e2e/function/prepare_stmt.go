@@ -119,13 +119,13 @@ var _ = ginkgo.Describe("prepare stmt test", func() {
 
 func checkPrepareExecRes(db *sql.Stmt, params []interface{}, values [][]string) error {
 	rows, err := db.Query(params[0].(int), params[1].(string))
-	defer rows.Close()
 	if err != nil {
 		if err == sql.ErrNoRows && len(values) == 0 {
 			return nil
 		}
 		return fmt.Errorf("db Exec Error %v", err)
 	}
+	defer rows.Close()
 
 	res, err := util.GetDataFromRows(rows)
 	if err != nil {
