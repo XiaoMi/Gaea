@@ -173,8 +173,8 @@ func TestSessionRunInTxNamespaceChangedWithMock(t *testing.T) {
 			seList[i] = se
 		}
 		for _, se := range seList {
+			g.Add(1)
 			go func(se *SessionExecutor) {
-				g.Add(1)
 				defer g.Done()
 				se.ksConns = make(map[string]backend.PooledConnect)
 				se.status = se.status | mysql.ServerStatusInTrans
