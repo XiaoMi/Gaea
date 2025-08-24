@@ -82,11 +82,7 @@ func IsSelectLastInsertIDStmt(stmt ast.StmtNode) bool {
 // IsSetStmt check if the statement is set comment
 func IsSetStmt(stmt ast.StmtNode) bool {
 	_, ok := stmt.(*ast.SetStmt)
-	if !ok {
-		return false
-	}
-
-	return true
+	return ok
 }
 
 // CreateUnshardPlan constructor of UnshardPlan
