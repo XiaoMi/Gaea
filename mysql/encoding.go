@@ -551,7 +551,7 @@ func AppendBinaryValue(data []byte, fieldType uint8, value interface{}) ([]byte,
 	case string:
 		switch fieldType {
 		case TypeDatetime, TypeTimestamp:
-			if v == "0000-00-00 00:00:00" {
+			if v == "0000-00-00 00:00:00" || v == "0000-00-00 00:00:00.000" {
 				t = append(t, 0)
 			} else {
 				ts, err := time.Parse("2006-01-02 15:04:05", v)
