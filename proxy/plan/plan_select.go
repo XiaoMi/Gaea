@@ -44,6 +44,8 @@ type SelectPlan struct {
 	offset int64 // LIMIT offset
 	count  int64 // LIMIT count, 未设置则为-1
 
+	havingExpr ast.ExprNode // HAVING表达式, 用于在结果合并后重新应用过滤
+
 	sqls map[string]map[string][]string
 }
 
@@ -115,6 +117,16 @@ func (s *SelectPlan) GetLimitValue() (int64, int64) {
 // HasGroupBy if the select statement has group by clause, return true
 func (s *SelectPlan) HasGroupBy() bool {
 	return len(s.groupByColumn) != 0
+}
+
+// HasHaving if the select statement has having clause that needs post-filtering, return true
+func (s *SelectPlan) HasHaving() bool {
+	return s.havingExpr != nil
+}
+
+// GetHavingExpr get the having expression for post-merge filtering
+func (s *SelectPlan) GetHavingExpr() ast.ExprNode {
+	return s.havingExpr
 }
 
 // GetOriginColumnCount get origin column count in statement,
@@ -650,8 +662,48 @@ func handleHaving(p *SelectPlan, stmt *ast.SelectStmt) (err error) {
 	// 这里如果出错, 只能通过panic返回err
 	columnNameRewriter := NewColumnNameRewriteVisitor(p.TableAliasStmtInfo)
 	having.Accept(columnNameRewriter)
+
+	// 检查HAVING表达式是否包含聚合函数
+	// 只有包含聚合函数时才需要在全局层重新应用过滤
+	// 简单的列比较条件（如 HAVING id=1）可以安全地下推到各分片
+	if containsAggregateFunc(having.Expr) {
+		// 保存HAVING表达式用于在合并结果后重新应用过滤
+		// 同时从stmt中移除HAVING, 使下推到各分片的SQL不包含HAVING子句
+		// 这是因为聚合函数的结果需要跨分片汇总后才能正确评估HAVING条件
+		p.havingExpr = having.Expr
+		stmt.Having = nil
+	}
+
 	return nil
 }
+
+// containsAggregateFunc checks if an expression contains aggregate functions
+func containsAggregateFunc(expr ast.ExprNode) bool {
+	if expr == nil {
+		return false
+	}
+
+	switch e := expr.(type) {
+	case *ast.AggregateFuncExpr:
+		return true
+	case *ast.BinaryOperationExpr:
+		return containsAggregateFunc(e.L) || containsAggregateFunc(e.R)
+	case *ast.ParenthesesExpr:
+		return containsAggregateFunc(e.Expr)
+	case *ast.UnaryOperationExpr:
+		return containsAggregateFunc(e.V)
+	case *ast.FuncCallExpr:
+		for _, arg := range e.Args {
+			if containsAggregateFunc(arg) {
+				return true
+			}
+		}
+		return false
+	default:
+		return false
+	}
+}
+
 
 func handleComparisonExpr(p *TableAliasStmtInfo, comp ast.ExprNode) (bool, []int, ast.ExprNode, error) {
 	switch expr := comp.(type) {

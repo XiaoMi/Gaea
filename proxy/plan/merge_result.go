@@ -543,6 +543,14 @@ func MergeSelectResult(p *SelectPlan, stmt *ast.SelectStmt, rs []*mysql.Result) 
 		}
 	}
 
+	// 在聚合结果构建后、排序前应用HAVING过滤
+	// HAVING条件需要在跨分片聚合完成后才能正确评估
+	if p.HasHaving() {
+		if err := filterHavingResult(p, ret); err != nil {
+			return nil, fmt.Errorf("filter having result error: %v", err)
+		}
+	}
+
 	if err := sortSelectResult(p, ret); err != nil {
 		return nil, err
 	}
@@ -561,6 +569,7 @@ func MergeSelectResult(p *SelectPlan, stmt *ast.SelectStmt, rs []*mysql.Result) 
 
 	return ret, nil
 }
+
 
 // 合并结果集, 返回一个Result
 func mergeMultiResultSet(rs []*mysql.Result) *mysql.Result {
@@ -790,6 +799,23 @@ func limitSelectResult(p *SelectPlan, ret *mysql.Result) error {
 	ret.Values = ret.Values[start:end]
 	return nil
 }
+
+// filterHavingResult filters the merged result based on HAVING expression
+// This is called after aggregation to re-apply HAVING conditions on cross-shard results
+func filterHavingResult(p *SelectPlan, ret *mysql.Result) error {
+	havingExpr := p.GetHavingExpr()
+	if havingExpr == nil {
+		return nil
+	}
+
+	if ret == nil || len(ret.Values) == 0 {
+		return nil
+	}
+
+	filter := NewHavingFilter(ret.Fields)
+	return filter.FilterResult(havingExpr, ret)
+}
+
 
 // GenerateSelectResultRowData generate raw RowData from values
 // 根据value反向构造RowData
