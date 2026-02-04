@@ -16,8 +16,10 @@ package plan
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/XiaoMi/Gaea/mysql"
+	"github.com/XiaoMi/Gaea/parser"
 	"github.com/XiaoMi/Gaea/parser/ast"
 	"github.com/XiaoMi/Gaea/parser/opcode"
 	driver "github.com/XiaoMi/Gaea/parser/tidb-types/parser_driver"
@@ -646,6 +648,54 @@ func handleFieldList(p *SelectPlan, stmt *ast.SelectStmt) (err error) {
 	return nil
 }
 
+func buildAggregateAliasMap(fields []*ast.SelectField) map[string]*ast.AggregateFuncExpr {
+	ret := make(map[string]*ast.AggregateFuncExpr)
+	for _, f := range fields {
+		if f.AsName.L == "" {
+			continue
+		}
+		if agg, ok := f.Expr.(*ast.AggregateFuncExpr); ok {
+			ret[strings.ToLower(f.AsName.L)] = agg
+		}
+	}
+	return ret
+}
+
+type havingAggregateCollector struct {
+	aliasAgg map[string]*ast.AggregateFuncExpr
+	found    bool
+	aggs     []*ast.AggregateFuncExpr
+}
+
+// Enter implement ast.Visitor
+func (v *havingAggregateCollector) Enter(n ast.Node) (ast.Node, bool) {
+	switch expr := n.(type) {
+	case *ast.AggregateFuncExpr:
+		v.found = true
+		v.aggs = append(v.aggs, expr)
+		return n, true
+	case *ast.ColumnNameExpr:
+		name := strings.ToLower(expr.Name.Name.L)
+		if _, ok := v.aliasAgg[name]; ok {
+			v.found = true
+		}
+		return n, true
+	case *ColumnNameExprDecorator:
+		name := strings.ToLower(expr.ColumnNameExpr.Name.Name.L)
+		if _, ok := v.aliasAgg[name]; ok {
+			v.found = true
+		}
+		return n, true
+	default:
+		return n, false
+	}
+}
+
+// Leave implement ast.Visitor
+func (v *havingAggregateCollector) Leave(n ast.Node) (ast.Node, bool) {
+	return n, true
+}
+
 func handleHaving(p *SelectPlan, stmt *ast.SelectStmt) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
@@ -663,15 +713,57 @@ func handleHaving(p *SelectPlan, stmt *ast.SelectStmt) (err error) {
 	columnNameRewriter := NewColumnNameRewriteVisitor(p.TableAliasStmtInfo)
 	having.Accept(columnNameRewriter)
 
-	// 检查HAVING表达式是否包含聚合函数
-	// 只有包含聚合函数时才需要在全局层重新应用过滤
+	aliasAgg := buildAggregateAliasMap(stmt.Fields.Fields)
+	collector := &havingAggregateCollector{aliasAgg: aliasAgg}
+	having.Expr.Accept(collector)
+
+	// 检查HAVING表达式是否包含聚合函数或引用了聚合别名
+	// 只有包含聚合函数或聚合别名时才需要在全局层重新应用过滤
 	// 简单的列比较条件（如 HAVING id=1）可以安全地下推到各分片
-	if containsAggregateFunc(having.Expr) {
+	if collector.found {
 		// 保存HAVING表达式用于在合并结果后重新应用过滤
 		// 同时从stmt中移除HAVING, 使下推到各分片的SQL不包含HAVING子句
 		// 这是因为聚合函数的结果需要跨分片汇总后才能正确评估HAVING条件
 		p.havingExpr = having.Expr
 		stmt.Having = nil
+
+		// Build a set of existing aggregate expressions in SELECT fields
+		existingAgg := make(map[string]struct{})
+		for _, f := range stmt.Fields.Fields {
+			if agg, ok := f.Expr.(*ast.AggregateFuncExpr); ok {
+				key, err := parser.NodeToStringWithoutQuote(agg)
+				if err != nil {
+					return fmt.Errorf("restore aggregate func error: %v", err)
+				}
+				existingAgg[strings.ToLower(key)] = struct{}{}
+			}
+		}
+
+		// Ensure HAVING aggregate expressions are present in SELECT fields
+		for _, agg := range collector.aggs {
+			key, err := parser.NodeToStringWithoutQuote(agg)
+			if err != nil {
+				return fmt.Errorf("restore aggregate func error: %v", err)
+			}
+			key = strings.ToLower(key)
+			if _, ok := existingAgg[key]; ok {
+				continue
+			}
+
+			field := &ast.SelectField{Expr: agg, Auxiliary: true}
+			stmt.Fields.Fields = append(stmt.Fields.Fields, field)
+			idx := len(stmt.Fields.Fields) - 1
+			merger, err := CreateAggregateFunctionMerger(agg, idx)
+			if err != nil {
+				return fmt.Errorf("create aggregate function merger error, column index: %d, err: %v", idx, err)
+			}
+			if err := p.setAggregateFuncMerger(idx, merger); err != nil {
+				return fmt.Errorf("set aggregate function merger error, column index: %d, err: %v", idx, err)
+			}
+			existingAgg[key] = struct{}{}
+		}
+
+		p.columnCount = len(stmt.Fields.Fields)
 	}
 
 	return nil
@@ -703,7 +795,6 @@ func containsAggregateFunc(expr ast.ExprNode) bool {
 		return false
 	}
 }
-
 
 func handleComparisonExpr(p *TableAliasStmtInfo, comp ast.ExprNode) (bool, []int, ast.ExprNode, error) {
 	switch expr := comp.(type) {

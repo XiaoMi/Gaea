@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"github.com/XiaoMi/Gaea/mysql"
+	"github.com/XiaoMi/Gaea/parser"
+	"github.com/XiaoMi/Gaea/parser/ast"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 )
@@ -200,6 +202,35 @@ func TestAggregateFuncSumMerger_MergeTo_WithNil(t *testing.T) {
 		err := merger.MergeTo(from, to)
 		assert.NoError(t, err, tt.message)
 		assert.Equal(t, tt.expect, to.GetValue(0), tt.message)
+	}
+}
+
+func TestFilterHavingResult_SumExpr(t *testing.T) {
+	havingSQL := "select a from t group by a having sum(b) < 20"
+	stmt, err := parser.ParseSQL(havingSQL)
+	if err != nil {
+		t.Fatalf("parse sql error: %v", err)
+	}
+
+	sel := stmt.(*ast.SelectStmt)
+	p := &SelectPlan{havingExpr: sel.Having.Expr}
+
+	ret := &mysql.Result{Resultset: &mysql.Resultset{}}
+	ret.Fields = []*mysql.Field{
+		{Name: []byte("a")},
+		{Name: []byte("sum(b)")},
+	}
+	ret.Values = [][]interface{}{
+		{"D", int64(10)},
+		{"B", int64(30)},
+	}
+
+	if err := filterHavingResult(p, ret); err != nil {
+		t.Fatalf("filterHavingResult error: %v", err)
+	}
+
+	if len(ret.Values) != 1 || ret.Values[0][0] != "D" {
+		t.Fatalf("unexpected filter result: %v", ret.Values)
 	}
 }
 
