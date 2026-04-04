@@ -194,6 +194,7 @@ func (pc *pooledConnectImpl) WriteSetStatement() error {
 func (pc *pooledConnectImpl) GetConnectionID() int64 {
 	if pc.directConnection.conn == nil {
 		log.Warn("GetConnectionID failed conn is nil, conn closed = %v, pc address = %v", pc.directConnection.IsClosed(), &(pc.directConnection))
+		return 0
 	}
 	return int64(pc.directConnection.conn.ConnectionID)
 }
