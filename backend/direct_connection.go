@@ -528,6 +528,9 @@ func (dc *DirectConnection) writeAuthSwitchPacket(scrPasswd []byte) error {
 // Caching sha2 authentication. Public key request and send encrypted password
 func (dc *DirectConnection) writePublicKeyAuthPacketSha256(authData []byte, scramble []byte) error {
 	block, _ := pem.Decode(authData)
+	if block == nil {
+		return fmt.Errorf("failed to decode PEM block from auth data")
+	}
 	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
 		return err
