@@ -234,6 +234,88 @@ func TestFilterHavingResult_SumExpr(t *testing.T) {
 	}
 }
 
+func newHavingField(name string) *mysql.Field {
+	return &mysql.Field{Name: []byte(name), OrgName: []byte(name)}
+}
+
+func assertHavingFilterResult(t *testing.T, sql string, fields []*mysql.Field, values [][]interface{}, expectedGroups ...string) {
+	t.Helper()
+
+	p, _ := buildHavingSelectPlan(t, sql)
+	if len(fields) != p.GetColumnCount() {
+		t.Fatalf("test result field count %d does not match plan column count %d", len(fields), p.GetColumnCount())
+	}
+	ret := &mysql.Result{Resultset: &mysql.Resultset{}}
+	ret.Fields = fields
+	ret.Values = values
+
+	if err := filterHavingResult(p, ret); err != nil {
+		t.Fatalf("filterHavingResult error: %v", err)
+	}
+
+	if len(ret.Values) != len(expectedGroups) {
+		t.Fatalf("unexpected filter result: %v, expected groups: %v", ret.Values, expectedGroups)
+	}
+	for i, group := range expectedGroups {
+		if ret.Values[i][0] != group {
+			t.Fatalf("unexpected row %d: %v, expected group: %s", i, ret.Values[i], group)
+		}
+	}
+}
+
+func TestFilterHavingResult_QualifiedSumDoesNotDependOnFieldName(t *testing.T) {
+	assertHavingFilterResult(t,
+		"select t.a, sum(t.b) as total_b from tbl_mycat as t group by t.a having sum(t.b) > 50",
+		[]*mysql.Field{
+			newHavingField("group_col"),
+			newHavingField("merged_value"),
+			newHavingField("group_copy"),
+		},
+		[][]interface{}{
+			{"A", int64(40), "A"},
+			{"C", int64(120), "C"},
+			{"D", int64(10), "D"},
+		},
+		"C",
+	)
+}
+
+func TestFilterHavingResult_HiddenAggregateFieldDoesNotNeedSumName(t *testing.T) {
+	assertHavingFilterResult(t,
+		"select t.a from tbl_mycat t group by t.a having sum(t.b) < 20",
+		[]*mysql.Field{
+			newHavingField("group_col"),
+			newHavingField("group_copy"),
+			newHavingField("hidden_value"),
+		},
+		[][]interface{}{
+			{"A", "A", int64(40)},
+			{"C", "C", int64(120)},
+			{"D", "D", int64(10)},
+		},
+		"D",
+	)
+}
+
+func TestFilterHavingResult_CompositeAggregateConditionsUseDistinctMetadata(t *testing.T) {
+	assertHavingFilterResult(t,
+		"select t.a, sum(t.b) as total_b, count(t.id) as matched_rows from tbl_mycat as t group by t.a having sum(t.b) > 90 and count(t.id) > 0",
+		[]*mysql.Field{
+			newHavingField("group_col"),
+			newHavingField("metric_one"),
+			newHavingField("metric_two"),
+			newHavingField("group_copy"),
+		},
+		[][]interface{}{
+			{"A", int64(40), int64(3), "A"},
+			{"B", int64(95), int64(0), "B"},
+			{"C", int64(120), int64(2), "C"},
+			{"D", int64(10), int64(7), "D"},
+		},
+		"C",
+	)
+}
+
 func TestAggregateFuncSumMerger_MergeTo(t *testing.T) {
 	merger := &AggregateFuncSumMerger{aggregateFuncBaseMerger{fieldIndex: 0}}
 
