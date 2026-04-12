@@ -43,6 +43,9 @@ type SelectPlan struct {
 
 	aggregateFuncs map[int]AggregateFuncMerger // key = column index
 
+	havingAggColumnIndex   map[string]int // key = aggregate canonical key, value = merged result column index
+	havingAliasColumnIndex map[string]int // key = aggregate alias lower-case, value = merged result column index
+
 	offset int64 // LIMIT offset
 	count  int64 // LIMIT count, 未设置则为-1
 
@@ -55,10 +58,12 @@ type SelectPlan struct {
 // db is the session db
 func NewSelectPlan(db string, sql string, r *router.Router) *SelectPlan {
 	return &SelectPlan{
-		TableAliasStmtInfo: NewTableAliasStmtInfo(db, sql, r),
-		aggregateFuncs:     make(map[int]AggregateFuncMerger),
-		offset:             -1,
-		count:              -1,
+		TableAliasStmtInfo:     NewTableAliasStmtInfo(db, sql, r),
+		aggregateFuncs:         make(map[int]AggregateFuncMerger),
+		havingAggColumnIndex:   make(map[string]int),
+		havingAliasColumnIndex: make(map[string]int),
+		offset:                 -1,
+		count:                  -1,
 	}
 }
 
@@ -104,6 +109,47 @@ func (s *SelectPlan) setAggregateFuncMerger(idx int, merger AggregateFuncMerger)
 	}
 	s.aggregateFuncs[idx] = merger
 	return nil
+}
+
+func (s *SelectPlan) setHavingAggregateColumnIndex(agg *ast.AggregateFuncExpr, idx int) error {
+	key, err := havingAggregateKey(agg)
+	if err != nil {
+		return err
+	}
+	if s.havingAggColumnIndex == nil {
+		s.havingAggColumnIndex = make(map[string]int)
+	}
+	s.havingAggColumnIndex[key] = idx
+	return nil
+}
+
+func (s *SelectPlan) setHavingAliasColumnIndex(alias string, idx int) {
+	alias = strings.ToLower(strings.TrimSpace(alias))
+	if alias == "" {
+		return
+	}
+	if s.havingAliasColumnIndex == nil {
+		s.havingAliasColumnIndex = make(map[string]int)
+	}
+	s.havingAliasColumnIndex[alias] = idx
+}
+
+func (s *SelectPlan) getHavingAggregateColumnIndex(agg *ast.AggregateFuncExpr) (int, bool, error) {
+	key, err := havingAggregateKey(agg)
+	if err != nil {
+		return 0, false, err
+	}
+	idx, ok := s.havingAggColumnIndex[key]
+	return idx, ok, nil
+}
+
+func (s *SelectPlan) getHavingAliasColumnIndex(alias string) (int, bool) {
+	alias = strings.ToLower(strings.TrimSpace(alias))
+	if alias == "" || s.havingAliasColumnIndex == nil {
+		return 0, false
+	}
+	idx, ok := s.havingAliasColumnIndex[alias]
+	return idx, ok
 }
 
 // HasLimit if the select statement has limit clause, return true
@@ -641,11 +687,77 @@ func handleFieldList(p *SelectPlan, stmt *ast.SelectStmt) (err error) {
 			if err := p.setAggregateFuncMerger(i, merger); err != nil {
 				return fmt.Errorf("set aggregate function merger error, column index: %d, err: %v", i, err)
 			}
+			if err := p.setHavingAggregateColumnIndex(field, i); err != nil {
+				return fmt.Errorf("set having aggregate column index error, column index: %d, err: %v", i, err)
+			}
+			p.setHavingAliasColumnIndex(f.AsName.L, i)
 		default:
 			// do nothing
 		}
 	}
 	return nil
+}
+
+func havingAggregateKey(agg *ast.AggregateFuncExpr) (string, error) {
+	if agg == nil {
+		return "", fmt.Errorf("nil aggregate function")
+	}
+
+	args := make([]string, 0, len(agg.Args))
+	for _, arg := range agg.Args {
+		key, err := havingAggregateArgKey(arg)
+		if err != nil {
+			return "", err
+		}
+		args = append(args, key)
+	}
+
+	distinct := ""
+	if agg.Distinct {
+		distinct = "distinct "
+	}
+	funcName := strings.ToLower(strings.TrimSpace(agg.F))
+	return fmt.Sprintf("%s(%s%s)", funcName, distinct, strings.Join(args, ",")), nil
+}
+
+func havingAggregateArgKey(expr ast.ExprNode) (string, error) {
+	switch e := expr.(type) {
+	case *ast.ColumnNameExpr:
+		return havingColumnNameKey(e.Name), nil
+	case *ColumnNameExprDecorator:
+		return havingColumnNameKey(e.ColumnNameExpr.Name), nil
+	default:
+		key, err := parser.NodeToStringWithoutQuote(expr)
+		if err != nil {
+			return "", fmt.Errorf("restore aggregate argument error: %v", err)
+		}
+		return strings.ToLower(strings.TrimSpace(key)), nil
+	}
+}
+
+func havingColumnNameKey(name *ast.ColumnName) string {
+	if name == nil {
+		return ""
+	}
+
+	parts := make([]string, 0, 3)
+	if schema := havingCIStrKey(name.Schema.O, name.Schema.L); schema != "" {
+		parts = append(parts, schema)
+	}
+	if table := havingCIStrKey(name.Table.O, name.Table.L); table != "" {
+		parts = append(parts, table)
+	}
+	if column := havingCIStrKey(name.Name.O, name.Name.L); column != "" {
+		parts = append(parts, column)
+	}
+	return strings.Join(parts, ".")
+}
+
+func havingCIStrKey(original, lower string) string {
+	if original != "" {
+		return strings.ToLower(strings.TrimSpace(original))
+	}
+	return strings.ToLower(strings.TrimSpace(lower))
 }
 
 func buildAggregateAliasMap(fields []*ast.SelectField) map[string]*ast.AggregateFuncExpr {
@@ -729,23 +841,26 @@ func handleHaving(p *SelectPlan, stmt *ast.SelectStmt) (err error) {
 
 		// Build a set of existing aggregate expressions in SELECT fields
 		existingAgg := make(map[string]struct{})
-		for _, f := range stmt.Fields.Fields {
+		for i, f := range stmt.Fields.Fields {
 			if agg, ok := f.Expr.(*ast.AggregateFuncExpr); ok {
-				key, err := parser.NodeToStringWithoutQuote(agg)
+				key, err := havingAggregateKey(agg)
 				if err != nil {
-					return fmt.Errorf("restore aggregate func error: %v", err)
+					return fmt.Errorf("build having aggregate key error: %v", err)
 				}
-				existingAgg[strings.ToLower(key)] = struct{}{}
+				if err := p.setHavingAggregateColumnIndex(agg, i); err != nil {
+					return fmt.Errorf("set having aggregate column index error, column index: %d, err: %v", i, err)
+				}
+				p.setHavingAliasColumnIndex(f.AsName.L, i)
+				existingAgg[key] = struct{}{}
 			}
 		}
 
 		// Ensure HAVING aggregate expressions are present in SELECT fields
 		for _, agg := range collector.aggs {
-			key, err := parser.NodeToStringWithoutQuote(agg)
+			key, err := havingAggregateKey(agg)
 			if err != nil {
-				return fmt.Errorf("restore aggregate func error: %v", err)
+				return fmt.Errorf("build having aggregate key error: %v", err)
 			}
-			key = strings.ToLower(key)
 			if _, ok := existingAgg[key]; ok {
 				continue
 			}
@@ -759,6 +874,9 @@ func handleHaving(p *SelectPlan, stmt *ast.SelectStmt) (err error) {
 			}
 			if err := p.setAggregateFuncMerger(idx, merger); err != nil {
 				return fmt.Errorf("set aggregate function merger error, column index: %d, err: %v", idx, err)
+			}
+			if err := p.setHavingAggregateColumnIndex(agg, idx); err != nil {
+				return fmt.Errorf("set having aggregate column index error, column index: %d, err: %v", idx, err)
 			}
 			existingAgg[key] = struct{}{}
 		}
