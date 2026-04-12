@@ -33,14 +33,17 @@ type HavingFilter struct {
 	columnIndexByAlias map[string]int
 	// fields is the field list from the result set
 	fields []*mysql.Field
+	// plan contains HAVING aggregate/alias column metadata from planning
+	plan *SelectPlan
 }
 
 // NewHavingFilter creates a new HavingFilter from result fields
-func NewHavingFilter(fields []*mysql.Field) *HavingFilter {
+func NewHavingFilter(fields []*mysql.Field, p *SelectPlan) *HavingFilter {
 	f := &HavingFilter{
 		columnIndexByName:  make(map[string]int),
 		columnIndexByAlias: make(map[string]int),
 		fields:             fields,
+		plan:               p,
 	}
 
 	for i, field := range fields {
@@ -161,6 +164,12 @@ func (f *HavingFilter) getExprValue(expr ast.ExprNode, row ResultRow) (interface
 func (f *HavingFilter) getColumnValue(name *ast.ColumnName, row ResultRow) (interface{}, error) {
 	colName := strings.ToLower(name.Name.L)
 
+	if f.plan != nil {
+		if idx, ok := f.plan.getHavingAliasColumnIndex(colName); ok {
+			return f.getRowValueByPlanIndex(row, idx, fmt.Sprintf("having alias %s", colName))
+		}
+	}
+
 	// Try to find by name
 	if idx, ok := f.columnIndexByName[colName]; ok {
 		if idx < len(row) {
@@ -179,36 +188,58 @@ func (f *HavingFilter) getColumnValue(name *ast.ColumnName, row ResultRow) (inte
 }
 
 // getAggregateFuncValue gets the value of an aggregate function from the result row
-// It looks for a column with a name matching the aggregate function
+// It uses planner metadata to resolve the merged aggregate column.
 func (f *HavingFilter) getAggregateFuncValue(agg *ast.AggregateFuncExpr, row ResultRow) (interface{}, error) {
-	// Build the expected column name pattern for aggregate functions
-	// e.g., COUNT(`user`) -> count(user) or COUNT(`user`)
-	funcName := strings.ToLower(agg.F)
-
-	// Try to find a column that matches the aggregate function
-	for i, field := range f.fields {
-		fieldName := strings.ToLower(string(field.Name))
-		// Check if field name contains the function name and looks like an aggregate
-		if strings.HasPrefix(fieldName, funcName+"(") || strings.Contains(fieldName, funcName) {
-			if i < len(row) {
-				return row[i], nil
+	if f.plan != nil {
+		if idx, ok, err := f.plan.getHavingAggregateColumnIndex(agg); err != nil {
+			return nil, err
+		} else if ok {
+			key, err := havingAggregateKey(agg)
+			if err != nil {
+				return nil, err
 			}
+			return f.getRowValueByPlanIndex(row, idx, fmt.Sprintf("aggregate function %s", key))
 		}
 	}
 
-	// If there's only one column and it's an aggregate without GROUP BY
-	// the aggregate value is likely in the first (or only) column
-	if len(f.fields) == 1 || (len(row) > 0 && len(f.fields) <= 2) {
-		// For queries like SELECT SUM(x) FROM t HAVING SUM(x) > 5
-		// the result is in the first column
-		for i := range row {
-			if i < len(f.fields) {
-				return row[i], nil
+	return f.getAggregateFuncValueByFieldName(agg, row)
+}
+
+func (f *HavingFilter) getRowValueByPlanIndex(row ResultRow, planIdx int, label string) (interface{}, error) {
+	idx := planIdx + f.resultColumnIndexDelta()
+	if idx < 0 || idx >= len(row) {
+		return nil, fmt.Errorf("%s column index %d out of bounds for row with %d columns", label, idx, len(row))
+	}
+	return row[idx], nil
+}
+
+func (f *HavingFilter) resultColumnIndexDelta() int {
+	if f.plan == nil {
+		return 0
+	}
+	return len(f.fields) - f.plan.GetColumnCount()
+}
+
+func (f *HavingFilter) getAggregateFuncValueByFieldName(agg *ast.AggregateFuncExpr, row ResultRow) (interface{}, error) {
+	key, err := havingAggregateKey(agg)
+	if err != nil {
+		return nil, err
+	}
+
+	for i, field := range f.fields {
+		if normalizeHavingFieldName(field.Name) == key || normalizeHavingFieldName(field.OrgName) == key {
+			if i >= len(row) {
+				return nil, fmt.Errorf("aggregate function %s column index %d out of bounds for row with %d columns", key, i, len(row))
 			}
+			return row[i], nil
 		}
 	}
 
 	return nil, fmt.Errorf("aggregate function %s not found in result", agg.F)
+}
+
+func normalizeHavingFieldName(name []byte) string {
+	return strings.ToLower(strings.TrimSpace(string(name)))
 }
 
 // compareValues compares two values using the given operator

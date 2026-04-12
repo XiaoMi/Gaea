@@ -570,7 +570,6 @@ func MergeSelectResult(p *SelectPlan, stmt *ast.SelectStmt, rs []*mysql.Result) 
 	return ret, nil
 }
 
-
 // 合并结果集, 返回一个Result
 func mergeMultiResultSet(rs []*mysql.Result) *mysql.Result {
 	if len(rs) == 1 {
@@ -812,10 +811,9 @@ func filterHavingResult(p *SelectPlan, ret *mysql.Result) error {
 		return nil
 	}
 
-	filter := NewHavingFilter(ret.Fields)
+	filter := NewHavingFilter(ret.Fields, p)
 	return filter.FilterResult(havingExpr, ret)
 }
-
 
 // GenerateSelectResultRowData generate raw RowData from values
 // 根据value反向构造RowData
