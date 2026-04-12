@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"github.com/XiaoMi/Gaea/mysql"
+	"github.com/XiaoMi/Gaea/parser"
+	"github.com/XiaoMi/Gaea/parser/ast"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 )
@@ -201,6 +203,117 @@ func TestAggregateFuncSumMerger_MergeTo_WithNil(t *testing.T) {
 		assert.NoError(t, err, tt.message)
 		assert.Equal(t, tt.expect, to.GetValue(0), tt.message)
 	}
+}
+
+func TestFilterHavingResult_SumExpr(t *testing.T) {
+	havingSQL := "select a from t group by a having sum(b) < 20"
+	stmt, err := parser.ParseSQL(havingSQL)
+	if err != nil {
+		t.Fatalf("parse sql error: %v", err)
+	}
+
+	sel := stmt.(*ast.SelectStmt)
+	p := &SelectPlan{havingExpr: sel.Having.Expr}
+
+	ret := &mysql.Result{Resultset: &mysql.Resultset{}}
+	ret.Fields = []*mysql.Field{
+		{Name: []byte("a")},
+		{Name: []byte("sum(b)")},
+	}
+	ret.Values = [][]interface{}{
+		{"D", int64(10)},
+		{"B", int64(30)},
+	}
+
+	if err := filterHavingResult(p, ret); err != nil {
+		t.Fatalf("filterHavingResult error: %v", err)
+	}
+
+	if len(ret.Values) != 1 || ret.Values[0][0] != "D" {
+		t.Fatalf("unexpected filter result: %v", ret.Values)
+	}
+}
+
+func newHavingField(name string) *mysql.Field {
+	return &mysql.Field{Name: []byte(name), OrgName: []byte(name)}
+}
+
+func assertHavingFilterResult(t *testing.T, sql string, fields []*mysql.Field, values [][]interface{}, expectedGroups ...string) {
+	t.Helper()
+
+	p, _ := buildHavingSelectPlan(t, sql)
+	if len(fields) != p.GetColumnCount() {
+		t.Fatalf("test result field count %d does not match plan column count %d", len(fields), p.GetColumnCount())
+	}
+	ret := &mysql.Result{Resultset: &mysql.Resultset{}}
+	ret.Fields = fields
+	ret.Values = values
+
+	if err := filterHavingResult(p, ret); err != nil {
+		t.Fatalf("filterHavingResult error: %v", err)
+	}
+
+	if len(ret.Values) != len(expectedGroups) {
+		t.Fatalf("unexpected filter result: %v, expected groups: %v", ret.Values, expectedGroups)
+	}
+	for i, group := range expectedGroups {
+		if ret.Values[i][0] != group {
+			t.Fatalf("unexpected row %d: %v, expected group: %s", i, ret.Values[i], group)
+		}
+	}
+}
+
+func TestFilterHavingResult_QualifiedSumDoesNotDependOnFieldName(t *testing.T) {
+	assertHavingFilterResult(t,
+		"select t.a, sum(t.b) as total_b from tbl_mycat as t group by t.a having sum(t.b) > 50",
+		[]*mysql.Field{
+			newHavingField("group_col"),
+			newHavingField("merged_value"),
+			newHavingField("group_copy"),
+		},
+		[][]interface{}{
+			{"A", int64(40), "A"},
+			{"C", int64(120), "C"},
+			{"D", int64(10), "D"},
+		},
+		"C",
+	)
+}
+
+func TestFilterHavingResult_HiddenAggregateFieldDoesNotNeedSumName(t *testing.T) {
+	assertHavingFilterResult(t,
+		"select t.a from tbl_mycat t group by t.a having sum(t.b) < 20",
+		[]*mysql.Field{
+			newHavingField("group_col"),
+			newHavingField("group_copy"),
+			newHavingField("hidden_value"),
+		},
+		[][]interface{}{
+			{"A", "A", int64(40)},
+			{"C", "C", int64(120)},
+			{"D", "D", int64(10)},
+		},
+		"D",
+	)
+}
+
+func TestFilterHavingResult_CompositeAggregateConditionsUseDistinctMetadata(t *testing.T) {
+	assertHavingFilterResult(t,
+		"select t.a, sum(t.b) as total_b, count(t.id) as matched_rows from tbl_mycat as t group by t.a having sum(t.b) > 90 and count(t.id) > 0",
+		[]*mysql.Field{
+			newHavingField("group_col"),
+			newHavingField("metric_one"),
+			newHavingField("metric_two"),
+			newHavingField("group_copy"),
+		},
+		[][]interface{}{
+			{"A", int64(40), int64(3), "A"},
+			{"B", int64(95), int64(0), "B"},
+			{"C", int64(120), int64(2), "C"},
+			{"D", int64(10), int64(7), "D"},
+		},
+		"C",
+	)
 }
 
 func TestAggregateFuncSumMerger_MergeTo(t *testing.T) {
